@@ -24,7 +24,7 @@ npm install
 npm start
 ```
 
-Open **Settings** (gear icon) → **AI Engine (Cloud)** → pick your provider, paste your key,
+Open **Settings** (gear icon) → **AI engines** → pick your provider, paste your key,
 click **Save & connect**. The model list loads automatically. Close settings and chat —
 the reply streams into the thread, and your orb animates while it thinks.
 
@@ -65,6 +65,8 @@ anywhere except your chat text going to the API provider you chose, using your o
 - `lib/memory.js` / `lib/offline-memory.js` — local conversation stores.
 - `lib/config.js` — settings + provider presets (`%APPDATA%/Caryl.ai/settings.json`).
 - `renderer/` — chat UI, floating overlay + bubble, onboarding wizard (`onboarding.html`).
+- `renderer/theme.css` — app-wide theme + accent variables (Settings → Appearance:
+  4 base themes × 6 accents, independently combinable).
 - `automation.py` — Python sidecar: UIA-first desktop automation, VAD, faster-whisper STT.
   Grounds on the accessibility tree: `/elements` inventory (incl. unnamed controls),
   act-by-element-id, deterministic `open_app`, and pause-&-ask when a control can't be

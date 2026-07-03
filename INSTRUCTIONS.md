@@ -13,7 +13,13 @@
 > (UIA) - it clicks exact named elements instead of guessing pixels, and if it can't
 > identify a control it asks you to pick rather than clicking blindly. Tasks you request
 > run immediately; only shell commands and file deletes still ask first. Restore the old
-> approve-a-plan-first flow via Settings → Desktop Automation → "Preview & approve a plan".
+> approve-a-plan-first flow via Settings → Automation → "Preview & approve a plan".
+>
+> **Settings redesign:** Settings is now a centered left-nav modal with 7 pages — AI
+> engines, Voice and audio, Automation, Personality, Chats and memory, Appearance, About
+> and setup. Every old control is still there, just grouped; the cloud model picker lives
+> on the AI engines page. Appearance offers 4 base themes (Cyan HUD, Full Dark, Navy,
+> Full Light) × 6 accents (incl. White), independently combinable, applied app-wide live.
 
 Everything now lives in ONE app: your existing online build at `D:\brain-ai\brain-ai`,
 with a switchable **Online (cloud API)** / **Offline (local Ollama)** mode. The online
