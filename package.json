@@ -27,8 +27,14 @@
       "renderer/**/*"
     ],
     "extraResources": [
-      { "from": "automation.py", "to": "automation.py" },
-      { "from": "requirements_automation.txt", "to": "requirements_automation.txt" }
+      {
+        "from": "automation.py",
+        "to": "automation.py"
+      },
+      {
+        "from": "requirements_automation.txt",
+        "to": "requirements_automation.txt"
+      }
     ],
     "asarUnpack": [
       "node_modules/uiohook-napi/**/*"
@@ -48,8 +54,6 @@
     }
   },
   "dependencies": {
-    "@picovoice/porcupine-web": "^4.0.1",
-    "@picovoice/web-voice-processor": "^4.0.10",
     "pdfjs-dist": "^3.11.174",
     "uiohook-napi": "^1.5.4"
   }

@@ -2663,8 +2663,11 @@ function createWindow() {
   if (typeof mainWindow.removeMenu === 'function') mainWindow.removeMenu();
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.once('ready-to-show', () => mainWindow.show());
-  // TEMP DEBUG: open DevTools so we can see the [wakeword] logs. Remove this line later.
-  mainWindow.webContents.once('did-finish-load', () => { try { mainWindow.webContents.openDevTools({ mode: 'detach' }); } catch (_e) {} });
+  // DevTools only when explicitly asked for: `npm start -- --dev` or CARYL_DEV=1.
+  // (An always-open detached DevTools costs real RAM on every user launch.)
+  if (process.argv.includes('--dev') || process.env.CARYL_DEV === '1') {
+    mainWindow.webContents.once('did-finish-load', () => { try { mainWindow.webContents.openDevTools({ mode: 'detach' }); } catch (_e) {} });
+  }
 
   // Microphone + camera permission. We ask ONCE, remember the answer in settings.json, and
   // never prompt again on later launches. (The old code cached the answer only in memory, so

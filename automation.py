@@ -44,6 +44,7 @@ SAFETY MODEL - read this before changing it:
 """
 
 import base64
+import gc
 import io
 import json
 import logging
@@ -129,6 +130,7 @@ def _detect_whisper_device():
 def _get_whisper(name):
     """Load (once) and cache a faster-whisper model. LRU-evicts the oldest when full."""
     with _whisper_lock:
+        _touch_whisper()
         m = _WHISPER_LRU.pop(name, None)
         if m is None:
             device, compute = _detect_whisper_device()
@@ -141,6 +143,29 @@ def _get_whisper(name):
         while len(_WHISPER_LRU) > _WHISPER_LRU_MAX:
             _WHISPER_LRU.popitem(last=False)
         return m
+
+
+# Idle unload: whisper models are only resident while voice input is actually in use.
+# 5 idle minutes -> drop them (reload cost is one cold start on the next utterance).
+_WHISPER_LAST_USED = 0.0
+_WHISPER_IDLE_S = 300
+
+
+def _touch_whisper():
+    global _WHISPER_LAST_USED
+    _WHISPER_LAST_USED = time.time()
+
+
+def _whisper_idle_reaper():
+    while True:
+        time.sleep(60)
+        with _whisper_lock:
+            if _WHISPER_LRU and _WHISPER_LAST_USED and (time.time() - _WHISPER_LAST_USED) > _WHISPER_IDLE_S:
+                _WHISPER_LRU.clear()
+                gc.collect()
+
+
+threading.Thread(target=_whisper_idle_reaper, daemon=True).start()
 
 
 HOST = "127.0.0.1"
@@ -398,6 +423,27 @@ def vad():
 
 
 # ----------------------------------------------------------------- /transcribe
+@app.route("/stt_status", methods=["GET"])
+def stt_status():
+    """Download-manager probe: is faster-whisper importable, and which models are warm?"""
+    with _whisper_lock:
+        return jsonify({"available": _FWModel is not None, "cached": list(_WHISPER_LRU.keys()),
+                        "error": _fw_import_error})
+
+
+@app.route("/stt_warm", methods=["POST"])
+def stt_warm():
+    """Load (downloading on first ever use) a whisper model so offline STT is instant later."""
+    if _FWModel is None:
+        return jsonify({"ok": False, "error": "faster-whisper not installed: %s" % _fw_import_error})
+    name = (request.get_json(silent=True) or {}).get("model") or "base.en"
+    try:
+        _get_whisper(name)
+        return jsonify({"ok": True, "model": name})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
     if _FWModel is None:
