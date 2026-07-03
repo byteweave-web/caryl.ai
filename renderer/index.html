@@ -107,9 +107,6 @@ input[type=range]{-webkit-appearance:none;appearance:none;width:160px;height:4px
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer}
 .meter{height:6px;border-radius:6px;background:var(--track);overflow:hidden;margin-top:8px}
 .meter > i{display:block;height:100%;background:linear-gradient(90deg,var(--mut),var(--accent));width:0}
-.accents{display:flex;gap:10px;margin-top:6px}
-.acc{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);cursor:pointer}
-.acc.sel{border-color:var(--txt)}
 .badge{font-size:10px;font-family:ui-monospace,monospace;padding:3px 8px;border-radius:20px;border:1px solid var(--line)}
 /* Offline model picker: scanned/downloadable model list with per-row Use + Download actions. */
 .modellist{display:flex;flex-direction:column;gap:6px;max-height:264px;overflow-y:auto;margin:8px 0 10px;padding-right:2px}
@@ -360,8 +357,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
 
     <div class="sec">
       <h3>Appearance</h3>
-      <div class="sub">Theme accent.</div>
-      <div class="accents" id="accents"></div>
+      <div class="sub">Theme and accent &mdash; restyles the whole app instantly.</div>
+      <div class="l" style="margin:6px 0 6px">Theme</div>
+      <div id="theme-cards" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px"></div>
+      <div class="l" style="margin:2px 0 6px">Accent</div>
+      <div id="accent-swatches" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px"></div>
       <div class="row" style="margin-top:10px"><div><div class="l">Show Captions on Orb</div><div class="d">Display the latest reply over the orb</div></div>
         <label class="sw"><input type="checkbox" id="tog-orbcap" onchange="toggleOrbCap()"><span></span></label></div>
       <div class="row" style="margin-top:10px"><div><div class="l">Background Animation</div><div class="d">Slow 3D wireframe. Turn off to save battery &amp; GPU.</div></div>
@@ -549,7 +549,7 @@ function setView(v){
   document.getElementById('view-'+v).classList.add('active');
   _curView=v; _bgApply();   // animated background runs in Chat view only
 }
-function openSettings(){ document.getElementById('settings').classList.add('open'); document.getElementById('scrim').classList.add('open'); populateEngine(); populateAiMode(); populateVoiceInputCard(); syncSettings(); loadModels(); loadMics(); populateExtras(); }
+function openSettings(){ document.getElementById('settings').classList.add('open'); document.getElementById('scrim').classList.add('open'); populateEngine(); populateAiMode(); populateVoiceInputCard(); syncSettings(); loadModels(); loadMics(); populateExtras(); renderAppearance(); }
 
 // ---- Personality, chats, voice, wake word, memory management ----
 async function populateExtras(){
@@ -562,6 +562,47 @@ async function populateExtras(){
   loadVoiceList(cfg);
   loadChatList();
   loadMemoryList();
+}
+
+// ---- Appearance: theme cards + accent swatches (renderer/theme.css does the styling) ----
+const CARYL_THEMES = [
+  { key: 'cyanHud', name: 'Cyan HUD', bg: '#08090b', panel: '#14171c' },
+  { key: 'fullDark', name: 'Full Dark', bg: '#0a0a0b', panel: '#1e1e21' },
+  { key: 'navy', name: 'Navy', bg: '#0a1424', panel: '#182a49' },
+  { key: 'fullLight', name: 'Full Light', bg: '#f5f6f8', panel: '#ffffff' }
+];
+const CARYL_ACCENTS = [
+  { key: 'cyan', hex: '#7fd1ff' }, { key: 'blue', hex: '#4c8dff' }, { key: 'white', hex: '#eef1f6' },
+  { key: 'teal', hex: '#35d6b0' }, { key: 'amber', hex: '#f5b53d' }, { key: 'violet', hex: '#a98bff' }
+];
+function currentTheme() { return document.documentElement.dataset.theme || 'cyanHud'; }
+function currentAccent() { return document.documentElement.dataset.accent || 'cyan'; }
+async function setTheme(key) {
+  document.documentElement.dataset.theme = key;
+  await window.bridge.setConfig({ theme: key });
+  renderAppearance();
+}
+async function setAccent(key) {
+  document.documentElement.dataset.accent = key;
+  await window.bridge.setConfig({ accentColor: key });
+  renderAppearance();
+}
+function renderAppearance() {
+  const tc = document.getElementById('theme-cards');
+  if (tc) tc.innerHTML = CARYL_THEMES.map(function (t) {
+    const on = t.key === currentTheme();
+    // Card text stays light-on-dark per swatch (the card previews ITS theme, not the active one),
+    // except Full Light whose preview bg is light.
+    const cardTxt = t.key === 'fullLight' ? '#1a1d24' : '#e7e9ee';
+    return '<button onclick="setTheme(\'' + t.key + '\')" style="text-align:left;border:1.5px solid ' + (on ? 'var(--accent)' : 'var(--line)') + ';background:' + t.bg + ';border-radius:10px;padding:9px 11px;cursor:pointer">' +
+      '<div style="display:flex;gap:5px;margin-bottom:7px"><span style="width:14px;height:14px;border-radius:4px;background:' + t.panel + ';border:1px solid rgba(127,127,127,.35)"></span><span style="width:14px;height:14px;border-radius:4px;background:var(--accent)"></span></div>' +
+      '<div style="font-size:12px;color:' + cardTxt + '">' + t.name + (on ? ' ✓' : '') + '</div></button>';
+  }).join('');
+  const sc = document.getElementById('accent-swatches');
+  if (sc) sc.innerHTML = CARYL_ACCENTS.map(function (a) {
+    const on = a.key === currentAccent();
+    return '<button onclick="setAccent(\'' + a.key + '\')" title="' + a.key + '" aria-label="' + a.key + ' accent" style="width:26px;height:26px;border-radius:50%;background:' + a.hex + ';cursor:pointer;border:2px solid ' + (on ? 'var(--txt)' : 'var(--line)') + '"></button>';
+  }).join('');
 }
 function togglePiperFields(){
   const v=document.getElementById('tts-engine'); const box=document.getElementById('piper-fields');
