@@ -193,13 +193,24 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
   <header><h2>Settings</h2><button class="iconbtn" onclick="closeSettings()" style="width:32px;height:32px">&#10005;</button></header>
   <div class="body">
 
-    <!-- [OFFLINE-INTEGRATION] AI Mode: one switch flips the whole app between the cloud
-         engine below and a fully local engine (Ollama). Same UI, same features, both ways. -->
+    <!-- Engines & Models: per-capability hybrid routing. Chat / Vision / STT / TTS each
+         run in the cloud or on this PC, in any combination, plus the download manager
+         for every heavy on-demand asset (the installer ships code only). -->
     <div class="sec">
-      <h3>AI Mode</h3>
-      <div class="sub">One app, two brains &mdash; flip anytime. <span id="am-badge" class="badge">&mdash;</span></div>
-      <div class="row"><div><div class="l">Offline mode (local AI)</div><div class="d">Everything runs on this PC through Ollama &mdash; private, no key needed. Off = the cloud engine below.</div></div>
-        <label class="sw"><input type="checkbox" id="tog-offline" onchange="toggleOfflineMode()"><span></span></label></div>
+      <h3>Engines &amp; Models</h3>
+      <div class="sub">Each capability runs in the cloud or on this PC &mdash; mix freely. <span id="am-badge" class="badge">&mdash;</span></div>
+      <div id="engine-rows">
+        <div class="row"><div><div class="l">Chat</div><div class="d" id="eng-chat-d">&mdash;</div></div>
+          <label class="sw"><input type="checkbox" id="eng-chat" onchange="setEngine('chat',this.checked)"><span></span></label></div>
+        <div class="row"><div><div class="l">Vision (screen &amp; camera)</div><div class="d" id="eng-vision-d">&mdash;</div></div>
+          <label class="sw"><input type="checkbox" id="eng-vision" onchange="setEngine('vision',this.checked)"><span></span></label></div>
+        <div class="row"><div><div class="l">Voice input (speech-to-text)</div><div class="d" id="eng-stt-d">&mdash;</div></div>
+          <label class="sw"><input type="checkbox" id="eng-stt" onchange="setEngine('stt',this.checked)"><span></span></label></div>
+        <div class="row"><div><div class="l">Voice output (text-to-speech)</div><div class="d" id="eng-tts-d">&mdash;</div></div>
+          <label class="sw"><input type="checkbox" id="eng-tts" onchange="setEngine('tts',this.checked)"><span></span></label></div>
+      </div>
+      <div class="d" style="margin:4px 0 8px">Toggle ON = runs locally on this PC (private, needs a one-time download). OFF = cloud API.</div>
+      <div id="downloads-list"></div>
 
       <div class="field" style="margin:2px 0 6px">
         <button class="minibtn" onclick="startOllama()">Start / refresh Ollama</button>
@@ -232,12 +243,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
         </div>
       </div>
 
-      <div class="row"><div><div class="l">Local vision (offline vision)</div><div class="d">Screen, camera &amp; automation targeting run on the local vision model. In Online mode, chat still uses the cloud &mdash; only vision goes local.</div></div>
-        <label class="sw"><input type="checkbox" id="tog-localvision" onchange="toggleLocalVision()"><span></span></label></div>
-
-      <div class="row"><div><div class="l">Local voice input (offline Whisper)</div><div class="d">Speech-to-text runs on this PC via faster-whisper. In Online mode, chat still uses the cloud &mdash; only your voice transcription goes local.</div></div>
-        <label class="sw"><input type="checkbox" id="tog-localstt" onchange="toggleLocalStt()"><span></span></label></div>
-      <!-- Local Whisper model: shown in Offline mode, or in Online mode when local voice input is on. -->
+      <!-- Local Whisper model: shown when Voice input (STT) runs locally. -->
       <div id="offline-stt-block" class="row" style="display:none">
         <div style="width:100%">
           <div class="l" style="margin-bottom:7px">Local Whisper model</div>
@@ -677,7 +683,7 @@ async function loadModels(force){
   if(st){ st.textContent='Loading models\u2026'; st.className='statusline'; }
   const data=await getJSON('/get_models');
   const offlineMode=(lastStatus&&lastStatus.mode==='offline'); // [OFFLINE-INTEGRATION] mode-aware hints
-  if(!data){ if(st){ st.textContent=offlineMode?'Could not load local models \u2014 is Ollama running? (AI Mode \u2192 Start Ollama)':'Could not load models. Check your API key in AI Engine above.'; st.className='statusline bad'; } if(sel) sel.innerHTML='<option>not connected</option>'; return; }
+  if(!data){ if(st){ st.textContent=offlineMode?'Could not load local models \u2014 is Ollama running? (Engines & Models \u2192 Start Ollama)':'Could not load models. Check your API key in AI Engine above.'; st.className='statusline bad'; } if(sel) sel.innerHTML='<option>not connected</option>'; return; }
   const models=data.models||[]; let current=data.current||'';
   if(models.length===0){ if(st){ st.textContent=(data.error?('Error: '+data.error):(offlineMode?'No local models yet \u2014 run: ollama pull qwen2.5:7b':'No models returned. Check your key.')); st.className='statusline bad'; } if(sel) sel.innerHTML='<option value="'+current+'">'+(current||'none')+'</option>'; return; }
   // Auto-connect: if no model is set, or the saved one isn't a valid/usable chat model, pick one.
@@ -759,24 +765,70 @@ async function saveEngine(){
   loadModels(true);
 }
 
-// ---- [OFFLINE-INTEGRATION] AI Mode (online/offline switch, local vision, storage) ----
+// ---- Engines & Models (per-capability hybrid routing, local model pickers, downloads) ----
 // Everything here rides the existing bridge: mode/vision/storage are plain config keys
 // (main.js reacts to them), Ollama info comes from the two new bridge calls. The chat
 // model itself is picked in the existing Models section - getModels/setModel are
 // mode-aware in main.js, so that UI needs no changes at all.
 let _ollamaCatalog=null;      // cached {chat:[...], vision:[...]} curated download lists
 let _pullInFlight=false;      // guard so the UI never fires two downloads at once
+let _engines={chat:'online',vision:'online',stt:'online',tts:'online'};
 async function populateAiMode(){
   const cfg=await window.bridge.getConfig(); if(!cfg) return;
-  set('tog-offline', (cfg.mode||'online')==='offline');
-  set('tog-localvision', !!cfg.useLocalVision);
-  set('tog-localstt', !!cfg.useLocalStt);
+  if(cfg.engines) _engines=cfg.engines;
+  applyEnginesToUi({engines:_engines});
   set('tog-sepchats', !!cfg.separateOfflineChats);
   const sttSel=document.getElementById('offline-stt-select'); if(sttSel) sttSel.value=cfg.offlineSttModel||'';
   applyOfflineFieldVisibility();
   await loadOllamaCatalog();
   refreshOllamaCard(cfg);
+  refreshDownloadsList();
 }
+
+// ---- Engines & Models: per-capability hybrid routing ----
+async function setEngine(cap,offlineOn){
+  _engines=Object.assign({},_engines);
+  _engines[cap]=offlineOn?'offline':'online';
+  await window.bridge.setConfig({engines:_engines});
+  applyOfflineFieldVisibility();
+  if(offlineOn){ setTimeout(refreshOllamaCard,1600); refreshDownloadsList(); } // surface any missing model immediately
+  if(cap==='chat') loadModels(true); // the Models list below follows the chat engine
+}
+
+function applyEnginesToUi(s){ // called from populateAiMode + the live status poll
+  if(!s||!s.engines) return;
+  _engines=s.engines;
+  ['chat','vision','stt','tts'].forEach(function(cap){
+    const t=document.getElementById('eng-'+cap);
+    if(t&&document.activeElement!==t) t.checked=_engines[cap]==='offline';
+    const d=document.getElementById('eng-'+cap+'-d');
+    if(d) d.textContent=_engines[cap]==='offline'?'Local (this PC)':'Cloud API';
+  });
+}
+
+async function refreshDownloadsList(){
+  const el=document.getElementById('downloads-list');
+  if(!el) return;
+  let assets=[];
+  try{ assets=await window.bridge.downloadsStatus(); }
+  catch(e){ el.innerHTML='<div class="statusline bad">'+escapeHtml(String(e))+'</div>'; return; }
+  el.innerHTML=assets.map(function(a){
+    const state=a.installed?'<span style="color:#7dff9a">&#9679; installed</span>':'<span style="color:#889">&#9675; ~'+a.sizeMB+' MB</span>';
+    const btn=a.installed?'':'<button class="minibtn" onclick="startDownload(\''+a.id+'\')">Download</button>';
+    return '<div class="row" style="align-items:center"><div><div class="l">'+escapeHtml(a.label)+'</div><div class="d">'+state+(a.detail?' &middot; '+escapeHtml(a.detail):'')+' <span id="dlp-'+a.id+'"></span></div></div>'+btn+'</div>';
+  }).join('');
+}
+
+async function startDownload(id){
+  const r=await window.bridge.downloadsStart(id);
+  if(r&&r.error==='use-voice-installer'){ alert('Pick and install a voice in the Voice section below — it handles the download.'); return; }
+  if(r&&!r.ok) alert('Download failed: '+(r.error||'unknown'));
+  refreshDownloadsList();
+}
+window.bridge.onDownloadsProgress(function(p){
+  const el=document.getElementById('dlp-'+p.id);
+  if(el) el.textContent=p.msg||'';
+});
 
 // ----- Voice Input card: system-wide push-to-talk (Settings -> Voice Input) -----
 // This is separate from the in-window PTT key (ptt_hotkey) shown elsewhere in Settings -
@@ -800,16 +852,16 @@ async function setSystemPttHotkey(){
 // "run this locally" toggle is on. Reads the checkboxes directly so it's correct after any
 // toggle change or status sync without needing a fresh config fetch.
 function applyOfflineFieldVisibility(){
-  const offline=!!(document.getElementById('tog-offline')||{}).checked;
-  const localVision=!!(document.getElementById('tog-localvision')||{}).checked;
-  const localStt=!!(document.getElementById('tog-localstt')||{}).checked;
+  const chatLocal=_engines.chat==='offline';
+  const visionLocal=_engines.vision==='offline';
+  const sttLocal=_engines.stt==='offline';
   const show=(id,on)=>{ const el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
-  show('offline-chat-block', offline);
-  show('offline-vision-block', offline||localVision);
-  show('offline-stt-block', offline||localStt);
+  show('offline-chat-block', chatLocal);
+  show('offline-vision-block', visionLocal);
+  show('offline-stt-block', sttLocal);
   // Hide the cloud model fields whenever the local equivalent is doing that job.
-  show('cloud-vision-row', !(offline||localVision));
-  show('cloud-stt-row', !(offline||localStt));
+  show('cloud-vision-row', !visionLocal);
+  show('cloud-stt-row', !sttLocal);
 }
 
 async function loadOllamaCatalog(){
@@ -925,24 +977,6 @@ async function refreshOllamaCard(cfg){
   }catch(e){}
 }
 
-async function toggleOfflineMode(){
-  const on=document.getElementById('tog-offline').checked;
-  await window.bridge.setConfig({mode:on?'offline':'online'});
-  applyOfflineFieldVisibility();
-  if(on) setTimeout(refreshOllamaCard, 1600); // main.js auto-starts the server; give it a beat
-  loadModels(true); // the Models list below follows the active mode
-}
-async function toggleLocalVision(){
-  const on=document.getElementById('tog-localvision').checked;
-  await window.bridge.setConfig({useLocalVision:on});
-  applyOfflineFieldVisibility();
-  if(on) setTimeout(refreshOllamaCard, 1600);
-}
-async function toggleLocalStt(){
-  const on=document.getElementById('tog-localstt').checked;
-  await window.bridge.setConfig({useLocalStt:on});
-  applyOfflineFieldVisibility();
-}
 async function toggleSepChats(){
   await window.bridge.setConfig({separateOfflineChats:document.getElementById('tog-sepchats').checked});
 }
@@ -1736,12 +1770,16 @@ function syncSettings(){
   set('tog-localwake',s.local_wake_enabled); lwShowRows(!!s.local_wake_enabled);
   if(typeof s.local_wake_threshold==='number'){ const el=document.getElementById('lw-thresh'); if(el) el.value=s.local_wake_threshold; }
   set('tog-screen',s.screen_watch_enabled); set('tog-proactive',s.proactive_thinking_enabled); set('tog-persistent',s.memory_saving_enabled);
-  // [OFFLINE-INTEGRATION] AI Mode card follows live status (same pattern as the toggles above)
-  set('tog-offline', s.mode==='offline'); set('tog-localvision', s.use_local_vision); set('tog-localstt', s.use_local_stt); set('tog-sepchats', s.separate_offline_chats);
+  // Engines & Models card follows live status (same pattern as the toggles above)
+  applyEnginesToUi(s); set('tog-sepchats', s.separate_offline_chats);
   if(typeof s.offline_stt_model==='string'){ const el=document.getElementById('offline-stt-select'); if(el && document.activeElement!==el) el.value=s.offline_stt_model; }
   if(typeof applyOfflineFieldVisibility==='function') applyOfflineFieldVisibility();
   const amb=document.getElementById('am-badge');
-  if(amb && typeof s.ollama_up!=='undefined'){ amb.textContent=s.ollama_up?'OLLAMA RUNNING':'OLLAMA OFF'; amb.className='badge '+(s.ollama_up?'ok':'bad'); }
+  if(amb && s.engines){
+    const local=['chat','vision','stt','tts'].filter(function(c){return s.engines[c]==='offline';});
+    amb.textContent=local.length===0?'ALL CLOUD':(local.length===4?'ALL LOCAL':'HYBRID: '+local.join('+').toUpperCase()+' LOCAL');
+    amb.className='badge '+((local.length===0||s.ollama_up)?'ok':'bad');
+  }
   if(s.speech_rate){ document.getElementById('rate').value=s.speech_rate; document.getElementById('rate-val').textContent=s.speech_rate; }
   if(s.ptt_hotkey) document.getElementById('ptt-binding').textContent=String(s.ptt_hotkey).toUpperCase();
   const viInWin=document.getElementById('vi-inwindow-hotkey'); if(viInWin && s.ptt_hotkey) viInWin.textContent=String(s.ptt_hotkey);
