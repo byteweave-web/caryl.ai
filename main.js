@@ -60,6 +60,7 @@ const ollama = require('./lib/ollama');
 const OfflineMemory = require('./lib/offline-memory');
 const localSearch = require('./lib/local-search');
 const enginesLib = require('./lib/engines');
+const downloads = require('./lib/downloads');
 
 // Ensure cfg.engines exists (one-time derivation from the pre-Caryl flags).
 {
@@ -2218,10 +2219,14 @@ const WAKEWORD_MODELS = Object.assign({}, WAKEWORD_CORE);
 WAKE_WORD_CHOICES.forEach((c) => { WAKEWORD_MODELS[c.file] = WAKEWORD_BASE + c.file; });
 
 // Ensure the model files exist locally (download any that are missing). Reports progress.
-ipcMain.handle('wakeword:ensure', async () => {
+// Plain function (not just an IPC handler) so the download manager can call it too.
+async function ensureWakewordModels(onProgress) {
   const dir = wakewordDir();
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_e) {}
-  const send = (msg) => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('wakeword:progress', msg); } catch (_e) {} };
+  const send = (msg) => {
+    try { if (typeof onProgress === 'function') onProgress(msg); } catch (_e) {}
+    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('wakeword:progress', msg); } catch (_e) {}
+  };
   try {
     // Core (mel + embedding) plus ONLY the selected classifier - not the whole catalog.
     const selected = config.get().wakeWordModel || 'hey_jarvis_v0.1.onnx';
@@ -2241,6 +2246,38 @@ ipcMain.handle('wakeword:ensure', async () => {
     send('');
     return { ok: false, error: (e && e.message) || String(e) };
   }
+}
+ipcMain.handle('wakeword:ensure', () => ensureWakewordModels());
+
+// ===================== Download manager (Engines & Models panel) =====================
+// The installer ships code only; every heavy asset is downloaded on demand through here.
+// GET without spawning: a status peek must never cost the ~80MB of a sidecar cold start.
+async function sidecarGetJson(endpoint) {
+  const res = await fetch('http://127.0.0.1:' + AUTOMATION_PORT + endpoint, { method: 'GET' });
+  return res.json();
+}
+
+downloads.init({
+  config,
+  ollama,
+  defaultOfflineModel: DEFAULT_OFFLINE_MODEL,
+  wakewordDir,
+  wakewordFiles: () => Object.keys(WAKEWORD_CORE),
+  ensureWakeword: (onProgress) => ensureWakewordModels(onProgress),
+  sidecarGet: (p) => sidecarGetJson(p),
+  sidecarWarmStt: async (model) => {
+    await ensureSidecar(); // warming IS a use - spawning the sidecar here is the point
+    return sidecarCall('/stt_warm', { model });
+  }
+});
+
+ipcMain.handle('downloads:status', () => downloads.status());
+ipcMain.handle('downloads:start', async (e, id) => {
+  const send = (msg) => { try { e.sender.send('downloads:progress', { id, msg }); } catch (_e2) {} };
+  const r = await downloads.start(id, send);
+  if (r && r.external) shell.openExternal('https://ollama.com/download');
+  send(''); // clear the progress line
+  return r;
 });
 
 // Hand the renderer the raw bytes of a downloaded model so onnxruntime-web can build a session.

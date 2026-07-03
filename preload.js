@@ -105,6 +105,11 @@ contextBridge.exposeInMainWorld('bridge', {
   // ----- Assistant identity -----
   setAssistantName: (name) => ipcRenderer.invoke('assistant:setName', name),
 
+  // ----- Engines & Models download manager -----
+  downloadsStatus: () => ipcRenderer.invoke('downloads:status'),
+  downloadsStart: (id) => ipcRenderer.invoke('downloads:start', id),
+  onDownloadsProgress: (cb) => ipcRenderer.on('downloads:progress', (_e, p) => cb(p)),
+
   // ----- Desktop automation -----
   automationApprovePlan: (id) => ipcRenderer.invoke('automation:approvePlan', id),
   automationCancelPlan: (id) => ipcRenderer.invoke('automation:cancelPlan', id),
