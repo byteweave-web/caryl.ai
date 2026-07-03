@@ -34,6 +34,7 @@
   .dots span.on{background:var(--accent)}
   small{color:var(--mut)}
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <div class="wrap">
@@ -102,6 +103,13 @@
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
 <script>try{ if(window.ort){ ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/'; ort.env.wasm.numThreads=1; } }catch(e){}</script>
 <script src="wakeword.js"></script>
+<script>
+// Theme + accent (renderer/theme.css) - onboarding follows the app theme from first paint.
+window.bridge.getConfig().then(function (c) {
+  document.documentElement.dataset.theme = (c && c.theme) || 'cyanHud';
+  document.documentElement.dataset.accent = (c && c.accentColor) || 'cyan';
+}).catch(function () { document.documentElement.dataset.theme = 'cyanHud'; document.documentElement.dataset.accent = 'cyan'; });
+</script>
 <script>
   const TOTAL = 7;
   let step = 0;

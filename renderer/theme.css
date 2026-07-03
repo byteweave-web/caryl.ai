@@ -1,0 +1,33 @@
+/* Caryl.ai theme system. Base theme sets surfaces/text; accent sets --accent.
+   :root carries the cyanHud defaults so the app is styled even before JS sets data-*. */
+:root,
+html[data-theme="cyanHud"] {
+  --bg:#08090b; --panel:#0e1014; --panel2:#14171c; --glow:#14171c;
+  --line:rgba(255,255,255,.08); --txt:#e7e9ee; --mut:#8b9099; --faint:#5a5f68;
+  --track:#21252b; --ok:#5ad19a; --warn:#e0b15a; --bad:#e9637b;
+}
+html[data-theme="fullDark"] {
+  --bg:#0a0a0b; --panel:#161618; --panel2:#1e1e21; --glow:#1e1e21;
+  --line:rgba(255,255,255,.09); --txt:#ececec; --mut:#9a9a9a; --faint:#5c5c5c;
+  --track:#242426; --ok:#5ad19a; --warn:#e0b15a; --bad:#e9637b;
+}
+html[data-theme="navy"] {
+  --bg:#0a1424; --panel:#12203a; --panel2:#182a49; --glow:#182a49;
+  --line:rgba(140,170,220,.14); --txt:#e9eef7; --mut:#8fa3c0; --faint:#5f728f;
+  --track:#1c3355; --ok:#5ad19a; --warn:#e0b15a; --bad:#f07a90;
+}
+html[data-theme="fullLight"] {
+  --bg:#f5f6f8; --panel:#ffffff; --panel2:#eef0f4; --glow:#ffffff;
+  --line:rgba(0,0,0,.10); --txt:#1a1d24; --mut:#5f6672; --faint:#9098a4;
+  --track:#dfe3ea; --ok:#1f9d63; --warn:#b5791a; --bad:#d1435f;
+}
+
+:root,
+html[data-accent="cyan"]   { --accent:#7fd1ff; --accent-soft:rgba(127,209,255,.14); }
+html[data-accent="blue"]   { --accent:#4c8dff; --accent-soft:rgba(76,141,255,.16); }
+html[data-accent="white"]  { --accent:#eef1f6; --accent-soft:rgba(238,241,246,.14); }
+html[data-accent="teal"]   { --accent:#35d6b0; --accent-soft:rgba(53,214,176,.16); }
+html[data-accent="amber"]  { --accent:#f5b53d; --accent-soft:rgba(245,181,61,.16); }
+html[data-accent="violet"] { --accent:#a98bff; --accent-soft:rgba(169,139,255,.16); }
+/* Light theme + White accent would vanish -> remap to a visible slate. */
+html[data-theme="fullLight"][data-accent="white"] { --accent:#5b6472; --accent-soft:rgba(91,100,114,.14); }

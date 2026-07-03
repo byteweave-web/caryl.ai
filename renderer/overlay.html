@@ -153,6 +153,7 @@ html[data-os="win10"] #panel{
 @keyframes ripple-out{0%{transform:scale(.3);opacity:1;box-shadow:0 0 0 0 rgba(90,209,154,.5)}100%{transform:scale(1.7);opacity:0;box-shadow:0 0 0 18px rgba(90,209,154,0)}}
 .calib-confirm{color:var(--confirm);font-size:14px;line-height:1.5;max-width:260px}
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 
@@ -226,6 +227,10 @@ window.bridge.getShellStyle().then(function (s) {
     return;
   }
   window.__overlayBootstrapped = true;
+
+  // Theme defaults before the first status poll lands (theme.css :root covers pre-JS paint).
+  document.documentElement.dataset.theme = document.documentElement.dataset.theme || 'cyanHud';
+  document.documentElement.dataset.accent = document.documentElement.dataset.accent || 'cyan';
 
   const $ = (id) => document.getElementById(id);
   const bridge = window.bridge || {};
@@ -358,7 +363,7 @@ try{
 
 // ---------- poll status + conversation, mirror the FULL thread from the main window ----------
 function esc(t){ return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-let lastSig = '', lastName = '', lastAccent = '';
+let lastSig = '', lastName = '';
 function renderActs(acts){
   const body=$('body');
   if(!acts.length){ body.innerHTML='<div class="empty" id="empty">Ask me something, or drop a document anywhere on this pane to summarize it.<br><br>Click outside this window to shrink it to a bubble.</div>'; return; }
@@ -397,8 +402,9 @@ async function refresh(){
       $('state').textContent = label;
       const nm = s.assistant_name || 'Caryl';
       if(nm!==lastName){ lastName=nm; $('title').textContent=nm; lastSig=''; } // name changed -> force a re-render so labels update too
-      const ac = s.accent_color || '#7fd1ff';
-      if(ac!==lastAccent){ lastAccent=ac; document.documentElement.style.setProperty('--accent', ac); }
+      // Theme + accent ride the status poll so a Settings change restyles the open overlay live.
+      if (s.theme && document.documentElement.dataset.theme !== s.theme) document.documentElement.dataset.theme = s.theme;
+      if (s.accent && document.documentElement.dataset.accent !== s.accent) document.documentElement.dataset.accent = s.accent;
       const rb=$('auto-runbar');
       if(rb) rb.style.display = s.automation_running ? 'flex' : 'none';
     }

@@ -68,6 +68,25 @@ const downloads = require('./lib/downloads');
   if (norm.changed) config.set({ engines: norm.engines });
 }
 
+// Named accents (single source for status + migration; hexes match renderer/theme.css).
+const ACCENT_HEX = { cyan: '#7fd1ff', blue: '#4c8dff', white: '#eef1f6', teal: '#35d6b0', amber: '#f5b53d', violet: '#a98bff' };
+
+// One-time: older builds stored accentColor as a hex string. Map it to the nearest named
+// accent so the new picker + theme.css work. Runs once (leaves named values untouched).
+{
+  const a = config.get().accentColor;
+  if (typeof a === 'string' && a.charAt(0) === '#') {
+    const hex = a.toLowerCase();
+    let best = 'cyan', bestD = 1e9;
+    const rgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    try {
+      const [r0, g0, b0] = rgb(hex.length === 7 ? hex : '#7fd1ff');
+      for (const k of Object.keys(ACCENT_HEX)) { const [r, g, b] = rgb(ACCENT_HEX[k]); const d = (r - r0) ** 2 + (g - g0) ** 2 + (b - b0) ** 2; if (d < bestD) { bestD = d; best = k; } }
+    } catch (_e) { best = 'cyan'; }
+    config.set({ accentColor: best });
+  }
+}
+
 // The single question every feature path asks: which engine serves this capability NOW?
 function engineOf(capability) {
   return enginesLib.resolveEngine(config.get(), capability);
@@ -3149,7 +3168,10 @@ ipcMain.handle('ui:status', () => {
     ai_speaking: false,          // no TTS in v1
     brain_model: chatCfg(cfg).model, // [OFFLINE-INTEGRATION] shows the ACTIVE mode's chat model
     assistant_name: cfg.assistantName || 'Caryl',
-    accent_color: cfg.accentColor || '#7fd1ff',
+    // accent_color stays a HEX for old consumers; theme/accent are the named keys (theme.css).
+    accent_color: ACCENT_HEX[cfg.accentColor] || '#7fd1ff',
+    theme: cfg.theme || 'cyanHud',
+    accent: ACCENT_HEX[cfg.accentColor] ? cfg.accentColor : 'cyan',
     provider: isOffline(cfg) ? 'ollama' : cfg.provider,
     voice_hotkey: activeVoiceHotkey,
     local_wake_enabled: !!cfg.local_wake_enabled,

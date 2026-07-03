@@ -24,7 +24,7 @@
 html,body{height:100%}
 button{font-family:inherit;cursor:pointer}
 body{
-  margin:0;background:radial-gradient(1200px 700px at 70% -10%, #14171c 0%, var(--bg) 55%);
+  margin:0;background:radial-gradient(1200px 700px at 70% -10%, var(--glow) 0%, var(--bg) 55%);
   color:var(--txt);font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   -webkit-font-smoothing:antialiased;overflow:hidden;
 }
@@ -140,6 +140,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
 .m3d-cube .f3{transform:rotateY(90deg) translateZ(31px)} .m3d-cube .f4{transform:rotateY(-90deg) translateZ(31px)}
 .m3d-cube .f5{transform:rotateX(90deg) translateZ(31px)} .m3d-cube .f6{transform:rotateX(-90deg) translateZ(31px)}
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <canvas id="bg-canvas"></canvas>
@@ -511,6 +512,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
 window.bridge.getShellStyle().then(function (s) {
   document.documentElement.dataset.os = (s && s.osVariant) || 'win10';
 }).catch(function () { document.documentElement.dataset.os = 'win10'; });
+// Theme + accent (renderer/theme.css) - applied before first paint settles.
+window.bridge.getConfig().then(function (c) {
+  document.documentElement.dataset.theme = (c && c.theme) || 'cyanHud';
+  document.documentElement.dataset.accent = (c && c.accentColor) || 'cyan';
+}).catch(function () { document.documentElement.dataset.theme = 'cyanHud'; document.documentElement.dataset.accent = 'cyan'; });
 let lastStatus = {};
 let orb = {level:0, speaking:false, target:0};
 
@@ -1738,38 +1744,6 @@ function bindPTT(){
 function setRate(){ const v=document.getElementById('rate').value; document.getElementById('rate-val').textContent=v; api('/set_speech_rate',{rate:parseInt(v)}); }
 function setBudget(){ const v=document.getElementById('budget').value; document.getElementById('budget-val').textContent=v+' GB'; api('/set_memory_budget',{gb:parseFloat(v)}); }
 
-const ACCENTS=[['Mono','#e7e9ee'],['Ice','#7fd1ff'],['Mint','#5ad19a'],['Amber','#e0b15a'],['Rose','#e9637b'],['Violet','#b08cff']];
-function buildAccents(){
-  const box=document.getElementById('accents'); const saved=localStorage.getItem('accent')||'#e7e9ee';
-  box.innerHTML=ACCENTS.map(function(p){return '<div class="acc'+(p[1]===saved?' sel':'')+'" title="'+p[0]+'" style="background:'+p[1]+'" onclick="setAccent(\''+p[1]+'\')"></div>';}).join('');
-  applyTheme(saved);
-}
-function setAccent(c){ localStorage.setItem('accent',c); applyTheme(c); buildAccents(); if(window.bridge&&window.bridge.setConfig) window.bridge.setConfig({accentColor:c}); }
-function hexToHSL(hex){
-  hex=hex.replace('#',''); if(hex.length===3)hex=hex.split('').map(function(x){return x+x;}).join('');
-  let r=parseInt(hex.slice(0,2),16)/255, g=parseInt(hex.slice(2,4),16)/255, b=parseInt(hex.slice(4,6),16)/255;
-  const max=Math.max(r,g,b),min=Math.min(r,g,b); let h=0,s=0,l=(max+min)/2;
-  if(max!==min){ const d=max-min; s=l>0.5?d/(2-max-min):d/(max+min);
-    if(max===r)h=(g-b)/d+(g<b?6:0); else if(max===g)h=(b-r)/d+2; else h=(r-g)/d+4; h/=6; }
-  return [Math.round(h*360), Math.round(s*100), Math.round(l*100)];
-}
-function applyTheme(hex){
-  const hsl=hexToHSL(hex), h=hsl[0], mono=hsl[1]<12;
-  const bgSat=mono?0:24, txtSat=mono?0:12, lineSat=mono?0:30;
-  const S=document.documentElement.style;
-  S.setProperty('--accent',hex);
-  S.setProperty('--accent-soft','hsla('+h+','+(mono?0:65)+'%,68%,.16)');
-  S.setProperty('--bg','hsl('+h+','+bgSat+'%,5%)');
-  S.setProperty('--panel','hsl('+h+','+bgSat+'%,8.5%)');
-  S.setProperty('--panel2','hsl('+h+','+bgSat+'%,12%)');
-  S.setProperty('--track','hsl('+h+','+bgSat+'%,17%)');
-  S.setProperty('--line','hsla('+h+','+lineSat+'%,80%,.10)');
-  S.setProperty('--txt','hsl('+h+','+txtSat+'%,93%)');
-  S.setProperty('--mut','hsl('+h+','+txtSat+'%,62%)');
-  S.setProperty('--faint','hsl('+h+','+txtSat+'%,42%)');
-  document.body.style.background='radial-gradient(1200px 700px at 70% -10%, hsl('+h+','+bgSat+'%,11%) 0%, hsl('+h+','+bgSat+'%,4%) 55%)';
-}
-
 function set(id,val){ const el=document.getElementById(id); if(el&&el.type==='checkbox') el.checked=!!val; }
 function syncSettings(){
   const s=lastStatus;
@@ -2090,7 +2064,6 @@ function toggleBgAnim(){
 document.addEventListener('visibilitychange', _bgApply);
 function hexToRgba(hex,a){ hex=hex.replace('#',''); if(hex.length===3)hex=hex.split('').map(function(c){return c+c;}).join(''); const n=parseInt(hex,16); return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
 
-buildAccents();
 initBackground();
 initOrb('orb-canvas');
 _bgApply();   // respects toggle + starts only if not on the Orb view

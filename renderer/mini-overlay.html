@@ -237,6 +237,7 @@ html,body{height:100%;margin:0;background:transparent;overflow:hidden;-webkit-fo
     0 1px 4px rgba(0,0,0,.45);
 }
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 
@@ -280,15 +281,19 @@ window.bridge.getShellStyle().then(function (s) {
   }
   window.__miniOverlayBootstrapped = true;
 
+  // Theme defaults before the first status poll lands (theme.css :root covers pre-JS paint).
+  document.documentElement.dataset.theme = document.documentElement.dataset.theme || 'cyanHud';
+  document.documentElement.dataset.accent = document.documentElement.dataset.accent || 'cyan';
+
   const $ = (id) => document.getElementById(id);
   const bridge = window.bridge || {};
   console.log('[mini-overlay] window.bridge exists:', !!window.bridge);
 
-  // Maps index.html's ACCENTS list to one of the six hand-built themes above. Anything not
-  // in this list (a future custom color) gets no data-palette, and .core-default covers it.
+  // Maps the named accents (Settings -> Appearance) to one of the six hand-built cores
+  // above. An unknown accent gets no data-palette, and .core-default covers it.
   const PALETTES = {
-    '#e7e9ee': 'mono', '#7fd1ff': 'ice', '#5ad19a': 'mint',
-    '#e0b15a': 'amber', '#e9637b': 'rose', '#b08cff': 'violet'
+    white: 'mono', cyan: 'ice', blue: 'ice',
+    teal: 'mint', amber: 'amber', violet: 'violet'
   };
 
   // ---------- drag to move, click to expand ----------
@@ -359,10 +364,11 @@ window.bridge.getShellStyle().then(function (s) {
       $('bubble').dataset.state = st;
       const nm = s.assistant_name || 'Caryl';
       if(nm!==lastName){ lastName=nm; $('orb-mark').textContent = nm.slice(0,1).toUpperCase(); }
-      const ac = (s.accent_color || '#7fd1ff').toLowerCase();
+      if (s.theme && document.documentElement.dataset.theme !== s.theme) document.documentElement.dataset.theme = s.theme;
+      const ac = s.accent || 'cyan';
       if(ac!==lastAccent){
         lastAccent=ac;
-        document.documentElement.style.setProperty('--accent', ac);
+        document.documentElement.dataset.accent = ac;
         const pal = PALETTES[ac];
         if(pal) $('bubble').setAttribute('data-palette', pal);
         else $('bubble').removeAttribute('data-palette');
