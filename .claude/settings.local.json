@@ -17,7 +17,31 @@
       "Bash(grep -v \"^\\\\s*//\")",
       "Bash(sed -i 's|Caryl<small>\\\\.AI</small>|Caryl<small>.ai</small>|' renderer/index.html)",
       "Bash(grep -n \"\\\\.venv\\\\\\\\\\\\\\\\Scripts\\\\|pdfjs-dist@\\\\|micDeviceId\" renderer/index.html)",
-      "Bash(git commit -m 'feat: rename to Caryl.ai with automatic legacy data migration *)"
+      "Bash(git commit -m 'feat: rename to Caryl.ai with automatic legacy data migration *)",
+      "Bash(node -e ' *)",
+      "Bash(npm start *)",
+      "Bash(node -e \"const s=require\\(process.env.APPDATA+'/Caryl.ai/settings.json'\\); console.log\\('engines:', JSON.stringify\\(s.engines\\)\\); console.log\\('mode:', s.mode||'\\(unset\\)'\\)\")",
+      "Read(//tmp/**)",
+      "Bash(taskkill //F //IM electron.exe)",
+      "Bash(git commit -m 'refactor: route chat/vision/stt/tts through per-capability engines contract *)",
+      "Bash(node -e \"console.log\\('osVariant:', require\\(process.env.APPDATA+'/Caryl.ai/settings.json'\\).osVariant\\)\")",
+      "Bash(node -e \"const f=process.env.APPDATA+'/Caryl.ai/settings.json',fs=require\\('fs'\\);const s=JSON.parse\\(fs.readFileSync\\(f\\)\\);s.osVariant='win10';fs.writeFileSync\\(f,JSON.stringify\\(s,null,2\\)\\);console.log\\('forced win10'\\)\")",
+      "Bash(node -e \"const f=process.env.APPDATA+'/Caryl.ai/settings.json',fs=require\\('fs'\\);const s=JSON.parse\\(fs.readFileSync\\(f\\)\\);s.osVariant='win11';fs.writeFileSync\\(f,JSON.stringify\\(s,null,2\\)\\);console.log\\('restored win11'\\)\")",
+      "Bash(git commit -m 'feat: Win10/Win11 detection with acrylic-vs-solid overlay treatment *)",
+      "Bash(node -e \"try { new \\(require\\('vm'\\).Script\\)\\(require\\('fs'\\).readFileSync\\('main.js','utf8'\\)\\); console.log\\('main.js: syntax OK'\\); } catch\\(e\\) { console.log\\('SYNTAX ERROR:', e.message\\); }\")",
+      "Bash(git commit -m 'fix: bubble position now persists across sessions \\(moveBy path never fired '\\\\''moved'\\\\''\\) *)",
+      "Bash(powershell -Command 'Get-Process | Where-Object {$_.ProcessName -match '\\\\''electron'\\\\''} | Measure-Object WorkingSet64 -Sum | ForEach-Object { [math]::Round\\($_.Sum/1MB\\) }')",
+      "Bash(npm uninstall *)",
+      "Bash(.venv/Scripts/python.exe -m py_compile automation.py)",
+      "Bash(node -e \"console.log\\('deps:', Object.keys\\(require\\('./package.json'\\).dependencies\\).join\\(', '\\)\\)\")",
+      "Bash(git commit -m 'perf: gate DevTools, drop dead picovoice deps, whisper idle-unload \\(idle RAM: 991MB -> 751MB\\) *)",
+      "Bash(node -e \"try { new \\(require\\('vm'\\).Script\\)\\(require\\('fs'\\).readFileSync\\('main.js','utf8'\\)\\); new \\(require\\('vm'\\).Script\\)\\(require\\('fs'\\).readFileSync\\('renderer/wakeword.js','utf8'\\)\\); console.log\\('syntax OK'\\); } catch\\(e\\) { console.log\\('SYNTAX ERROR:', e.message\\); }\")",
+      "Bash(git commit -m 'feat: curated wake-word choices \\(Jarvis/Alexa/Mycroft/Rhasspy\\), selectable + persisted *)",
+      "Bash(git commit -m 'feat: unified download manager registry for all heavy on-demand assets *)",
+      "Bash(git commit -m 'feat: Engines & Models panel - per-capability hybrid toggles + download manager UI *)",
+      "Bash(powershell -Command '\\(Get-Process electron -ErrorAction SilentlyContinue | Where-Object {$_.MainWindowTitle} | Select-Object -First 1\\).MainWindowTitle')",
+      "Bash(git commit -m 'feat: first-launch onboarding wizard \\(name, wake word, OS, permissions, voice, calibration, hotkey\\) *)",
+      "Bash(git commit -m 'chore: persistence audit, docs update - Sub-project A \\(Caryl.ai foundation\\) complete *)"
     ]
   }
 }

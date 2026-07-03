@@ -49,15 +49,20 @@ Settings and memory are JSON files in Electron's per-user data dir
 automatically on first launch — the old folder is never modified). Nothing is sent
 anywhere except your chat text going to the API provider you chose, using your own key.
 
-## Architecture (for later)
+## Architecture
 
-- `main.js` — Electron main process; IPC + streaming bridge + memory.
-- `preload.js` — secure `window.api` bridge (no Node in the renderer).
-- `lib/providers.js` — one OpenAI-compatible streaming client for every provider. A future
-  local "Ghost Mode" engine plugs in here by pointing `baseUrl` at a bundled local server.
-- `lib/memory.js` — local conversation store (JSON now; swap to SQLite later, same API).
-- `lib/config.js` — settings + provider presets.
-- `renderer/` — the chat UI.
-
-Deferred to later versions (kept out of v1 on purpose): voice, vision/screenshots, PC
-automation, image generation, and the local engine.
+- `main.js` — Electron main process; IPC + streaming bridge + memory + overlay windows.
+- `preload.js` — secure `window.bridge` (no Node in the renderer).
+- `lib/engines.js` — per-capability hybrid routing: chat / vision / stt / tts each resolve
+  to online (cloud API) or offline (local) independently; any combination works.
+- `lib/migrate.js` — one-time BRAIN.AI → Caryl.ai userData migration (never deletes).
+- `lib/downloads.js` — download-manager registry: every heavy asset (Ollama models,
+  Whisper, Piper voices, wake-word models) is downloaded on demand; the installer ships
+  code only.
+- `lib/providers.js` — one OpenAI-compatible streaming client for every provider
+  (Ollama's `/v1` endpoint plugs in the same way for offline chat).
+- `lib/ollama.js` — local engine management (server, tags, pulls, VRAM-friendly swaps).
+- `lib/memory.js` / `lib/offline-memory.js` — local conversation stores.
+- `lib/config.js` — settings + provider presets (`%APPDATA%/Caryl.ai/settings.json`).
+- `renderer/` — chat UI, floating overlay + bubble, onboarding wizard (`onboarding.html`).
+- `automation.py` — Python sidecar: UIA-first desktop automation, VAD, faster-whisper STT.

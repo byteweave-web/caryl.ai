@@ -1,5 +1,14 @@
 # Caryl.ai (formerly BRAIN.AI) - Offline + Online Merge: Install Instructions
 
+> **2026-07-03 update:** the single Online/Offline switch described below has been
+> replaced by **Settings → Engines & Models**: Chat, Vision, Voice input (STT), and
+> Voice output (TTS) each get their own Cloud/Local toggle - mix freely (e.g. Vision
+> local + Chat cloud). The same card hosts the download manager for every heavy asset
+> (Ollama models, Whisper, Piper voices, wake-word models). Old `mode` /
+> `useLocalVision` / `useLocalStt` settings migrate automatically. First launch now
+> opens an onboarding wizard (name + wake word, Windows version, permissions, voice,
+> calibration, hotkey) - re-runnable from Settings → Setup.
+
 Everything now lives in ONE app: your existing online build at `D:\brain-ai\brain-ai`,
 with a switchable **Online (cloud API)** / **Offline (local Ollama)** mode. The online
 mode's behavior, features, and UI are unchanged. Offline mode does everything the online
