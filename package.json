@@ -8,6 +8,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
+    "test": "node tests/test-engines.js && node tests/test-migrate.js",
     "build": "electron-builder --win portable",
     "build:installer": "electron-builder --win nsis"
   },
