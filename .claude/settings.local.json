@@ -41,7 +41,12 @@
       "Bash(git commit -m 'feat: Engines & Models panel - per-capability hybrid toggles + download manager UI *)",
       "Bash(powershell -Command '\\(Get-Process electron -ErrorAction SilentlyContinue | Where-Object {$_.MainWindowTitle} | Select-Object -First 1\\).MainWindowTitle')",
       "Bash(git commit -m 'feat: first-launch onboarding wizard \\(name, wake word, OS, permissions, voice, calibration, hotkey\\) *)",
-      "Bash(git commit -m 'chore: persistence audit, docs update - Sub-project A \\(Caryl.ai foundation\\) complete *)"
+      "Bash(git commit -m 'chore: persistence audit, docs update - Sub-project A \\(Caryl.ai foundation\\) complete *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m 'chore: gitignore __pycache__ *)",
+      "Bash(git commit -q -m 'chore: update local tool permissions *)",
+      "Bash(git merge *)",
+      "Bash(git branch *)"
     ]
   }
 }
