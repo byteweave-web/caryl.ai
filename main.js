@@ -1277,8 +1277,11 @@ async function runAutomationLoop(goal) {
       if (els && els.ok && Array.isArray(els.elements)) {
         elementList = els.elements;
         foregroundTitle = (els.foreground && els.foreground.title) || '';
+        // Cap the list shown to the planner to keep the per-step prompt small (token budget):
+        // it's already ranked interactive-first, so the top 40 hold what matters. The full list
+        // stays cached server-side for id resolution.
         elementText = elementList.length
-          ? elementList.map((e) => e.id + ' | ' + e.type.replace('Control', '') + ' | ' + e.name + (e.focused ? ' [focused]' : '')).join('\n')
+          ? elementList.slice(0, 40).map((e) => e.id + ' | ' + e.type.replace('Control', '') + ' | ' + e.name + (e.focused ? ' *' : '')).join('\n')
           : '(no actionable elements detected)';
       }
     } catch (_e) { /* non-fatal: fall back to free-text targets */ }
@@ -1291,43 +1294,28 @@ async function runAutomationLoop(goal) {
     if (stateHash === automationState.lastStateHash) automationState.stuckStreak = (automationState.stuckStreak || 0) + 1;
     else { automationState.lastStateHash = stateHash; automationState.stuckStreak = 0; }
 
-    const sys = AUTOMATION_FRAMING + ' Goal: "' + goal + '". ' +
-      'Steps taken so far: ' + (automationState.history.length ? JSON.stringify(automationState.history.slice(-5)) : '(none yet)') + '. ' +
-      'You observe the screen through the Windows accessibility tree, NOT as an image. ' +
-      'CURRENT foreground window: "' + (foregroundTitle || 'unknown') + '". ' +
-      'The real, clickable on-screen elements RIGHT NOW (id | type | name):\n' +
-      elementText + '\n' +
-      'To click/type into a listed element, set "element_id" to its number - this is EXACT and strongly preferred over "target". ' +
-      'Only use a plain-English "target" (and set "not_in_list": true) when what you need genuinely is not in the list. ' +
-      'Decide the SINGLE next action, or declare the goal complete. ' +
-      WINDOW_MANAGEMENT_GUIDANCE + ' ' + TARGET_PRECISION_GUIDANCE + ' ' + COMMON_WINDOWS_RECIPES + ' ' +
-      'Reply with ONLY one JSON object - no other text, no code fences.\n' +
-      'The "action" field MUST be exactly ONE of these words (pick one, never a list or the whole set): ' +
-      'open_app, click, rightclick, doubleclick, drag, type, hotkey, scroll, shell, files, done.\n' +
-      'Fields to include:\n' +
-      '- "thought": one short sentence of reasoning about what you see and the next step\n' +
-      '- "action": one single word from the list above\n' +
-      '- "app": the application name to launch, e.g. "notepad", "chrome", "calc" (only for open_app)\n' +
-      '- "target": plain-English description of the on-screen element to act on (for click/rightclick/doubleclick/drag/type)\n' +
-      '- "element_id": the number of the element to act on from the list above (preferred for click/rightclick/doubleclick/type)\n' +
-      '- "drag_to": plain-English description of where to drop it (only for drag)\n' +
-      '- "text": the text to type (only for type)\n' +
-      '- "keys": a keyboard shortcut like "ctrl+s" or "win+d" (only for hotkey)\n' +
-      '- "scroll_dir": "up" or "down" (only for scroll)\n' +
-      '- "cmd": the exact shell command (only for shell, and only when there is genuinely no safer click/type/hotkey way)\n' +
-      '- "file_op" ("list"/"read"/"write"/"move"/"rename"/"delete"), "file_path", "file_to", "file_content": only for files, paths relative to the BRAINFiles sandbox\n' +
-      '- "final_answer": a short summary of what was accomplished (only for done)\n' +
-      'Example of a VALID reply: {"thought":"Notepad isn\u2019t open yet, so I will launch it directly.","action":"open_app","app":"notepad"}\n' +
-      'CRITICAL - launching apps: to open or start ANY application, ALWAYS use action "open_app" with its ' +
-      'name in "app". NEVER try to find and click a taskbar icon, Start-menu tile, or desktop shortcut to ' +
-      'launch something - open_app starts it directly and reliably, while hunting for an icon on screen is ' +
-      'the single most common way this goes wrong (it clicks the wrong tile). So for "open Notepad", the ' +
-      'first step is {"action":"open_app","app":"notepad"} - not pressing the Windows key, not clicking a ' +
-      'search box, not clicking an icon. After the app is open, THEN use type/click/hotkey to work inside it.\n' +
-      'Prefer click/type/hotkey over shell whenever the task can be done that way - shell needs the user to ' +
-      'confirm every single time, so only reach for it when it is genuinely the right tool. If the last step ' +
-      'in the history looks like it failed or the screen doesn\u2019t look like what you expected, say so in ' +
-      '"thought" and adjust rather than repeating the same action blindly.';
+    // Lean UIA-only step prompt (spec B8). Deliberately compact: the old vision-era guidance
+    // blocks (~2k tokens/step) both blew the chat provider's token-per-minute limit AND taught
+    // win+d for desktop chores (which derailed non-desktop tasks like Calculator). A strong
+    // chat model needs only: the goal, recent history, the live element list, and the schema.
+    const sys =
+      'You directly control this Windows PC - you click and type to DO the task yourself, now. ' +
+      'You are NOT advising the user and never suggest a phone, video, or tutorial.\n' +
+      'GOAL: "' + goal + '"\n' +
+      'RECENT STEPS: ' + (automationState.history.length ? JSON.stringify(automationState.history.slice(-6)) : '(none yet)') + '\n' +
+      'You see the screen through the Windows accessibility tree (not an image). ' +
+      'Foreground window: "' + (foregroundTitle || 'unknown') + '".\n' +
+      'ELEMENTS ON SCREEN NOW (id | type | name; * = focused):\n' + elementText + '\n\n' +
+      'Choose the SINGLE next action and reply with ONLY one JSON object (no prose, no code fence).\n' +
+      'action = one of: open_app, click, rightclick, doubleclick, type, hotkey, scroll, drag, shell, files, done.\n' +
+      'Rules:\n' +
+      '- To click or type into a listed element, set "element_id" to its number (EXACT - always prefer this over "target").\n' +
+      '- To launch an app, use {"action":"open_app","app":"notepad"} - NEVER click a taskbar/Start icon to launch.\n' +
+      '- "type" needs "text" (what to type). To put text in a specific field, also give its "element_id".\n' +
+      '- "hotkey" needs "keys" (e.g. "ctrl+s", "ctrl+a", "enter"). Do NOT use win+d unless the goal is literally about the desktop.\n' +
+      '- "scroll" needs "scroll_dir" ("up"/"down"); "drag" needs "drag_to"; "shell" needs "cmd"; "done" needs "final_answer".\n' +
+      '- Always include a one-sentence "thought". If the last step did not change the screen, do something DIFFERENT.\n' +
+      'Example: {"thought":"Notepad is open; I will type the paragraph into the editor.","action":"type","element_id":0,"text":"..."}';
     let raw = '';
     // UIA-only (spec B8): the CHAT model plans, text-only. It's far stronger at JSON +
     // reasoning than small vision models, and the element list + state reports give it

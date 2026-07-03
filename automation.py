@@ -1315,7 +1315,17 @@ def act():
 
         elif action == "type":
             text = body.get("text", "")
-            if target:
+            eid = body.get("element_id", None)
+            targeted = False  # did we click a SPECIFIC field (vs. type into whatever's focused)?
+            if eid is not None:
+                hit = _uia_resolve_id(eid)
+                if hit is None:
+                    return jsonify({"ok": False, "error": "element_id %r not found to type into (re-scan)" % eid,
+                                    "stale_id": True, "state": _uia_state_report(prev_titles)})
+                pyautogui.click(hit[0], hit[1])
+                time.sleep(0.12)
+                targeted = True
+            elif target:
                 pos = locate_on_screen(target, max_width=max_width)
                 if not pos and retry_width > max_width:
                     pos = locate_on_screen(target, max_width=retry_width)
@@ -1325,9 +1335,27 @@ def act():
                 if highlight_ms > 0:
                     _highlight(pos["x"], pos["y"], pos.get("w"), pos.get("h"), highlight_ms)
                 pyautogui.click(pos["x"], pos["y"])
-                time.sleep(0.12)  # 0.15 -> 0.12
+                time.sleep(0.12)
+                targeted = True
+            # When typing into a SPECIFIC field that already holds a SHORT value (a filename or
+            # search box, pre-filled e.g. "space.txt"), replace it instead of appending -
+            # otherwise it becomes "space.txtspace.txt". Guard by length so we NEVER wipe a
+            # document body the model is writing into (that value is long / empty-then-appended).
+            if targeted:
+                try:
+                    with _uia.UIAutomationInitializerInThread():
+                        fg = _uia.GetForegroundControl()
+                        cur = ""
+                        if fg and hasattr(fg, "GetValuePattern"):
+                            vp = fg.GetValuePattern()
+                            cur = (vp.Value or "") if vp else ""
+                    if cur and len(cur) <= 260:
+                        pyautogui.hotkey("ctrl", "a")
+                        time.sleep(0.05)
+                except Exception:
+                    pass
             type_text(text)
-            did = "typed into \"%s\"" % (target or "the focused field")
+            did = "typed into \"%s\"" % (target or ("element " + str(eid)) if eid is not None else "the focused field")
             log_action("act", action + ": " + (target or did))
             typed_verified = None
             try:
