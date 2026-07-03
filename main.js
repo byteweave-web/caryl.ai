@@ -1283,7 +1283,8 @@ async function runAutomationLoop(goal) {
     speak(text.replace(/^[^\w]+/, ''));
   }
 
-  automationState = { active: true, goal, history: [], stopRequested: false, pendingConfirm: null, twoStage: false };
+  automationState = { active: true, goal, history: [], stopRequested: false, pendingConfirm: null, twoStage: false,
+    lastState: null, lastStateHash: '', stuckStreak: 0, askEscalate: false };
   activity.push({ kind: 'action', text: '\u25B6 Starting: ' + goal, time: clockTime() });
   speak('Starting now.');
   // Always the BUBBLE at run start (collapsing the panel if it's up), regardless of what's
@@ -1312,9 +1313,35 @@ async function runAutomationLoop(goal) {
     const dataUrl = await captureScreenCached(1024, 640);
     if (!dataUrl) { announceAndStop('\u26A0 Could not capture the screen - stopping.'); break; }
 
+    // Grounded planning: the real, clickable elements on screen right now. The planner acts
+    // by element_id against THIS list, so a click lands on an exact UIA rect, not a guess.
+    let elementList = [];
+    let elementText = '(element list unavailable - describe targets in plain English)';
+    try {
+      const els = await sidecarCall('/elements', {});
+      if (els && els.ok && Array.isArray(els.elements)) {
+        elementList = els.elements;
+        elementText = elementList.length
+          ? elementList.map((e) => e.id + ' | ' + e.type.replace('Control', '') + ' | ' + e.name + (e.focused ? ' [focused]' : '')).join('\n')
+          : '(no actionable elements detected)';
+      }
+    } catch (_e) { /* non-fatal: fall back to free-text targets */ }
+
+    // State fingerprint: foreground title + focused control + a hash of the element labels.
+    // Two steps with an identical fingerprint = nothing changed = we're stuck (Task 6 reads this).
+    const elemSig = elementList.map((e) => e.type + ':' + e.name).join('|');
+    const stateHash = ((automationState.lastState && automationState.lastState.foreground_title) || '') + '#' +
+      ((automationState.lastState && automationState.lastState.focused_name) || '') + '#' + elemSig.length + ':' + elemSig.slice(0, 200);
+    if (stateHash === automationState.lastStateHash) automationState.stuckStreak = (automationState.stuckStreak || 0) + 1;
+    else { automationState.lastStateHash = stateHash; automationState.stuckStreak = 0; }
+
     const sys = AUTOMATION_FRAMING + ' Goal: "' + goal + '". ' +
       'Steps taken so far: ' + (automationState.history.length ? JSON.stringify(automationState.history.slice(-5)) : '(none yet)') + '. ' +
-      'Look at the attached CURRENT screenshot and decide the SINGLE next action, or declare the goal complete. ' +
+      'Look at the attached CURRENT screenshot AND this list of the real, clickable on-screen elements (id | type | name):\n' +
+      elementText + '\n' +
+      'To click/type into a listed element, set "element_id" to its number - this is EXACT and strongly preferred over "target". ' +
+      'Only use a plain-English "target" (and set "not_in_list": true) when what you need genuinely is not in the list. ' +
+      'Decide the SINGLE next action, or declare the goal complete. ' +
       WINDOW_MANAGEMENT_GUIDANCE + ' ' + TARGET_PRECISION_GUIDANCE + ' ' + COMMON_WINDOWS_RECIPES + ' ' +
       'Reply with ONLY one JSON object - no other text, no code fences.\n' +
       'The "action" field MUST be exactly ONE of these words (pick one, never a list or the whole set): ' +
@@ -1324,6 +1351,7 @@ async function runAutomationLoop(goal) {
       '- "action": one single word from the list above\n' +
       '- "app": the application name to launch, e.g. "notepad", "chrome", "calc" (only for open_app)\n' +
       '- "target": plain-English description of the on-screen element to act on (for click/rightclick/doubleclick/drag/type)\n' +
+      '- "element_id": the number of the element to act on from the list above (preferred for click/rightclick/doubleclick/type)\n' +
       '- "drag_to": plain-English description of where to drop it (only for drag)\n' +
       '- "text": the text to type (only for type)\n' +
       '- "keys": a keyboard shortcut like "ctrl+s" or "win+d" (only for hotkey)\n' +
@@ -1536,22 +1564,24 @@ async function runAutomationLoop(goal) {
     }
 
     if (stepObj.action === 'open_app') {
-      // Launch apps deterministically via the same OS launcher the chat open_app uses - NOT by
-      // finding and clicking an icon (which is how this run opened the wrong tile). No vision,
-      // no permission gate (launching an app isn't mouse/keyboard scripting), just start it.
+      // Launch via the sidecar's confirmed launcher (Win-type-Enter + UIA window check), which
+      // proves the app actually appeared. If it can't confirm, fall back to the direct OS
+      // launcher (fire-and-forget) so the app still opens. Never by hunting for an icon.
       const appName = String(stepObj.app || stepObj.target || '').trim();
       if (!appName) { automationState.history.push('open_app with no app name - skipped'); continue; }
-      const r = await actions.run('open_app', { name: appName });
+      let r = await sidecarCall('/act', { action: 'open_app', app: appName });
+      if (!r.ok) {
+        const d = await actions.run('open_app', { name: appName });
+        r = d.ok ? { ok: true, did: d.summary || ('Opened ' + appName), state: {} } : { ok: false, error: d.summary || 'launch failed' };
+      }
       if (r.ok) {
-        activity.push({ kind: 'action', text: '\u2022 ' + (r.summary || ('Opened ' + appName)), time: clockTime() });
-        automationState.history.push('opened app: ' + appName + ' (launched directly, not by clicking)');
-        // Apps take a moment to draw their window; wait a bit longer than a normal step so the
-        // NEXT screenshot shows the app ready, not a blank/loading frame.
+        activity.push({ kind: 'action', text: '\u2022 ' + (r.did || ('Opened ' + appName)), time: clockTime() });
+        automationState.history.push('opened app: ' + appName + (r.window ? ' (window: ' + r.window + ')' : '') + ' - launched directly, not by clicking');
         const settle = (config.get().automationStepSettleMs || 700) + 500;
         await new Promise((res) => setTimeout(res, Math.max(1200, settle)));
       } else {
-        activity.push({ kind: 'action', text: '\u26A0 Couldn\u2019t open ' + appName + ' - ' + (r.summary || 'launch failed'), time: clockTime() });
-        automationState.history.push('failed to open app "' + appName + '": ' + (r.summary || 'launch failed') + ' - try a different app name (e.g. "notepad", "chrome", "calc")');
+        activity.push({ kind: 'action', text: '\u26A0 Couldn\u2019t open ' + appName + ' - ' + (r.error || 'launch failed'), time: clockTime() });
+        automationState.history.push('failed to open app "' + appName + '": ' + (r.error || 'launch failed') + ' - try a different app name (e.g. "notepad", "chrome", "calc")');
       }
       continue;
     }
@@ -1602,9 +1632,19 @@ async function runAutomationLoop(goal) {
     } else {
       // REFINED: pass the new locate/verify/highlight options through to the sidecar.
       const cfgNow = config.get();
+      // Grounded: prefer the element_id the planner chose from the live list; resolve its
+      // human label for the activity thread + history.
+      const eid = (typeof stepObj.element_id === 'number') ? stepObj.element_id
+        : (/^\d+$/.test(String(stepObj.element_id || '')) ? parseInt(stepObj.element_id, 10) : null);
+      const chosen = (eid !== null) ? elementList.find((e) => e.id === eid) : null;
+      const targetLabel = chosen ? chosen.name : (stepObj.target || '');
       const payload = {
         action: stepObj.action,
+        element_id: (eid !== null ? eid : undefined),
         target: stepObj.target || '',
+        // Vision never aims clicks at regular controls (spec B4): the sidecar suppresses a
+        // vision-only guess, so a miss escalates to the re-scan/ask ladder instead.
+        allow_vision: false,
         text: stepObj.text || '',
         keys: stepObj.keys || '',
         scroll_dir: stepObj.scroll_dir || 'down',
@@ -1645,8 +1685,11 @@ async function runAutomationLoop(goal) {
             break;
           }
         } else {
-          activity.push({ kind: 'action', text: '\u2022 ' + (r.did || stepObj.action), time: clockTime() });
-          automationState.history.push(r.did || (stepObj.action + ' ' + (stepObj.target || '')));
+          const st = r.state || {};
+          const stateNote = st.foreground_title ? (' | now: ' + st.foreground_title + (st.focused_name ? ' / focused: ' + st.focused_name : '') + (st.new_window ? ' | NEW WINDOW: ' + st.new_window : '')) : '';
+          activity.push({ kind: 'action', text: '\u2022 ' + (r.did || stepObj.action) + (targetLabel ? ' (' + targetLabel + ')' : ''), time: clockTime() });
+          automationState.history.push((r.did || (stepObj.action + ' ' + targetLabel)) + stateNote + (r.typed_verified === false ? ' [WARN: typed text not confirmed in field]' : ''));
+          automationState.lastState = st;
         }
       } else if (/could not find/i.test(r.error || '')) {
         // A missed click target isn't a reason to give up on the whole task - it's exactly the
