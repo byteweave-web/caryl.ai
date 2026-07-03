@@ -2499,6 +2499,7 @@ ipcMain.handle('overlay:hide', () => {
   if (miniOverlayWindow && !miniOverlayWindow.isDestroyed()) miniOverlayWindow.hide();
   return { ok: true };
 });
+let bubbleSaveTimer = null;
 ipcMain.handle('overlay:moveBy', (event, dx, dy) => {
   // Move whichever window actually sent this (in practice always the bubble - the panel moves
   // via native OS drag on its title bar, not this IPC path) rather than assuming which one.
@@ -2506,6 +2507,15 @@ ipcMain.handle('overlay:moveBy', (event, dx, dy) => {
   if (!win || win.isDestroyed()) return { ok: false };
   const [x, y] = win.getPosition();
   win.setPosition(Math.round(x + (dx || 0)), Math.round(y + (dy || 0)));
+  // Programmatic setPosition never fires 'moved' on Windows (that event needs a native
+  // WM_EXITSIZEMOVE, which only title-bar drags produce) - so THIS is where the bubble's
+  // position must be remembered. Debounced: one disk write per drag, not per pixel.
+  if (miniOverlayWindow && !miniOverlayWindow.isDestroyed() && win === miniOverlayWindow) {
+    const [px, py] = win.getPosition();
+    overlayBubblePos = { x: px, y: py };
+    clearTimeout(bubbleSaveTimer);
+    bubbleSaveTimer = setTimeout(() => config.set({ overlayBubblePos }), 400);
+  }
   return { ok: true };
 });
 // The overlay's own scoped view: only the question that triggered it, plus whatever's
@@ -2925,6 +2935,12 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  // A drag within the last 400ms may still have a pending debounce - don't lose it.
+  if (bubbleSaveTimer) { clearTimeout(bubbleSaveTimer); bubbleSaveTimer = null; }
+  if (overlayBubblePos) config.set({ overlayBubblePos });
 });
 
 // ---- IPC: settings (used by the AI Engine section) ----
