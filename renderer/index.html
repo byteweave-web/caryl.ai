@@ -76,13 +76,21 @@ canvas.orb{position:absolute;inset:0;width:100%;height:100%}
 .hint{text-align:center;color:var(--faint);font-size:11px;padding:0 0 10px}
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:.2s;z-index:40}
 .scrim.open{opacity:1;pointer-events:auto}
-.settings{position:fixed;top:0;right:0;height:100%;width:420px;max-width:92vw;background:var(--panel);
-  border-left:1px solid var(--line);transform:translateX(100%);transition:.25s cubic-bezier(.4,0,.2,1);z-index:50;
-  display:flex;flex-direction:column}
-.settings.open{transform:translateX(0)}
-.settings header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line)}
-.settings header h2{margin:0;font-size:15px;font-weight:700;letter-spacing:.5px}
-.settings .body{overflow-y:auto;padding:8px 20px 30px}
+.settings{position:fixed;top:50%;left:50%;transform:translate(-50%,-48%) scale(.98);opacity:0;pointer-events:none;
+  width:880px;max-width:95vw;height:580px;max-height:90vh;background:var(--panel);border:1px solid var(--line);
+  border-radius:16px;display:flex;overflow:hidden;z-index:50;transition:opacity .18s,transform .18s}
+.settings.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+.settings .nav{width:176px;flex:0 0 176px;border-right:1px solid var(--line);background:var(--panel2);
+  padding:14px 8px;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
+.settings .nav .navlabel{font-size:11px;color:var(--faint);padding:4px 10px 8px;letter-spacing:.4px;text-transform:uppercase}
+.settings .nav button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;
+  color:var(--mut);padding:8px 11px;border-radius:9px;font-size:13px;font-weight:500;transition:.12s}
+.settings .nav button:hover{color:var(--txt);background:var(--accent-soft)}
+.settings .nav button.active{background:var(--accent-soft);color:var(--txt)}
+.settings .main{flex:1;overflow-y:auto;padding:6px 26px 30px;position:relative}
+.settings .page{display:none}
+.settings .page.active{display:block}
+.settings .page .sec:first-child{border-top:0}
 .sec{padding:18px 0;border-bottom:1px solid var(--line)}
 .sec:last-child{border-bottom:0}
 .sec h3{margin:0 0 3px;font-size:13px;font-weight:600;letter-spacing:.3px}
@@ -188,9 +196,20 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
 
 <div class="scrim" id="scrim" onclick="closeSettings()"></div>
 <aside class="settings" id="settings">
-  <header><h2>Settings</h2><button class="iconbtn" onclick="closeSettings()" style="width:32px;height:32px">&#10005;</button></header>
-  <div class="body">
-
+  <nav class="nav">
+    <div class="navlabel">Settings</div>
+    <button data-nav="engines" class="active" onclick="showSettingsPage('engines')">AI engines</button>
+    <button data-nav="voice" onclick="showSettingsPage('voice')">Voice and audio</button>
+    <button data-nav="automation" onclick="showSettingsPage('automation')">Automation</button>
+    <button data-nav="personality" onclick="showSettingsPage('personality')">Personality</button>
+    <button data-nav="chats" onclick="showSettingsPage('chats')">Chats and memory</button>
+    <button data-nav="appearance" onclick="showSettingsPage('appearance')">Appearance</button>
+    <button data-nav="about" onclick="showSettingsPage('about')">About and setup</button>
+    <div style="flex:1"></div>
+    <button onclick="closeSettings()" style="color:var(--faint)">Close</button>
+  </nav>
+  <div class="main">
+    <section class="page active" data-page="engines">
     <!-- Engines & Models: per-capability hybrid routing. Chat / Vision / STT / TTS each
          run in the cloud or on this PC, in any combination, plus the download manager
          for every heavy on-demand asset (the installer ships code only). -->
@@ -263,24 +282,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
       <div class="row"><div><div class="l">Keep offline chats separate</div><div class="d">Off = both modes share the same chats &amp; history. On = offline mode keeps its own.</div></div>
         <label class="sw"><input type="checkbox" id="tog-sepchats" onchange="toggleSepChats()"><span></span></label></div>
     </div>
-
-    <div class="sec">
-      <h3>Voice Input</h3>
-      <div class="sub">Your global hotkey (<b id="vi-current-hotkey">&mdash;</b>) toggles the mic by default. Turn this on to hold it instead, from anywhere on the PC.</div>
-      <div class="row"><div><div class="l">System-wide push-to-talk</div><div class="d">Hold the global hotkey to record, release to send &mdash; works even while Caryl is in the background. Off = the hotkey toggles the mic as usual. Needs a one-time native component; falls back to toggle mode automatically if that can't load.</div></div>
-        <label class="sw"><input type="checkbox" id="tog-systemptt" onchange="toggleSystemPtt()"><span></span></label></div>
-      <div class="row" style="display:block">
-        <div class="l" style="margin-bottom:7px">Hold-to-talk combo <span class="d" style="display:inline">(blank = reuse the global hotkey above)</span></div>
-        <div class="field">
-          <input id="system-ptt-hotkey" type="text" placeholder="e.g. alt+space, ctrl+shift+v" spellcheck="false"
-                 style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none"
-                 onchange="setSystemPttHotkey()">
-        </div>
-      </div>
-      <div class="statusline" id="system-ptt-status">&mdash;</div>
-      <div class="d" style="margin-top:6px">This is separate from the in-window push-to-talk key (<b id="vi-inwindow-hotkey">\</b>) used while Caryl itself has focus &mdash; that one keeps working no matter what you choose here.</div>
-    </div>
-
     <div class="sec">
       <h3>AI Engine (Cloud)</h3>
       <div class="sub">Where the intelligence comes from. Paste a key to connect. <span id="engine-badge" class="badge">&mdash;</span></div>
@@ -322,26 +323,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
         <span class="statusline" id="engine-status" style="margin:0">&mdash;</span>
       </div>
     </div>
-
-    <div class="sec">
-      <h3>Personality</h3>
-      <div class="sub">Tell Caryl who to be &mdash; tone, style, how it should talk to you.</div>
-      <textarea id="persona" spellcheck="false" rows="5"
-        style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px;font:inherit;font-size:12px;line-height:1.5;outline:none;resize:vertical"
-        placeholder="e.g. You are JARVIS: witty, loyal, and concise. Call me 'sir'. Be a little sarcastic but always helpful."></textarea>
-      <div class="field" style="margin-top:8px">
-        <button class="minibtn" onclick="savePersona()">Save personality</button>
-        <span class="statusline" id="persona-status" style="margin:0">&mdash;</span>
-      </div>
-    </div>
-
-    <div class="sec">
-      <h3>Chats</h3>
-      <div class="sub">Start a fresh chat or jump back into an old one.</div>
-      <div class="field"><button class="minibtn" onclick="newChat()">+ New chat</button></div>
-      <div id="chat-list" style="margin-top:10px;display:flex;flex-direction:column;gap:6px"></div>
-    </div>
-
     <div class="sec">
       <h3>Models</h3>
       <div class="sub">Models available from your provider. Load to refresh the list.</div>
@@ -354,32 +335,24 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
         <div class="statusline" id="model-status">&mdash;</div>
       </div>
     </div>
-
+    </section>
+    <section class="page" data-page="voice">
     <div class="sec">
-      <h3>Appearance</h3>
-      <div class="sub">Theme and accent &mdash; restyles the whole app instantly.</div>
-      <div class="l" style="margin:6px 0 6px">Theme</div>
-      <div id="theme-cards" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px"></div>
-      <div class="l" style="margin:2px 0 6px">Accent</div>
-      <div id="accent-swatches" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px"></div>
-      <div class="row" style="margin-top:10px"><div><div class="l">Show Captions on Orb</div><div class="d">Display the latest reply over the orb</div></div>
-        <label class="sw"><input type="checkbox" id="tog-orbcap" onchange="toggleOrbCap()"><span></span></label></div>
-      <div class="row" style="margin-top:10px"><div><div class="l">Background Animation</div><div class="d">Slow 3D wireframe. Turn off to save battery &amp; GPU.</div></div>
-        <label class="sw"><input type="checkbox" id="tog-bganim" onchange="toggleBgAnim()"><span></span></label></div>
+      <h3>Voice Input</h3>
+      <div class="sub">Your global hotkey (<b id="vi-current-hotkey">&mdash;</b>) toggles the mic by default. Turn this on to hold it instead, from anywhere on the PC.</div>
+      <div class="row"><div><div class="l">System-wide push-to-talk</div><div class="d">Hold the global hotkey to record, release to send &mdash; works even while Caryl is in the background. Off = the hotkey toggles the mic as usual. Needs a one-time native component; falls back to toggle mode automatically if that can't load.</div></div>
+        <label class="sw"><input type="checkbox" id="tog-systemptt" onchange="toggleSystemPtt()"><span></span></label></div>
+      <div class="row" style="display:block">
+        <div class="l" style="margin-bottom:7px">Hold-to-talk combo <span class="d" style="display:inline">(blank = reuse the global hotkey above)</span></div>
+        <div class="field">
+          <input id="system-ptt-hotkey" type="text" placeholder="e.g. alt+space, ctrl+shift+v" spellcheck="false"
+                 style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none"
+                 onchange="setSystemPttHotkey()">
+        </div>
+      </div>
+      <div class="statusline" id="system-ptt-status">&mdash;</div>
+      <div class="d" style="margin-top:6px">This is separate from the in-window push-to-talk key (<b id="vi-inwindow-hotkey">\</b>) used while Caryl itself has focus &mdash; that one keeps working no matter what you choose here.</div>
     </div>
-
-    <div class="sec">
-      <h3>Desktop Automation</h3>
-      <div class="sub">PyAutoGUI control layer &mdash; grant scoped permissions. <span id="auto-badge" class="badge">&mdash;</span></div>
-      <div style="font-size:11.5px;color:var(--faint);line-height:1.5;margin:-2px 0 12px">Tasks you ask for run right away; Caryl narrates each step and you can Stop anytime. Shell commands and file deletes still ask first.</div>
-      <div class="row"><div><div class="l">Preview &amp; approve a plan first</div><div class="d">Off = just do it. On = Caryl shows a plan and waits for your OK before acting.</div></div>
-        <label class="sw"><input type="checkbox" id="tog-planapproval" onchange="window.bridge.setConfig({automationRequirePlanApproval:this.checked})"><span></span></label></div>
-      <div class="row"><div><div class="l">Allow Mouse Control</div><div class="d">Let it move and click the cursor</div></div>
-        <label class="sw"><input type="checkbox" id="tog-mouse" onchange="api('/toggle_mouse_control',{enabled:this.checked})"><span></span></label></div>
-      <div class="row"><div><div class="l">Allow System Scripting</div><div class="d">Keyboard automation, shell &amp; system control</div></div>
-        <label class="sw"><input type="checkbox" id="tog-scripting" onchange="api('/toggle_system_scripting',{enabled:this.checked})"><span></span></label></div>
-    </div>
-
     <div class="sec">
       <h3>Audio &amp; Voice</h3>
       <div class="sub">Vocal synthesizer output.</div>
@@ -413,7 +386,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
       <div class="row"><div class="l">Speech Rate</div>
         <div style="display:flex;align-items:center;gap:10px"><input type="range" id="rate" min="120" max="260" step="5" onchange="setRate()"><b id="rate-val" style="font-size:12px;min-width:30px">195</b></div></div>
     </div>
-
     <div class="sec">
       <h3>Microphone &amp; Push-to-Talk</h3>
       <div class="sub">Input device and hotkey binding.</div>
@@ -428,7 +400,40 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
         <input id="lw-thresh" type="range" min="0.15" max="0.9" step="0.05" value="0.5" oninput="setWakeThreshold(this.value)" style="width:140px"></div>
       <div class="row" id="lw-status-row" style="display:none"><div class="d" id="lw-status" style="font-size:12px">&nbsp;</div></div>
     </div>
-
+    </section>
+    <section class="page" data-page="automation">
+    <div class="sec">
+      <h3>Desktop Automation</h3>
+      <div class="sub">PyAutoGUI control layer &mdash; grant scoped permissions. <span id="auto-badge" class="badge">&mdash;</span></div>
+      <div style="font-size:11.5px;color:var(--faint);line-height:1.5;margin:-2px 0 12px">Tasks you ask for run right away; Caryl narrates each step and you can Stop anytime. Shell commands and file deletes still ask first.</div>
+      <div class="row"><div><div class="l">Preview &amp; approve a plan first</div><div class="d">Off = just do it. On = Caryl shows a plan and waits for your OK before acting.</div></div>
+        <label class="sw"><input type="checkbox" id="tog-planapproval" onchange="window.bridge.setConfig({automationRequirePlanApproval:this.checked})"><span></span></label></div>
+      <div class="row"><div><div class="l">Allow Mouse Control</div><div class="d">Let it move and click the cursor</div></div>
+        <label class="sw"><input type="checkbox" id="tog-mouse" onchange="api('/toggle_mouse_control',{enabled:this.checked})"><span></span></label></div>
+      <div class="row"><div><div class="l">Allow System Scripting</div><div class="d">Keyboard automation, shell &amp; system control</div></div>
+        <label class="sw"><input type="checkbox" id="tog-scripting" onchange="api('/toggle_system_scripting',{enabled:this.checked})"><span></span></label></div>
+    </div>
+    </section>
+    <section class="page" data-page="personality">
+    <div class="sec">
+      <h3>Personality</h3>
+      <div class="sub">Tell Caryl who to be &mdash; tone, style, how it should talk to you.</div>
+      <textarea id="persona" spellcheck="false" rows="5"
+        style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px;font:inherit;font-size:12px;line-height:1.5;outline:none;resize:vertical"
+        placeholder="e.g. You are JARVIS: witty, loyal, and concise. Call me 'sir'. Be a little sarcastic but always helpful."></textarea>
+      <div class="field" style="margin-top:8px">
+        <button class="minibtn" onclick="savePersona()">Save personality</button>
+        <span class="statusline" id="persona-status" style="margin:0">&mdash;</span>
+      </div>
+    </div>
+    </section>
+    <section class="page" data-page="chats">
+    <div class="sec">
+      <h3>Chats</h3>
+      <div class="sub">Start a fresh chat or jump back into an old one.</div>
+      <div class="field"><button class="minibtn" onclick="newChat()">+ New chat</button></div>
+      <div id="chat-list" style="margin-top:10px;display:flex;flex-direction:column;gap:6px"></div>
+    </div>
     <div class="sec">
       <h3>Memory &amp; Neural Parameters</h3>
       <div class="sub">Perception, autonomy, and long-term storage.</div>
@@ -451,7 +456,22 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
         <div class="meter"><i id="budget-meter"></i></div>
         <div class="statusline" id="budget-use">&mdash;</div></div>
     </div>
-
+    </section>
+    <section class="page" data-page="appearance">
+    <div class="sec">
+      <h3>Appearance</h3>
+      <div class="sub">Theme and accent &mdash; restyles the whole app instantly.</div>
+      <div class="l" style="margin:6px 0 6px">Theme</div>
+      <div id="theme-cards" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px"></div>
+      <div class="l" style="margin:2px 0 6px">Accent</div>
+      <div id="accent-swatches" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px"></div>
+      <div class="row" style="margin-top:10px"><div><div class="l">Show Captions on Orb</div><div class="d">Display the latest reply over the orb</div></div>
+        <label class="sw"><input type="checkbox" id="tog-orbcap" onchange="toggleOrbCap()"><span></span></label></div>
+      <div class="row" style="margin-top:10px"><div><div class="l">Background Animation</div><div class="d">Slow 3D wireframe. Turn off to save battery &amp; GPU.</div></div>
+        <label class="sw"><input type="checkbox" id="tog-bganim" onchange="toggleBgAnim()"><span></span></label></div>
+    </div>
+    </section>
+    <section class="page" data-page="about">
     <div class="sec">
       <h3>Engine Status</h3>
       <div class="sub">Cloud API connection.</div>
@@ -460,13 +480,12 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
       <div class="row"><div class="l">Vision Model</div><b id="engine-vision" style="font-family:ui-monospace,monospace;font-size:12px">&mdash;</b></div>
       <div class="row"><div class="l">Screen OCR</div><span id="engine-ocr" class="badge">&mdash;</span></div>
     </div>
-
     <div class="sec">
       <h3>Setup</h3>
       <div class="row"><div><div class="l">Run first-launch setup again</div><div class="d">Name, wake word, Windows version, permissions, voice, calibration, hotkey.</div></div>
         <button class="minibtn" onclick="window.bridge.redoSetup()">Redo setup</button></div>
     </div>
-
+    </section>
   </div>
 </aside>
 
@@ -549,7 +568,16 @@ function setView(v){
   document.getElementById('view-'+v).classList.add('active');
   _curView=v; _bgApply();   // animated background runs in Chat view only
 }
-function openSettings(){ document.getElementById('settings').classList.add('open'); document.getElementById('scrim').classList.add('open'); populateEngine(); populateAiMode(); populateVoiceInputCard(); syncSettings(); loadModels(); loadMics(); populateExtras(); renderAppearance(); }
+function openSettings(){ document.getElementById('settings').classList.add('open'); document.getElementById('scrim').classList.add('open'); populateEngine(); populateAiMode(); populateVoiceInputCard(); syncSettings(); loadModels(); loadMics(); populateExtras(); renderAppearance(); showSettingsPage('engines'); }
+function showSettingsPage(id){
+  document.querySelectorAll('#settings .page').forEach(function(p){ p.classList.toggle('active', p.dataset.page===id); });
+  document.querySelectorAll('#settings .nav button[data-nav]').forEach(function(b){ b.classList.toggle('active', b.dataset.nav===id); });
+  document.querySelector('#settings .main').scrollTop = 0;
+}
+// Esc closes the settings modal.
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape' && document.getElementById('settings').classList.contains('open')) closeSettings();
+});
 
 // ---- Personality, chats, voice, wake word, memory management ----
 async function populateExtras(){
