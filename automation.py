@@ -1218,7 +1218,7 @@ def act():
     needs_mouse = action in ("click", "rightclick", "doubleclick", "scroll", "drag") or (
         action == "type" and bool(target)
     )
-    needs_scripting = action in ("type", "hotkey")
+    needs_scripting = action in ("type", "hotkey", "open_app")
 
     if needs_mouse:
         err = require_perm("mouse_enabled")
@@ -1362,6 +1362,72 @@ def act():
             did = "pressed " + "+".join(keys)
             log_action("act", action + ": " + (target or did))
             return jsonify({"ok": True, "did": did})
+
+        elif action == "open_app":
+            app_name = str(body.get("app") or body.get("target") or "").strip()
+            safe = re.sub(r"[^a-zA-Z0-9 ._-]", "", app_name).strip()
+            if not safe:
+                return jsonify({"ok": False, "error": "no app name given"})
+            prev_titles = _uia_top_titles()
+            # Launch via the Start search: Win, type, Enter. No tile clicking, no vision.
+            pyautogui.press("win")
+            time.sleep(0.6)
+            type_text(safe)
+            time.sleep(0.6)
+            pyautogui.press("enter")
+            # Poll until a window whose title/class looks like the app is foreground.
+            # NOTE: pressing Win opens the Start/Search surface, which is itself a new
+            # window - so "any new window" is NOT proof of launch. We require a title/class
+            # match, or a new NON-SHELL window, to confirm.
+            _SHELL_TITLES = {"", "Start", "Search", "Program Manager", "Task View", "Cortana"}
+            # A misspelled/nonexistent name makes Windows open a WEB SEARCH in the browser
+            # instead of launching an app. That's a real window but not a launch - reject it
+            # unless the user actually asked for a browser.
+            _BROWSER_APPS = ("edge", "msedge", "chrome", "firefox", "browser", "opera", "brave")
+            want = safe.lower()
+            wanted_browser = any(b in want for b in _BROWSER_APPS)
+
+            def _is_web_search(title, cls):
+                if wanted_browser:
+                    return False
+                tl = (title or "").lower()
+                return ((" - search" in tl or "search and " in tl or "bing" in tl)
+                        and ("edge" in tl or "chrome" in tl or "firefox" in tl or "opera" in tl))
+
+            deadline = time.time() + 8.0
+            got = None
+            while time.time() < deadline:
+                time.sleep(0.5)
+                try:
+                    with _uia.UIAutomationInitializerInThread():
+                        fg = _uia.GetForegroundControl()
+                        top = fg.GetTopLevelControl() if fg else None
+                        title = (top.Name or "") if top else ""
+                        cls = (top.ClassName or "") if top else ""
+                except Exception:
+                    title, cls = "", ""
+                if title in _SHELL_TITLES:
+                    continue  # still on the Start menu / search - not launched yet
+                if _is_web_search(title, cls):
+                    break  # web-search fallback: this is NOT the app - stop and report failure
+                if want in title.lower() or want in cls.lower():
+                    got = title
+                    break
+            state = _uia_state_report(prev_titles)
+            # Confirmation = the foreground window's title/class actually contains the app
+            # name. (A generic "some new window appeared" signal is unreliable - the Start
+            # menu and UIA enumeration races both produce false positives - and when a real
+            # app's title doesn't contain its name, main.js falls back to the direct OS
+            # launcher, so the app still opens.)
+            if got is not None:
+                log_action("open_app", "%r -> %r" % (safe, got))
+                return jsonify({"ok": True, "did": "opened " + safe, "window": got, "state": state})
+            try:
+                pyautogui.press("escape")  # dismiss the Start menu we opened on a failed launch
+            except Exception:
+                pass
+            log_action("open_app_unconfirmed", "%r (no matching window)" % safe)
+            return jsonify({"ok": False, "error": "launched \"%s\" but no matching window appeared" % safe, "state": state})
 
         else:
             return jsonify({"ok": False, "error": "unknown action \"" + action + "\""}), 400
