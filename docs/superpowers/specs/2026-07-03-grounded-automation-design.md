@@ -145,6 +145,27 @@ This removes the separate plan-proposal LLM call on the default path (also faste
 grounded step loop already decides and narrates each action, so a static preview adds
 latency without adding safety once dangerous ops are individually confirmed.
 
+## B8. UIA-only automation — no vision model in the loop (user directive, post-acceptance)
+
+Live acceptance runs exposed that the step planner ran on the VISION engine; with vision
+routed to a small local model (moondream) it cannot emit JSON actions, degrading every
+run (describe-then-decide, typed digits instead of clicks, duplicate open_app, stray
+win+d). The user's directive: automation is **UIA-first only** — remove vision from
+automation entirely, keep vision as a chat ability the user invokes explicitly
+("can you see my screen?" → "summarize the paragraph").
+
+- The step planner is the **chat model**, text-only: it observes the world through the
+  `/elements` inventory (id | type | name + foreground title) and the post-action state
+  reports in its history. No screenshots are captured or sent during automation.
+- The describe-then-decide (twoStage) machinery and `decideStepViaChatModel` are removed.
+- Done-verification is text-based: fresh `/elements` + foreground title → chat model
+  verdict (same JSON verdict shape as before).
+- The opt-in plan preview (B7 toggle) also plans via the chat model, text-only.
+- The sidecar's vision fallback stays fully suppressed for automation (`allow_vision:
+  false`, from B4); `see_screen`/`see_camera` chat features are untouched.
+- Sidecar `hotkey` and `scroll` responses gain the same `state` report as click/type
+  (the text-only planner depends on state reports for observability).
+
 ## B5. Error handling principles
 
 - `/elements` failure (UIA missing, walk error) degrades to today's behavior (free-text

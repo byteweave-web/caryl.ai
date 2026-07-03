@@ -1355,7 +1355,7 @@ def act():
             pyautogui.scroll(amount)
             did = "scrolled " + direction + ((" over \"%s\"" % target) if target else "")
             log_action("act", action + ": " + (target or did))
-            return jsonify({"ok": True, "did": did})
+            return jsonify({"ok": True, "did": did, "state": _uia_state_report(prev_titles)})
 
         elif action == "hotkey":
             keys, bad = _normalize_keys(body.get("keys", []))
@@ -1364,9 +1364,10 @@ def act():
             if not keys:
                 return jsonify({"ok": False, "error": "no keys given for hotkey"}), 400
             pyautogui.hotkey(*keys)
+            time.sleep(0.3)  # let the shortcut's effect land before snapshotting state
             did = "pressed " + "+".join(keys)
             log_action("act", action + ": " + (target or did))
-            return jsonify({"ok": True, "did": did})
+            return jsonify({"ok": True, "did": did, "state": _uia_state_report(prev_titles)})
 
         elif action == "open_app":
             app_name = str(body.get("app") or body.get("target") or "").strip()

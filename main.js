@@ -1037,44 +1037,6 @@ const AUTOMATION_ACTIONS = ['open_app', 'click', 'rightclick', 'doubleclick', 'd
 // model - a far better instruction-follower - turns goal + history + that description into
 // the JSON action. Clicks stay grounded either way: /act's locate() looks at the real
 // screenshot when the action executes. Returns the parsed step object or null.
-async function decideStepViaChatModel(cfg, goal, dataUrl, sysSchemaPrompt) {
-  const v = visionCfg(cfg);
-  let desc = '';
-  try {
-    await streamChat({
-      baseUrl: v.baseUrl, apiKey: v.apiKey, model: v.model, temperature: 0,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Describe this screenshot factually in 2-4 short sentences: which app or window is in front, what key UI elements and text are visible, and anything that looks selected or focused. No advice, no JSON - just the plain description.' },
-          { type: 'image_url', image_url: { url: dataUrl } }
-        ]
-      }],
-      onToken: (d) => { desc += d; }
-    });
-  } catch (_e) { /* no description - the chat model still decides from goal + history */ }
-  desc = desc.trim().slice(0, 1200);
-  const c = chatCfg(cfg);
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let raw = '';
-    try {
-      await streamChat({
-        baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model, temperature: 0.2,
-        messages: [{
-          role: 'user',
-          content: sysSchemaPrompt + '\n\nYou cannot see the screen yourself. A vision model described the CURRENT screenshot as: "' +
-            (desc || '(no description available)') + '". Decide the single next action from that description, the goal, and the step history above. ' +
-            'If the description already shows the goal is complete, use action "done".'
-        }],
-        onToken: (d) => { raw += d; }
-      });
-    } catch (_e) { continue; }
-    const obj = parseAutomationStep(raw);
-    if (obj) return obj;
-  }
-  return null;
-}
-
 // Every automation prompt (planning AND per-step) opens with this, so the model never forgets
 // that IT is the one acting. Without it, weaker/text models slip into "assistant giving advice"
 // mode and produce nonsense like "open YouTube on your phone and watch a tutorial" - steps a
@@ -1099,18 +1061,17 @@ function planLooksValid(steps) {
   return !steps.some((s) => bad.test(String(s)));
 }
 
-// "Done" checkpoint: on a FRESH screenshot, ask whether the goal genuinely looks finished.
+// "Done" checkpoint, UIA-only (spec B8): observe the CURRENT screen through a fresh
+// /elements walk (foreground title + visible element names) and let the chat model judge.
 // Returns {complete:boolean, reason:string} or null when it couldn't get a clear answer
 // (caller treats null as "accept done" - verification must never trap a run).
-// Two-stage aware: when the run already proved its vision model won't emit JSON, the vision
-// model only DESCRIBES the screenshot and the chat model gives the verdict from that.
-async function verifyAutomationDone(cfg, goal, twoStage) {
+async function verifyAutomationDone(cfg, goal) {
   try {
-    const shot = await captureScreen(1024, 640);
-    if (!shot) return null;
-    const question = 'The automation goal was: "' + goal + '". Look ONLY at this fresh screenshot of the screen RIGHT NOW. ' +
-      'Does it show that goal fully accomplished? Reply with ONLY this JSON, nothing else: ' +
-      '{"complete": true or false, "reason": "one short sentence of what you see that proves it"}';
+    const els = await sidecarCall('/elements', {});
+    if (!els || !els.ok) return null; // can't observe -> accept done rather than trap the run
+    const fg = (els.foreground && els.foreground.title) || '(unknown)';
+    const names = (els.elements || []).slice(0, 40)
+      .map((e) => e.type.replace('Control', '') + ':' + e.name).join('; ');
     const parseVerdict = (raw) => {
       const t = String(raw || '');
       try {
@@ -1126,37 +1087,12 @@ async function verifyAutomationDone(cfg, goal, twoStage) {
       if (/^\s*(no|not)\b/i.test(t)) return { complete: false, reason: t.trim().slice(0, 160) };
       return null;
     };
-    if (twoStage) {
-      // vision describes -> chat judges (chat models follow the yes/no format far better)
-      const v = visionCfg(cfg);
-      let desc = '';
-      try {
-        await streamChat({
-          baseUrl: v.baseUrl, apiKey: v.apiKey, model: v.model, temperature: 0,
-          messages: [{ role: 'user', content: [
-            { type: 'text', text: 'Describe this screenshot factually in 2-3 short sentences: which window is in front and what state things are in. No advice, no JSON.' },
-            { type: 'image_url', image_url: { url: shot } }
-          ] }],
-          onToken: (d) => { desc += d; }
-        });
-      } catch (_e) { return null; }
-      const c = chatCfg(cfg);
-      let raw = '';
-      try {
-        await streamChat({
-          baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model, temperature: 0,
-          messages: [{ role: 'user', content: 'The automation goal was: "' + goal + '". A vision model described the CURRENT screen as: "' + desc.trim().slice(0, 900) + '". Based only on that description, is the goal fully accomplished? Reply with ONLY: {"complete": true or false, "reason": "one short sentence"}' }],
-          onToken: (d) => { raw += d; }
-        });
-      } catch (_e) { return null; }
-      return parseVerdict(raw);
-    }
-    const v = visionCfg(cfg);
+    const c = chatCfg(cfg);
     let raw = '';
     try {
       await streamChat({
-        baseUrl: v.baseUrl, apiKey: v.apiKey, model: v.model, temperature: 0,
-        messages: [{ role: 'user', content: [{ type: 'text', text: question }, { type: 'image_url', image_url: { url: shot } }] }],
+        baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model, temperature: 0,
+        messages: [{ role: 'user', content: 'The automation goal was: "' + goal + '". Observed via the Windows accessibility tree RIGHT NOW - foreground window: "' + fg + '". Visible elements: ' + (names || '(none)') + '. Based only on that, is the goal fully accomplished? Reply with ONLY: {"complete": true or false, "reason": "one short sentence"}' }],
         onToken: (d) => { raw += d; }
       });
     } catch (_e) { return null; }
@@ -1174,13 +1110,9 @@ async function proposeAutomationPlan(cfg, goal) {
     runAutomationLoop(goal); // fire-and-forget, same as approvePlan does
     return;
   }
-  activity.push({ kind: 'action', text: 'Looking at your screen to plan that out...', time: clockTime() });
+  activity.push({ kind: 'action', text: 'Planning that out...', time: clockTime() });
   aiStatus = 'working';
-  // REFINED: cached screenshot (same cache as the step loop, so a plan + immediate first step
-  // share one capture).
-  const dataUrl = await captureScreenCached();
   const sys = AUTOMATION_FRAMING + ' The user\u2019s goal: "' + goal + '". ' +
-    (dataUrl ? 'A screenshot of their current screen is attached. ' : '') +
     'Propose a short, concrete plan: 2 to 6 steps, each a plain-English on-screen action YOU will perform ' +
     'on this PC (e.g. "Open the Downloads folder", "Right-click the desktop and choose Sort by"). ' +
     WINDOW_MANAGEMENT_GUIDANCE + ' ' + COMMON_WINDOWS_RECIPES + ' ' +
@@ -1217,39 +1149,25 @@ async function proposeAutomationPlan(cfg, goal) {
     return { steps, lastRaw };
   }
 
-  // Attempt 1: look at the screen (if we got a screenshot) using the vision engine.
+  // UIA-only (spec B8): the CHAT model plans, text-only. The per-step loop does the real
+  // observing via the element inventory; a preview plan needs no screenshot. Re-assert the
+  // framing hard here, since a text model with no image is the exact place that drifts
+  // into "give the user a how-to" mode.
   let steps = [], lastRaw = '';
-  if (dataUrl) {
-    const engine = visionCfg(cfg);
-    const messages = [{ role: 'user', content: [{ type: 'text', text: sys }, { type: 'image_url', image_url: { url: dataUrl } }] }];
-    const r = await attemptPlan(engine, messages, 3);
-    steps = r.steps; lastRaw = r.lastRaw;
-  }
-
-  // Attempt 2 (fallback): the vision model wouldn't produce a usable plan - either it can't see
-  // (the configured model isn't multimodal) or it just narrates. Ask the CHAT model with text
-  // only. It follows the JSON format far better; the per-step loop does the real on-screen seeing
-  // later. Re-assert the framing hard here, since a text model with no image is the exact place
-  // that drifts into "give the user a how-to" mode.
-  if (!steps.length) {
-    const textSys = sys + ' You cannot see the screen this time, so plan from the goal alone. Assume the ' +
+  {
+    const textSys = sys + ' You cannot see the screen; plan from the goal alone. Assume the ' +
       'needed app or view may not be in front yet and include bringing it forward (open it / press win+d ' +
       'for the desktop) as an early step. Remember: these are actions YOU will carry out on this PC by ' +
       'clicking and typing - never steps for the user to do, never a phone, video, or tutorial.';
     const r = await attemptPlan(chatCfg(cfg), [{ role: 'user', content: textSys }], 3);
-    if (r.steps.length) steps = r.steps;
-    if (!lastRaw) lastRaw = r.lastRaw;
+    steps = r.steps; lastRaw = r.lastRaw;
   }
 
   aiStatus = 'idle';
   if (!steps.length) {
-    // Surface whatever the model actually said (trimmed) instead of a generic dead-end -
-    // if it was confused about what it was looking at, this is the clue that shows it.
+    // Surface whatever the model actually said (trimmed) instead of a generic dead-end.
     const hint = lastRaw.trim().slice(0, 140);
-    const visionHint = (enginesLib.resolveEngine(cfg, 'vision') === 'online')
-      ? ' If this keeps happening, your current model may not be able to see the screen - set a vision-capable model in Settings \u2192 Engines & Models (flip Vision to local with e.g. minicpm-v, or choose a multimodal cloud model).'
-      : '';
-    activity.push({ kind: 'action', text: '\u26A0 Could not put together a workable plan for that' + (hint ? ' - it said: "' + hint + '"' : '') + '.' + visionHint, time: clockTime() });
+    activity.push({ kind: 'action', text: '\u26A0 Could not put together a workable plan for that' + (hint ? ' - it said: "' + hint + '"' : '') + '.', time: clockTime() });
     return;
   }
   // Replace any still-pending plan card for the same goal instead of stacking a new card
@@ -1322,7 +1240,7 @@ async function runAutomationLoop(goal) {
     speak(text.replace(/^[^\w]+/, ''));
   }
 
-  automationState = { active: true, goal, history: [], stopRequested: false, pendingConfirm: null, twoStage: false,
+  automationState = { active: true, goal, history: [], stopRequested: false, pendingConfirm: null,
     lastState: null, lastStateHash: '', stuckStreak: 0, askEscalate: false };
   activity.push({ kind: 'action', text: '\u25B6 Starting: ' + goal, time: clockTime() });
   speak('Starting now.');
@@ -1333,8 +1251,8 @@ async function runAutomationLoop(goal) {
   // it covers most of the screen, and clicks aimed underneath it would land on it. See
   // showBubbleOnly for the full story.
   showBubbleOnly();
-  // [OFFLINE-INTEGRATION] the per-step vision endpoint is resolved inside the loop via
-  // visionCfg(cfg) (cfg is re-read each step), so a mid-run mode switch takes effect too.
+  // UIA-only (spec B8): steps are planned by the CHAT model from the element inventory;
+  // chatCfg(cfg) is re-read each step, so a mid-run engine switch takes effect too.
 
   let stoppedEarly = false;
   let lastActionSig = '';        // signature of the previous step's chosen action...
@@ -1349,17 +1267,16 @@ async function runAutomationLoop(goal) {
     // REFINED: use the cached screenshot (cfg.screenshotCacheMs, default 1.5s). In a tight step
     // loop the same screen is often captured multiple times within a second (plan + verify +
     // next-step look); caching avoids redundant desktopCapturer calls + base64 encoding.
-    const dataUrl = await captureScreenCached(1024, 640);
-    if (!dataUrl) { announceAndStop('\u26A0 Could not capture the screen - stopping.'); break; }
-
-    // Grounded planning: the real, clickable elements on screen right now. The planner acts
-    // by element_id against THIS list, so a click lands on an exact UIA rect, not a guess.
+    // UIA-only planning (spec B8): no screenshots. The planner observes the world through
+    // the element inventory + foreground title here, and the state reports in its history.
     let elementList = [];
+    let foregroundTitle = '';
     let elementText = '(element list unavailable - describe targets in plain English)';
     try {
       const els = await sidecarCall('/elements', {});
       if (els && els.ok && Array.isArray(els.elements)) {
         elementList = els.elements;
+        foregroundTitle = (els.foreground && els.foreground.title) || '';
         elementText = elementList.length
           ? elementList.map((e) => e.id + ' | ' + e.type.replace('Control', '') + ' | ' + e.name + (e.focused ? ' [focused]' : '')).join('\n')
           : '(no actionable elements detected)';
@@ -1376,7 +1293,9 @@ async function runAutomationLoop(goal) {
 
     const sys = AUTOMATION_FRAMING + ' Goal: "' + goal + '". ' +
       'Steps taken so far: ' + (automationState.history.length ? JSON.stringify(automationState.history.slice(-5)) : '(none yet)') + '. ' +
-      'Look at the attached CURRENT screenshot AND this list of the real, clickable on-screen elements (id | type | name):\n' +
+      'You observe the screen through the Windows accessibility tree, NOT as an image. ' +
+      'CURRENT foreground window: "' + (foregroundTitle || 'unknown') + '". ' +
+      'The real, clickable on-screen elements RIGHT NOW (id | type | name):\n' +
       elementText + '\n' +
       'To click/type into a listed element, set "element_id" to its number - this is EXACT and strongly preferred over "target". ' +
       'Only use a plain-English "target" (and set "not_in_list": true) when what you need genuinely is not in the list. ' +
@@ -1410,21 +1329,22 @@ async function runAutomationLoop(goal) {
       'in the history looks like it failed or the screen doesn\u2019t look like what you expected, say so in ' +
       '"thought" and adjust rather than repeating the same action blindly.';
     let raw = '';
-    const v = visionCfg(cfg); // [OFFLINE-INTEGRATION] offline / local-vision runs step on the local model
+    // UIA-only (spec B8): the CHAT model plans, text-only. It's far stronger at JSON +
+    // reasoning than small vision models, and the element list + state reports give it
+    // real observability - no screenshot needed.
+    const v = chatCfg(cfg);
     // A single transient hiccup (rate limit, brief network blip) shouldn't kill the whole run -
     // retry a couple of times with backoff before giving up, and when we DO give up, show the
     // real error instead of a generic message so it's actually diagnosable next time.
-    // Once this run has flipped to twoStage (the vision model proved it won't produce JSON),
-    // skip the direct ask entirely - re-attempting it every step just doubles the latency.
     let stepError = null;
-    if (!automationState.twoStage) {
+    {
       for (let retry = 0; retry < 3; retry++) {
         if (automationState.stopRequested) { stoppedEarly = true; break; }
         raw = '';
         try {
           await streamChat({
             baseUrl: v.baseUrl, apiKey: v.apiKey, model: v.model, temperature: 0.2,
-            messages: [{ role: 'user', content: [{ type: 'text', text: sys }, { type: 'image_url', image_url: { url: dataUrl } }] }],
+            messages: [{ role: 'user', content: sys }],
             onToken: (d) => { raw += d; }
           });
           stepError = null;
@@ -1470,33 +1390,24 @@ async function runAutomationLoop(goal) {
     // ---- Parse the step, surviving weak models instead of dying on them ----
     // 1) robust parse of whatever came back (JSON in prose, code fences, salvaged fields...)
     // 2) still nothing -> ONE corrective re-ask ("that was not the JSON; JSON only")
-    // 3) still nothing -> flip this run to two-stage mode: vision model only DESCRIBES the
-    //    screen, the chat model turns that + goal + history into the JSON action.
-    let stepObj = automationState.twoStage ? null : parseAutomationStep(raw);
-    if (!stepObj && !automationState.twoStage) {
+    let stepObj = parseAutomationStep(raw);
+    if (!stepObj) {
       let raw2 = '';
       try {
         await streamChat({
           baseUrl: v.baseUrl, apiKey: v.apiKey, model: v.model, temperature: 0,
           messages: [
-            { role: 'user', content: [{ type: 'text', text: sys }, { type: 'image_url', image_url: { url: dataUrl } }] },
+            { role: 'user', content: sys },
             { role: 'assistant', content: raw.slice(0, 1500) || '(empty)' },
-            { role: 'user', content: 'That was NOT the required JSON. Do not describe the screenshot. Reply again with ONLY the single JSON object in the exact schema above - nothing else.' }
+            { role: 'user', content: 'That was NOT the required JSON. Reply again with ONLY the single JSON object in the exact schema above - nothing else.' }
           ],
           onToken: (d) => { raw2 += d; }
         });
-      } catch (_e) { /* fall through to two-stage */ }
+      } catch (_e) { /* fall through */ }
       stepObj = parseAutomationStep(raw2);
-      if (!stepObj) {
-        automationState.twoStage = true;
-        activity.push({ kind: 'action', text: '\u26A0 The vision model won\u2019t return structured actions - switching to describe-then-decide (vision describes, chat model decides) for the rest of this run.', time: clockTime() });
-      }
-    }
-    if (!stepObj && automationState.twoStage) {
-      stepObj = await decideStepViaChatModel(cfg, goal, dataUrl, sys);
     }
     if (!stepObj || !stepObj.action) {
-      announceAndStop('\u26A0 I couldn\u2019t get a valid next action from the model after several tries - stopping. (A stronger local vision model - try minicpm-v or llava:13b from Settings \u2192 AI Mode - fixes this.)');
+      announceAndStop('\u26A0 I couldn\u2019t get a valid next action from the model after several tries - stopping. (A stronger chat model - Settings \u2192 Engines & Models - fixes this.)');
       break;
     }
 
@@ -1513,14 +1424,8 @@ async function runAutomationLoop(goal) {
       activity.push({ kind: 'action', text: '\u26A0 The model returned ' + shownAction + ' rather than a real action - asking again.', time: clockTime() });
       automationState.history.push('INVALID action "' + stepObj.action.slice(0, 60) + '": you must set "action" to exactly ONE word from ' + AUTOMATION_ACTIONS.join(', ') + ' - not a list, not the placeholder text, just one.');
       if (badActionStreak >= 3) {
-        if (!automationState.twoStage) {
-          automationState.twoStage = true;
-          badActionStreak = 0;
-          activity.push({ kind: 'action', text: '\u26A0 Switching to describe-then-decide - the model keeps echoing the schema instead of picking an action.', time: clockTime() });
-        } else {
-          announceAndStop('\u25A0 The model keeps returning an invalid action instead of a real one, so I\u2019m stopping rather than looping. This usually means the current model isn\u2019t following instructions well - try a stronger model (Settings \u2192 AI Mode).');
-          break;
-        }
+        announceAndStop('\u25A0 The model keeps returning an invalid action instead of a real one, so I\u2019m stopping rather than looping. This usually means the current chat model isn\u2019t following instructions well - try a stronger one (Settings \u2192 Engines & Models).');
+        break;
       }
       continue;
     }
@@ -1533,7 +1438,7 @@ async function runAutomationLoop(goal) {
       // in its history; an unclear/failed verification accepts done (never blocks forever).
       // Capped at 2 rejections so a verifier that's wrong can't trap the run either.
       if (doneRejections < 2) {
-        const verdict = await verifyAutomationDone(cfg, goal, automationState.twoStage);
+        const verdict = await verifyAutomationDone(cfg, goal);
         if (verdict && verdict.complete === false) {
           doneRejections++;
           const why = (verdict.reason || 'the screen does not show the goal finished').slice(0, 160);
@@ -1617,6 +1522,15 @@ async function runAutomationLoop(goal) {
       // launcher (fire-and-forget) so the app still opens. Never by hunting for an icon.
       const appName = String(stepObj.app || stepObj.target || '').trim();
       if (!appName) { automationState.history.push('open_app with no app name - skipped'); continue; }
+      // Sanity: don't open the same app twice in a row (the "opened calc twice" bug). If the
+      // last successful step already opened it, or its window is foreground now, skip.
+      const already = automationState.history.slice(-2).some((h) => String(h).toLowerCase().indexOf('opened app: ' + appName.toLowerCase()) === 0) ||
+        (foregroundTitle && foregroundTitle.toLowerCase().indexOf(appName.toLowerCase()) !== -1);
+      if (already) {
+        activity.push({ kind: 'action', text: '⚠ ' + appName + ' is already open - not opening it again.', time: clockTime() });
+        automationState.history.push('SANITY: ' + appName + ' is already open (foreground: "' + foregroundTitle + '") - do NOT open it again; act inside it with element_id clicks or typing.');
+        continue;
+      }
       let r = await sidecarCall('/act', { action: 'open_app', app: appName });
       if (!r.ok) {
         const d = await actions.run('open_app', { name: appName });
