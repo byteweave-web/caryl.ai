@@ -306,9 +306,44 @@ def _set_clipboard_text(text):
         return False
 
 
+def _should_paste(text):
+    """Long or multi-line text goes through the clipboard as ONE atomic ctrl+v: per-key
+    typing of a paragraph takes seconds, during which a focus change or stray click garbles
+    the result mid-way. Short single-line strings keep per-key typing (works in fields that
+    block paste)."""
+    return len(text) > 80 or "\n" in text
+
+
+def _type_prep(ctype, value, targeted, top_class):
+    """What to do with a field's EXISTING text before typing. Returns one of:
+    'replace' - select-all so typing replaces a short single-line value (a pre-filled
+                filename/search box; the space.txtspace.txt bug). Only when we explicitly
+                clicked the field (targeted) or it's the pre-focused field of a Win32
+                dialog (#32770, e.g. Save As).
+    'append'  - caret to the end (ctrl+end) so typing can never insert mid-text: document
+                bodies (DocumentControl) and anything multi-line/long. A focus click lands
+                on the element CENTER, which in a half-written document is the middle of
+                the text - this is what interleaved a re-typed paragraph into the middle
+                of a Notepad document.
+    'none'    - leave the caret alone (empty value, or untargeted typing outside a dialog)."""
+    if not value:
+        return "none"
+    docish = ctype == "DocumentControl" or "\n" in value or len(value) > 260
+    if docish:
+        return "append" if targeted else "none"
+    if ctype == "EditControl" and (targeted or top_class == "#32770"):
+        return "replace"
+    return "none"
+
+
 def type_text(text):
     text = str(text or "")
     if not text:
+        return
+    if os.name == "nt" and _should_paste(text) and _set_clipboard_text(text):
+        time.sleep(0.04)
+        pyautogui.hotkey("ctrl", "v")
+        time.sleep(0.04)
         return
     if all(ord(c) < 128 for c in text):
         pyautogui.write(text, interval=0.008)  # REFINED: 0.01 -> 0.008 interval. Faster typing, still reliable.
@@ -1123,9 +1158,13 @@ def _uia_top_titles():
 
 
 def _uia_state_report(prev_titles):
-    """Foreground + focused control snapshot after an action. prev_titles: set from before."""
+    """Foreground + focused control snapshot after an action. prev_titles: set from before.
+    focused_* must come from GetFocusedControl() - GetForegroundControl() is the top-level
+    WINDOW, which made the old focused_name just repeat the window title. focused_value is
+    the focused field's text (truncated), the planner's only way to SEE what a field or
+    editor actually contains (what got typed, a calculator display, a pre-filled name)."""
     rep = {"foreground_title": "", "foreground_class": "", "focused_name": "",
-           "focused_type": "", "new_window": None}
+           "focused_type": "", "focused_value": "", "new_window": None}
     if _uia is None:
         return rep
     try:
@@ -1136,9 +1175,17 @@ def _uia_state_report(prev_titles):
                 if top:
                     rep["foreground_title"] = (top.Name or "")[:120]
                     rep["foreground_class"] = top.ClassName or ""
-                if fg:
-                    rep["focused_name"] = (fg.Name or "")[:80]
-                    rep["focused_type"] = fg.ControlTypeName or ""
+            except Exception:
+                pass
+            try:
+                fc = _uia.GetFocusedControl()
+                if fc:
+                    rep["focused_name"] = (fc.Name or "")[:80]
+                    rep["focused_type"] = fc.ControlTypeName or ""
+                    if hasattr(fc, "GetValuePattern"):
+                        vp = fc.GetValuePattern()
+                        val = (vp.Value or "") if vp else ""
+                        rep["focused_value"] = val.replace("\r\n", "⏎").replace("\n", "⏎")[:200]
             except Exception:
                 pass
             now = _uia_top_titles()
@@ -1175,7 +1222,7 @@ def elements():
     wide = bool((request.get_json(silent=True) or {}).get("wide")) if request.method == "POST" else False
     t0 = time.time()
     deadline = t0 + (_UIA_TIME_BUDGET_S * 2.5 if wide else _UIA_TIME_BUDGET_S)
-    fg_title, fg_class = "", ""
+    fg_title, fg_class, fg_focused_value = "", "", ""
     items = []
     try:
         with _uia.UIAutomationInitializerInThread():
@@ -1185,6 +1232,16 @@ def elements():
                 if top:
                     fg_title = (top.Name or "")[:120]
                     fg_class = top.ClassName or ""
+            except Exception:
+                pass
+            try:
+                # The focused field's current text: the planner's window into editor/field
+                # content (what's typed so far, a calc display, a pre-filled filename).
+                fc = _uia.GetFocusedControl()
+                if fc and hasattr(fc, "GetValuePattern"):
+                    vp = fc.GetValuePattern()
+                    val = (vp.Value or "") if vp else ""
+                    fg_focused_value = val.replace("\r\n", "⏎").replace("\n", "⏎")[:200]
             except Exception:
                 pass
             raw = _uia_collect_roots(deadline)
@@ -1209,7 +1266,8 @@ def elements():
     shown = items[:_ELEMENT_CAP]
     walk_ms = int((time.time() - t0) * 1000)
     log_action("elements_served", "%d elements (%d shown) in %dms; fg=%r" % (len(items), len(shown), walk_ms, fg_title[:40]))
-    return jsonify({"ok": True, "elements": shown, "foreground": {"title": fg_title, "class": fg_class},
+    return jsonify({"ok": True, "elements": shown,
+                    "foreground": {"title": fg_title, "class": fg_class, "focused_value": fg_focused_value},
                     "truncated": len(items) > len(shown), "walk_ms": walk_ms})
 
 
@@ -1337,32 +1395,38 @@ def act():
                 pyautogui.click(pos["x"], pos["y"])
                 time.sleep(0.12)
                 targeted = True
-            # When typing into a SPECIFIC field that already holds a SHORT value (a filename or
-            # search box, pre-filled e.g. "space.txt"), replace it instead of appending -
-            # otherwise it becomes "space.txtspace.txt". Guard by length so we NEVER wipe a
-            # document body the model is writing into (that value is long / empty-then-appended).
-            if targeted:
-                try:
-                    with _uia.UIAutomationInitializerInThread():
-                        fg = _uia.GetForegroundControl()
-                        cur = ""
-                        if fg and hasattr(fg, "GetValuePattern"):
-                            vp = fg.GetValuePattern()
-                            cur = (vp.Value or "") if vp else ""
-                    if cur and len(cur) <= 260:
-                        pyautogui.hotkey("ctrl", "a")
-                        time.sleep(0.05)
-                except Exception:
-                    pass
+            # Caret discipline before typing (see _type_prep). NOTE: this must read the
+            # FOCUSED control - GetForegroundControl() is the top-level WINDOW (no text
+            # value), which is why the old select-all never fired and filenames became
+            # "space.txtspace.txt".
+            try:
+                with _uia.UIAutomationInitializerInThread():
+                    fc = _uia.GetFocusedControl()
+                    ctype = (fc.ControlTypeName or "") if fc else ""
+                    ftop = fc.GetTopLevelControl() if fc else None
+                    top_cls = (ftop.ClassName or "") if ftop else ""
+                    cur = ""
+                    if fc and hasattr(fc, "GetValuePattern"):
+                        vp = fc.GetValuePattern()
+                        cur = (vp.Value or "") if vp else ""
+                prep = _type_prep(ctype, cur, targeted, top_cls)
+                if prep == "replace":
+                    pyautogui.hotkey("ctrl", "a")
+                    time.sleep(0.05)
+                elif prep == "append":
+                    pyautogui.hotkey("ctrl", "end")
+                    time.sleep(0.05)
+            except Exception:
+                pass
             type_text(text)
             did = "typed into \"%s\"" % (target or ("element " + str(eid)) if eid is not None else "the focused field")
             log_action("act", action + ": " + (target or did))
             typed_verified = None
             try:
                 with _uia.UIAutomationInitializerInThread():
-                    fg = _uia.GetForegroundControl()
-                    if fg and hasattr(fg, "GetValuePattern"):
-                        vp = fg.GetValuePattern()
+                    fc = _uia.GetFocusedControl()
+                    if fc and hasattr(fc, "GetValuePattern"):
+                        vp = fc.GetValuePattern()
                         if vp and text:
                             cur = (vp.Value or "")
                             typed_verified = text.strip()[:40] in cur

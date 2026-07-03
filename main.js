@@ -1089,6 +1089,7 @@ async function verifyAutomationDone(cfg, goal) {
     const els = await sidecarCall('/elements', {});
     if (!els || !els.ok) return null; // can't observe -> accept done rather than trap the run
     const fg = (els.foreground && els.foreground.title) || '(unknown)';
+    const fval = (els.foreground && els.foreground.focused_value) || '';
     const names = (els.elements || []).slice(0, 40)
       .map((e) => e.type.replace('Control', '') + ':' + e.name).join('; ');
     const parseVerdict = (raw) => {
@@ -1111,7 +1112,7 @@ async function verifyAutomationDone(cfg, goal) {
     try {
       await streamChat({
         baseUrl: c.baseUrl, apiKey: c.apiKey, model: c.model, temperature: 0,
-        messages: [{ role: 'user', content: 'The automation goal was: "' + goal + '". Observed via the Windows accessibility tree RIGHT NOW - foreground window: "' + fg + '". Visible elements: ' + (names || '(none)') + '. Based only on that, is the goal fully accomplished? Reply with ONLY: {"complete": true or false, "reason": "one short sentence"}' }],
+        messages: [{ role: 'user', content: 'The automation goal was: "' + goal + '". Observed via the Windows accessibility tree RIGHT NOW - foreground window: "' + fg + '".' + (fval ? ' Focused field text: "' + fval + '".' : '') + ' Visible elements: ' + (names || '(none)') + '. Based only on that, is the goal fully accomplished? Reply with ONLY: {"complete": true or false, "reason": "one short sentence"}' }],
         onToken: (d) => { raw += d; }
       });
     } catch (_e) { return null; }
@@ -1290,12 +1291,14 @@ async function runAutomationLoop(goal) {
     // the element inventory + foreground title here, and the state reports in its history.
     let elementList = [];
     let foregroundTitle = '';
+    let focusedValue = '';
     let elementText = '(element list unavailable - describe targets in plain English)';
     try {
       const els = await sidecarCall('/elements', {});
       if (els && els.ok && Array.isArray(els.elements)) {
         elementList = els.elements;
         foregroundTitle = (els.foreground && els.foreground.title) || '';
+        focusedValue = (els.foreground && els.foreground.focused_value) || '';
         // Cap the list shown to the planner to keep the per-step prompt small (token budget):
         // it's already ranked interactive-first, so the top 40 hold what matters. The full list
         // stays cached server-side for id resolution.
@@ -1324,6 +1327,7 @@ async function runAutomationLoop(goal) {
       'RECENT STEPS: ' + (automationState.history.length ? JSON.stringify(automationState.history.slice(-6)) : '(none yet)') + '\n' +
       'You see the screen through the Windows accessibility tree (not an image). ' +
       'Foreground window: "' + (foregroundTitle || 'unknown') + '".\n' +
+      (focusedValue ? 'FOCUSED FIELD TEXT NOW: "' + focusedValue + '"\n' : '') +
       'ELEMENTS ON SCREEN NOW (id | type | name; * = focused):\n' + elementText + '\n\n' +
       'Choose the SINGLE next action and reply with ONLY one JSON object (no prose, no code fence).\n' +
       'action = one of: open_app, click, rightclick, doubleclick, type, hotkey, scroll, drag, shell, files, done.\n' +
@@ -1331,6 +1335,9 @@ async function runAutomationLoop(goal) {
       '- To click or type into a listed element, set "element_id" to its number (EXACT - always prefer this over "target").\n' +
       '- To launch an app, use {"action":"open_app","app":"notepad"} - NEVER click a taskbar/Start icon to launch.\n' +
       '- "type" needs "text" (what to type). To put text in a specific field, also give its "element_id".\n' +
+      '- To WRITE into an editor/document: ONE type action with the FULL text and the editor’s element_id. The engine appends to existing text - NEVER re-type text the state already shows.\n' +
+      '- Calculator: type the whole expression instead of clicking buttons (e.g. {"action":"type","text":"27*40="}), then read the result from the "Display is" element and reply done with it as final_answer.\n' +
+      '- To save a file: hotkey ctrl+s, then ONE type with the filename and the dialog’s filename element_id (it replaces the suggested name), then hotkey enter.\n' +
       '- "hotkey" needs "keys" (e.g. "ctrl+s", "ctrl+a", "enter"). Do NOT use win+d unless the goal is literally about the desktop.\n' +
       '- "scroll" needs "scroll_dir" ("up"/"down"); "drag" needs "drag_to"; "shell" needs "cmd"; "done" needs "final_answer".\n' +
       '- Always include a one-sentence "thought". If the last step did not change the screen, do something DIFFERENT.\n' +
@@ -1683,7 +1690,7 @@ async function runAutomationLoop(goal) {
           }
         } else {
           const st = r.state || {};
-          const stateNote = st.foreground_title ? (' | now: ' + st.foreground_title + (st.focused_name ? ' / focused: ' + st.focused_name : '') + (st.new_window ? ' | NEW WINDOW: ' + st.new_window : '')) : '';
+          const stateNote = st.foreground_title ? (' | now: ' + st.foreground_title + (st.focused_name ? ' / focused: ' + st.focused_name : '') + (st.focused_value ? ' / field text: "' + String(st.focused_value).slice(0, 120) + '"' : '') + (st.new_window ? ' | NEW WINDOW: ' + st.new_window : '')) : '';
           activity.push({ kind: 'action', text: '\u2022 ' + (r.did || stepObj.action) + (targetLabel ? ' (' + targetLabel + ')' : ''), time: clockTime() });
           automationState.history.push((r.did || (stepObj.action + ' ' + targetLabel)) + stateNote + (r.typed_verified === false ? ' [WARN: typed text not confirmed in field]' : ''));
           automationState.lastState = st;

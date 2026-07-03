@@ -41,6 +41,38 @@ def test_rank_interactive_before_static_and_named_before_synth():
     assert ordered[-1]["type"] == "TextControl"       # static text last
 
 
+def test_type_prep_replaces_short_single_line_edit_values():
+    # Save-dialog filename box, pre-filled "space.txt": select-all so typing REPLACES it
+    # (the space.txtspace.txt bug). Applies when we clicked the field (targeted) or when
+    # the focused field lives in a Win32 dialog (#32770) - the field is pre-focused there.
+    assert A._type_prep("EditControl", "space.txt", True, "Notepad") == "replace"
+    assert A._type_prep("EditControl", "space.txt", False, "#32770") == "replace"
+
+
+def test_type_prep_appends_to_documents_never_replaces():
+    # A document body must NEVER be selected-and-replaced; move the caret to the end so a
+    # focus click can't leave it mid-text (the interleaved-paragraph bug).
+    assert A._type_prep("DocumentControl", "some text", True, "Notepad") == "append"
+    assert A._type_prep("EditControl", "x" * 300, True, "Notepad") == "append"
+    assert A._type_prep("EditControl", "line1\nline2", True, "Notepad") == "append"
+
+
+def test_type_prep_leaves_caret_alone_when_safe():
+    # Untargeted typing outside a dialog: the caret is where the app put it - don't touch.
+    assert A._type_prep("EditControl", "short doc", False, "Notepad") == "none"
+    # Empty field: nothing to clear or append to.
+    assert A._type_prep("EditControl", "", True, "#32770") == "none"
+    assert A._type_prep("DocumentControl", "", True, "Notepad") == "none"
+
+
+def test_should_paste_long_or_multiline_text():
+    # Long/multi-line text pastes atomically (one ctrl+v) instead of ~6s of keystrokes that
+    # stray focus changes can garble mid-way.
+    assert A._should_paste("hello") is False
+    assert A._should_paste("x" * 200) is True
+    assert A._should_paste("two\nlines") is True
+
+
 if __name__ == "__main__":
     import types
     for name, fn in sorted(globals().items()):
