@@ -8,6 +8,12 @@
 > `useLocalVision` / `useLocalStt` settings migrate automatically. First launch now
 > opens an onboarding wizard (name + wake word, Windows version, permissions, voice,
 > calibration, hotkey) - re-runnable from Settings → Setup.
+>
+> **Automation:** Caryl now grounds desktop automation on the Windows accessibility tree
+> (UIA) - it clicks exact named elements instead of guessing pixels, and if it can't
+> identify a control it asks you to pick rather than clicking blindly. Tasks you request
+> run immediately; only shell commands and file deletes still ask first. Restore the old
+> approve-a-plan-first flow via Settings → Desktop Automation → "Preview & approve a plan".
 
 Everything now lives in ONE app: your existing online build at `D:\brain-ai\brain-ai`,
 with a switchable **Online (cloud API)** / **Offline (local Ollama)** mode. The online

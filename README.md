@@ -66,3 +66,7 @@ anywhere except your chat text going to the API provider you chose, using your o
 - `lib/config.js` — settings + provider presets (`%APPDATA%/Caryl.ai/settings.json`).
 - `renderer/` — chat UI, floating overlay + bubble, onboarding wizard (`onboarding.html`).
 - `automation.py` — Python sidecar: UIA-first desktop automation, VAD, faster-whisper STT.
+  Grounds on the accessibility tree: `/elements` inventory (incl. unnamed controls),
+  act-by-element-id, deterministic `open_app`, and pause-&-ask when a control can't be
+  identified confidently. Requested tasks run immediately (no plan-approval gate by
+  default); shell commands and file deletes still confirm.
