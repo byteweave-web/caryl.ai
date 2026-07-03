@@ -72,6 +72,24 @@ function engineOf(capability) {
   return enginesLib.resolveEngine(config.get(), capability);
 }
 
+// ===================== OS-aware shell (Win10 vs Win11) =====================
+// Windows 11 = build 22000+. Stored once at boot, user-overridable in onboarding/Settings.
+// Win11 gets real DWM acrylic blur on the overlay; Win10 gets solid fallbacks (native
+// blur-behind doesn't exist there - a transparent tint would just show raw desktop).
+function detectOsVariant() {
+  if (process.platform !== 'win32') return 'other';
+  const build = parseInt((os.release() || '').split('.')[2] || '0', 10);
+  return build >= 22000 ? 'win11' : 'win10';
+}
+
+// What every window (current and future - research overlay, camera mode) asks before
+// choosing between blur and solid treatments.
+function shellStyle() {
+  const cfg = config.get();
+  const osVariant = cfg.osVariant || detectOsVariant();
+  return { osVariant, blur: osVariant === 'win11' };
+}
+
 // ===================== [OFFLINE-INTEGRATION] Mode resolution =====================
 // Everything below funnels through these helpers instead of reading cfg.baseUrl /
 // cfg.apiKey / cfg.model directly, so ONE config key (cfg.mode) flips the whole app
@@ -2271,7 +2289,7 @@ function createOverlay() {
     frame: false, transparent: true, hasShadow: false, resizable: false, roundedCorners: false, // sharp on purpose - see CSS
     skipTaskbar: true, alwaysOnTop: true, show: false, fullscreenable: false,
     backgroundColor: '#00000000',
-    backgroundMaterial: process.platform === 'win32' ? 'acrylic' : undefined, // Win11 22H2+; no-op elsewhere
+    backgroundMaterial: (process.platform === 'win32' && shellStyle().blur) ? 'acrylic' : undefined, // Win11 22H2+ only; Win10 renders solid via CSS data-os fallback
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, nodeIntegration: false, sandbox: false,
@@ -2872,6 +2890,7 @@ app.whenReady().then(() => {
       return new Response('not found', { status: 404 });
     }
   });
+  if (!config.get().osVariant) config.set({ osVariant: detectOsVariant() }); // once; onboarding can override
   memory.init();
   rebuildActivityFromMemory();
   createWindow();
@@ -2910,6 +2929,7 @@ app.on('window-all-closed', () => {
 
 // ---- IPC: settings (used by the AI Engine section) ----
 ipcMain.handle('config:get', () => config.get());
+ipcMain.handle('shell:style', () => shellStyle());
 ipcMain.handle('config:set', (_e, patch) => {
   const prev = config.get(); // [OFFLINE-INTEGRATION] snapshot so we can detect what changed
   const r = config.set(patch || {});

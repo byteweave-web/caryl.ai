@@ -493,6 +493,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
 </div>
 
 <script>
+// OS-aware treatment: Win11 keeps blur effects, Win10 falls back to solid backgrounds.
+window.bridge.getShellStyle().then(function (s) {
+  document.documentElement.dataset.os = (s && s.osVariant) || 'win10';
+}).catch(function () { document.documentElement.dataset.os = 'win10'; });
 let lastStatus = {};
 let orb = {level:0, speaking:false, target:0};
 

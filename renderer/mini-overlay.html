@@ -269,6 +269,10 @@ html,body{height:100%;margin:0;background:transparent;overflow:hidden;-webkit-fo
   </div>
 
 <script>
+// OS-aware treatment (the orb is solid by design; this future-proofs any translucent bits).
+window.bridge.getShellStyle().then(function (s) {
+  document.documentElement.dataset.os = (s && s.osVariant) || 'win10';
+}).catch(function () { document.documentElement.dataset.os = 'win10'; });
 (function(){
   if (window.__miniOverlayBootstrapped) {
     console.warn('[mini-overlay] bootstrap already ran, skipping duplicate initialization');

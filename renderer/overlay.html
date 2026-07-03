@@ -54,6 +54,12 @@ button{font-family:inherit;cursor:pointer}
     0 46px 130px -30px rgba(127,209,255,.07);
   transition:box-shadow .25s ease;
 }
+/* Windows 10: DWM acrylic doesn't exist, so a transparent panel would show raw desktop
+   through a tint. Same palette, fully solid, no backdrop-filter. */
+html[data-os="win10"] #panel{
+  background:#10141c;
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+}
 #panel::before{ /* the razor-thin gradient edge */
   content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
   background:linear-gradient(180deg, var(--edge-hi), var(--edge-lo) 55%, var(--edge-lo));
@@ -210,6 +216,10 @@ button{font-family:inherit;cursor:pointer}
   </div>
 
 <script>
+// OS-aware treatment: Win11 keeps blur, Win10 gets solid CSS (fail solid, never transparent).
+window.bridge.getShellStyle().then(function (s) {
+  document.documentElement.dataset.os = (s && s.osVariant) || 'win10';
+}).catch(function () { document.documentElement.dataset.os = 'win10'; });
 (function(){
   if (window.__overlayBootstrapped) {
     console.warn('[overlay] bootstrap already ran, skipping duplicate initialization');

@@ -8,6 +8,8 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('bridge', {
   // settings (AI Engine section)
   getConfig: () => ipcRenderer.invoke('config:get'),
+  // OS-aware shell: { osVariant: 'win10'|'win11'|'other', blur: boolean }
+  getShellStyle: () => ipcRenderer.invoke('shell:style'),
   setConfig: (patch) => ipcRenderer.invoke('config:set', patch),
   clearMemory: () => ipcRenderer.invoke('memory:clear'),
 
