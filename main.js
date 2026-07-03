@@ -2200,11 +2200,22 @@ ipcMain.handle('stt:transcribe', async (_e, arrayBuffer) => {
 // downloaded once into userData; the renderer runs them via onnxruntime-web (loaded from CDN),
 // so there's no native dependency and the portable build stays clean.
 function wakewordDir() { return path.join(app.getPath('userData'), 'openwakeword'); }
-const WAKEWORD_MODELS = {
-  'melspectrogram.onnx': 'https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx',
-  'embedding_model.onnx': 'https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx',
-  'hey_jarvis_v0.1.onnx': 'https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/hey_jarvis_v0.1.onnx'
+const WAKEWORD_BASE = 'https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/';
+const WAKEWORD_CORE = {
+  'melspectrogram.onnx': WAKEWORD_BASE + 'melspectrogram.onnx',
+  'embedding_model.onnx': WAKEWORD_BASE + 'embedding_model.onnx'
 };
+// Curated pretrained classifiers - the phrases openWakeWord ships reliable models for.
+// (Arbitrary custom names would need per-phrase training; deliberately out of scope.
+// The assistant's DISPLAY name is free-form regardless - see assistantName.)
+const WAKE_WORD_CHOICES = [
+  { file: 'hey_jarvis_v0.1.onnx', label: 'Jarvis', phrase: 'Hey Jarvis' },
+  { file: 'alexa_v0.1.onnx', label: 'Alexa', phrase: 'Alexa' },
+  { file: 'hey_mycroft_v0.1.onnx', label: 'Mycroft', phrase: 'Hey Mycroft' },
+  { file: 'hey_rhasspy_v0.1.onnx', label: 'Rhasspy', phrase: 'Hey Rhasspy' }
+];
+const WAKEWORD_MODELS = Object.assign({}, WAKEWORD_CORE);
+WAKE_WORD_CHOICES.forEach((c) => { WAKEWORD_MODELS[c.file] = WAKEWORD_BASE + c.file; });
 
 // Ensure the model files exist locally (download any that are missing). Reports progress.
 ipcMain.handle('wakeword:ensure', async () => {
@@ -2212,7 +2223,11 @@ ipcMain.handle('wakeword:ensure', async () => {
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_e) {}
   const send = (msg) => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('wakeword:progress', msg); } catch (_e) {} };
   try {
-    const names = Object.keys(WAKEWORD_MODELS);
+    // Core (mel + embedding) plus ONLY the selected classifier - not the whole catalog.
+    const selected = config.get().wakeWordModel || 'hey_jarvis_v0.1.onnx';
+    const names = Object.keys(WAKEWORD_CORE).concat(
+      Object.prototype.hasOwnProperty.call(WAKEWORD_MODELS, selected) ? [selected] : ['hey_jarvis_v0.1.onnx']
+    );
     for (let i = 0; i < names.length; i++) {
       const name = names[i];
       const dest = path.join(dir, name);
@@ -3036,6 +3051,7 @@ ipcMain.handle('ui:status', () => {
     // Per-capability hybrid routing (drives the Engines & Models card + onboarding)
     engines: enginesLib.normalizeEngines(cfg).engines,
     wake_word_model: cfg.wakeWordModel || 'hey_jarvis_v0.1.onnx',
+    wake_word_choices: WAKE_WORD_CHOICES,
     // [OFFLINE-INTEGRATION] extra fields for the AI Mode settings card (harmless elsewhere)
     mode: cfg.mode || 'online',
     ollama_up: ollama.isUp(),

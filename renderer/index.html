@@ -1605,7 +1605,8 @@ async function toggleLocalWake(on){
     _lwStarting=true;
     try{
       const thr=parseFloat((document.getElementById('lw-thresh')||{}).value||'0.5');
-      await WakeWord.start({ threshold: thr });
+      const cfgWW=await window.bridge.getConfig();
+      await WakeWord.start({ threshold: thr, model: cfgWW.wakeWordModel || undefined });
     }catch(e){
       // failed -> flip the toggle back off so the UI matches reality
       const t=document.getElementById('tog-localwake'); if(t) t.checked=false;

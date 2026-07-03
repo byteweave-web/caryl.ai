@@ -25,6 +25,7 @@
   let running = false, loaded = false;
   let threshold = 0.5;
   let lastDetect = 0;
+  let wwModelName = 'hey_jarvis_v0.1.onnx'; // which classifier to run; set via start({model})
 
   // rolling buffers
   let pcm = new Float32Array(0);       // leftover audio samples not yet stepped
@@ -68,7 +69,7 @@
     status('Loading wake-word models\u2026');
     melSession = await makeSession('melspectrogram.onnx');
     embSession = await makeSession('embedding_model.onnx');
-    wwSession = await makeSession('hey_jarvis_v0.1.onnx');
+    wwSession = await makeSession(wwModelName);
     loaded = true;
     status('Wake-word models ready.');
     try { cb.ready(); } catch (e) { }
@@ -145,7 +146,7 @@
     if (score >= threshold && (now - lastDetect) > COOLDOWN_MS) {
       lastDetect = now;
       embBuffer = [];        // reset so we don't re-fire on the same utterance
-      log('DETECTED hey_jarvis score=' + score.toFixed(3));
+      log('DETECTED ' + wwModelName + ' score=' + score.toFixed(3));
       try { cb.detect(score); } catch (e) { }
     }
   }
@@ -186,6 +187,7 @@
       if (running) return;
       opts = opts || {};
       if (typeof opts.threshold === 'number') this.setThreshold(opts.threshold);
+      if (opts.model && opts.model !== wwModelName) { wwModelName = String(opts.model); loaded = false; } // switch classifier -> rebuild sessions
       try {
         status('Preparing wake-word models\u2026');
         const ens = await window.bridge.wakewordEnsure();
@@ -242,7 +244,7 @@
         processor.connect(audioCtx.destination);
         melBuffer = []; embBuffer = []; pcm = new Float32Array(0);
         running = true;
-        status('Listening for \u201CHey Jarvis\u201D\u2026');
+        status('Listening for the wake word\u2026');
       } catch (e) {
         running = false;
         status('Wake word off (' + ((e && e.message) || e) + ')');
