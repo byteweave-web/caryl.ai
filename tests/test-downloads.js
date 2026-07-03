@@ -7,23 +7,33 @@ const downloads = require('../lib/downloads');
 
 const wwDir = path.join(os.tmpdir(), 'caryl-dl-test-' + Date.now());
 fs.mkdirSync(wwDir, { recursive: true });
+// Empty disk roots: isolate these tests from whatever is really installed on this PC.
+const emptyOllama = path.join(os.tmpdir(), 'caryl-dl-ollama-empty-' + Date.now());
+const emptyHub = path.join(os.tmpdir(), 'caryl-dl-hub-empty-' + Date.now());
+fs.mkdirSync(emptyOllama, { recursive: true });
+fs.mkdirSync(emptyHub, { recursive: true });
+
+const baseDeps = {
+  config: { get: () => ({ offlineModel: 'qwen2.5:7b', wakeWordModel: 'hey_jarvis_v0.1.onnx' }) },
+  defaultOfflineModel: 'qwen2.5:7b',
+  wakewordDir: () => wwDir,
+  wakewordFiles: () => ['melspectrogram.onnx', 'embedding_model.onnx'],
+  ensureWakeword: async () => ({ ok: true, dir: wwDir }),
+  ollamaModelsDir: () => emptyOllama,
+  hfHubDir: () => emptyHub
+};
 
 let pulled = null;
-downloads.init({
-  config: { get: () => ({ offlineModel: 'qwen2.5:7b', wakeWordModel: 'hey_jarvis_v0.1.onnx' }) },
+downloads.init(Object.assign({}, baseDeps, {
   ollama: {
     isUp: () => false,
     findExe: () => null,
     listTags: async () => [],
     pullModel: async (m) => { pulled = m; }
   },
-  defaultOfflineModel: 'qwen2.5:7b',
-  wakewordDir: () => wwDir,
-  wakewordFiles: () => ['melspectrogram.onnx', 'embedding_model.onnx'],
-  ensureWakeword: async () => ({ ok: true, dir: wwDir }),
   sidecarGet: async () => { throw new Error('sidecar down'); },
   sidecarWarmStt: async () => ({ ok: false, error: 'not running' })
-});
+}));
 
 (async () => {
   const st = await downloads.status();
@@ -32,7 +42,10 @@ downloads.init({
   assert.deepStrictEqual(ids, ['ollama-runtime', 'chat-model', 'vision-model', 'whisper-stt', 'piper-voice', 'wakeword-models']);
   assert.ok(st.every((a) => typeof a.installed === 'boolean' && typeof a.label === 'string' && a.sizeMB > 0));
   assert.strictEqual(st[0].installed, false); // no ollama
-  assert.strictEqual(st[3].detail, 'sidecar not running');
+  // Plain-English details - no "needs X running to check" jargon anywhere.
+  assert.ok(st.every((a) => !/running to check|sidecar not running/.test(a.detail || '')), 'jargon details are gone');
+  assert.strictEqual(st[1].installed, false); // nothing on the (empty) disk roots
+  assert.strictEqual(st[3].installed, false);
 
   // routing
   let r = await downloads.start('ollama-runtime', () => {});
@@ -48,22 +61,43 @@ downloads.init({
   assert.ok(/unknown asset/.test(r.error));
 
   // ollama up -> chat model pull routes through ollama.pullModel
-  downloads.init({
-    config: { get: () => ({ offlineModel: 'qwen2.5:7b', wakeWordModel: 'hey_jarvis_v0.1.onnx' }) },
+  downloads.init(Object.assign({}, baseDeps, {
     ollama: { isUp: () => true, findExe: () => 'ollama.exe', listTags: async () => ['moondream:latest'], pullModel: async (m) => { pulled = m; } },
-    defaultOfflineModel: 'qwen2.5:7b',
-    wakewordDir: () => wwDir,
-    wakewordFiles: () => ['melspectrogram.onnx', 'embedding_model.onnx'],
-    ensureWakeword: async () => ({ ok: true }),
     sidecarGet: async () => ({ available: true, cached: ['base.en'] }),
     sidecarWarmStt: async () => ({ ok: true })
-  });
+  }));
   const st2 = await downloads.status();
   assert.strictEqual(st2[2].installed, true);  // moondream tag present -> vision installed
   assert.strictEqual(st2[3].installed, true);  // whisper available + cached
   r = await downloads.start('chat-model', () => {});
   assert.strictEqual(r.ok, true);
   assert.strictEqual(pulled, 'qwen2.5:7b');
+
+  // ---- Disk-level detection: services DOWN but assets on disk -> installed. ----
+  // This is the every-launch case: Ollama and the sidecar are lazy-started, so the
+  // panel must answer "is it installed?" from disk artifacts alone.
+  const diskOllama = path.join(os.tmpdir(), 'caryl-dl-ollama-' + Date.now());
+  const lib = path.join(diskOllama, 'manifests', 'registry.ollama.ai', 'library');
+  fs.mkdirSync(path.join(lib, 'qwen2.5'), { recursive: true });
+  fs.writeFileSync(path.join(lib, 'qwen2.5', '7b'), '{"manifest":true}');
+  fs.mkdirSync(path.join(lib, 'moondream'), { recursive: true });
+  fs.writeFileSync(path.join(lib, 'moondream', 'latest'), '{"manifest":true}');
+  const diskHub = path.join(os.tmpdir(), 'caryl-dl-hub-' + Date.now());
+  const snap = path.join(diskHub, 'models--Systran--faster-whisper-base.en', 'snapshots', 'abc123');
+  fs.mkdirSync(snap, { recursive: true });
+  fs.writeFileSync(path.join(snap, 'model.bin'), 'x');
+
+  downloads.init(Object.assign({}, baseDeps, {
+    ollama: { isUp: () => false, findExe: () => null, listTags: async () => [], pullModel: async () => {} },
+    sidecarGet: async () => { throw new Error('sidecar down'); },
+    sidecarWarmStt: async () => ({ ok: false }),
+    ollamaModelsDir: () => diskOllama,
+    hfHubDir: () => diskHub
+  }));
+  const st3 = await downloads.status();
+  assert.strictEqual(st3[1].installed, true, 'chat model manifest on disk -> installed without Ollama running');
+  assert.strictEqual(st3[2].installed, true, 'vision model manifest on disk -> installed without Ollama running');
+  assert.strictEqual(st3[3].installed, true, 'whisper HF cache on disk -> installed without sidecar running');
 
   console.log('test-downloads: all assertions passed');
 })().catch((e) => { console.error(e); process.exit(1); });

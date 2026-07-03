@@ -896,7 +896,8 @@ async function refreshDownloadsList(){
   try{ assets=await window.bridge.downloadsStatus(); }
   catch(e){ el.innerHTML='<div class="statusline bad">'+escapeHtml(String(e))+'</div>'; return; }
   el.innerHTML=assets.map(function(a){
-    const state=a.installed?'<span style="color:#7dff9a">&#9679; installed</span>':'<span style="color:#889">&#9675; ~'+a.sizeMB+' MB</span>';
+    const size=a.sizeMB>=1000?(a.sizeMB/1000).toFixed(1).replace(/\.0$/,'')+' GB':a.sizeMB+' MB';
+    const state=a.installed?'<span style="color:var(--ok)">&#9679; Ready</span>':'<span style="color:var(--faint)">&#9675; '+size+' download</span>';
     const btn=a.installed?'':'<button class="minibtn" onclick="startDownload(\''+a.id+'\')">Download</button>';
     return '<div class="row" style="align-items:center"><div><div class="l">'+escapeHtml(a.label)+'</div><div class="d">'+state+(a.detail?' &middot; '+escapeHtml(a.detail):'')+' <span id="dlp-'+a.id+'"></span></div></div>'+btn+'</div>';
   }).join('');
