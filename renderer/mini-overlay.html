@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: brainimg:; connect-src 'self' https:; font-src 'self' data:;">
-<title>BRAIN bubble</title>
+<title>Caryl bubble</title>
 <style>
 /* ============================================================
    THE THUMB-BUBBLE - its own window, its own file, on purpose.
@@ -342,7 +342,7 @@ html,body{height:100%;margin:0;background:transparent;overflow:hidden;-webkit-fo
     });
   }catch(e){ console.error('[mini-overlay] drag-and-drop setup FAILED:', e); }
 
-  // ---------- reflect BRAIN's live status: ring state, name, and accent THEME ----------
+  // ---------- reflect Caryl's live status: ring state, name, and accent THEME ----------
   let lastName='', lastAccent='';
   async function refresh(){
     try{
@@ -353,7 +353,7 @@ html,body{height:100%;margin:0;background:transparent;overflow:hidden;-webkit-fo
       if(s.ai_status==='thinking') st='thinking';
       else if(s.ai_status==='working'||s.ai_status==='researching') st='working';
       $('bubble').dataset.state = st;
-      const nm = s.assistant_name || 'BRAIN';
+      const nm = s.assistant_name || 'Caryl';
       if(nm!==lastName){ lastName=nm; $('orb-mark').textContent = nm.slice(0,1).toUpperCase(); }
       const ac = (s.accent_color || '#7fd1ff').toLowerCase();
       if(ac!==lastAccent){

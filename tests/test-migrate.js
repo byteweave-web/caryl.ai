@@ -22,9 +22,16 @@ let legacy = tmp('legacy2');
 fs.writeFileSync(path.join(legacy, 'settings.json'), JSON.stringify({ apiKey: 'k123', mode: 'offline' }));
 fs.mkdirSync(path.join(legacy, 'openwakeword'), { recursive: true });
 fs.writeFileSync(path.join(legacy, 'openwakeword', 'model.onnx'), 'bytes');
+// Chromium cache dirs must NOT be copied (they're huge and regenerate on their own)
+fs.mkdirSync(path.join(legacy, 'Cache'), { recursive: true });
+fs.writeFileSync(path.join(legacy, 'Cache', 'blob'), 'x'.repeat(1000));
+fs.mkdirSync(path.join(legacy, 'GPUCache'), { recursive: true });
+fs.writeFileSync(path.join(legacy, 'GPUCache', 'blob'), 'x');
 newDir = tmp('new2');
 r = migrateUserData(newDir, [legacy]);
 assert.strictEqual(r.migrated, true);
+assert.ok(!fs.existsSync(path.join(newDir, 'Cache')), 'Cache dir must be skipped');
+assert.ok(!fs.existsSync(path.join(newDir, 'GPUCache')), 'GPUCache dir must be skipped');
 assert.strictEqual(r.from, legacy);
 const moved = JSON.parse(fs.readFileSync(path.join(newDir, 'settings.json'), 'utf8'));
 assert.strictEqual(moved.apiKey, 'k123');

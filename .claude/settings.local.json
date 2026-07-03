@@ -3,7 +3,21 @@
     "allow": [
       "Bash(git init *)",
       "Bash(git add *)",
-      "Bash(git commit -m 'Baseline: working BRAIN.AI snapshot before Caryl.ai overhaul *)"
+      "Bash(git commit -m 'Baseline: working BRAIN.AI snapshot before Caryl.ai overhaul *)",
+      "Bash(git config *)",
+      "Bash(git commit -m 'Add Sub-project A design spec: Caryl.ai foundation & OS-aware shell *)",
+      "Bash(git commit -m 'Add Sub-project A implementation plan \\(12 tasks\\) *)",
+      "Bash(git checkout *)",
+      "Bash(node tests/test-engines.js)",
+      "Bash(git commit -m 'feat: add per-capability engine routing contract \\(lib/engines.js\\) *)",
+      "Bash(node tests/test-migrate.js)",
+      "Bash(npm test *)",
+      "Bash(grep -v \"^$\\\\|^>\")",
+      "Bash(git commit -m 'feat: add one-time BRAIN.AI->Caryl.ai userData migration \\(lib/migrate.js\\) *)",
+      "Bash(grep -v \"^\\\\s*//\")",
+      "Bash(sed -i 's|Caryl<small>\\\\.AI</small>|Caryl<small>.ai</small>|' renderer/index.html)",
+      "Bash(grep -n \"\\\\.venv\\\\\\\\\\\\\\\\Scripts\\\\|pdfjs-dist@\\\\|micDeviceId\" renderer/index.html)",
+      "Bash(git commit -m 'feat: rename to Caryl.ai with automatic legacy data migration *)"
     ]
   }
 }

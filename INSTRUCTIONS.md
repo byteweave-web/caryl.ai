@@ -1,4 +1,4 @@
-# BRAIN.AI - Offline + Online Merge: Install Instructions
+# Caryl.ai (formerly BRAIN.AI) - Offline + Online Merge: Install Instructions
 
 Everything now lives in ONE app: your existing online build at `D:\brain-ai\brain-ai`,
 with a switchable **Online (cloud API)** / **Offline (local Ollama)** mode. The online

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: brainimg:; connect-src 'self' https:; font-src 'self' data:;">
-<title>BRAIN overlay</title>
+<title>Caryl overlay</title>
 <style>
 /* ============================================================
    TOKENS - a self-contained "glass HUD" palette. Cyan accent to
@@ -124,7 +124,7 @@ button{font-family:inherit;cursor:pointer}
 /* ============================================================
    CALIBRATION - "name your assistant". Replaces the body while
    open. Input -> spinner (real save happening) -> green ripple
-   + a genuine spoken confirmation from BRAIN itself.
+   + a genuine spoken confirmation from Caryl itself.
    ============================================================ */
 .calib{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:30px;text-align:center}
 .calib .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
@@ -159,7 +159,7 @@ button{font-family:inherit;cursor:pointer}
     <div class="hud-corner br"></div>
     <div class="bar">
       <span class="dot"></span>
-      <span class="title" id="title">BRAIN</span>
+      <span class="title" id="title">Caryl</span>
       <span class="state" id="state">idle</span>
       <span class="grow"></span>
       <button class="icon-btn" id="btn-name" title="Name your assistant">
@@ -355,7 +355,7 @@ function renderActs(acts){
   const nearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 120;
   const html = acts.map(function(a){
     if(a.kind==='heard') return '<div class="you">'+esc(a.text)+'</div>';
-    if(a.kind==='said')  return '<div class="brain"><span class="label">'+esc(lastName||'BRAIN')+'</span>'+esc(a.text || '\u2026')+'</div>';
+    if(a.kind==='said')  return '<div class="brain"><span class="label">'+esc(lastName||'Caryl')+'</span>'+esc(a.text || '\u2026')+'</div>';
     if(a.kind==='action') return '<div class="sys">'+esc(a.text)+'</div>';
     if(a.kind==='automation_plan'){
       let h='<div class="brain"><div style="margin-bottom:7px">Plan for: <b>'+esc(a.goal)+'</b></div><ol style="margin:0 0 10px 18px;padding:0;font-size:13px;line-height:1.6">';
@@ -381,7 +381,7 @@ async function refresh(){
       if(s.ai_status==='thinking'){ label='thinking'; }
       else if(s.ai_status==='working'||s.ai_status==='researching'){ label='working\u2026'; }
       $('state').textContent = label;
-      const nm = s.assistant_name || 'BRAIN';
+      const nm = s.assistant_name || 'Caryl';
       if(nm!==lastName){ lastName=nm; $('title').textContent=nm; lastSig=''; } // name changed -> force a re-render so labels update too
       const ac = s.accent_color || '#7fd1ff';
       if(ac!==lastAccent){ lastAccent=ac; document.documentElement.style.setProperty('--accent', ac); }

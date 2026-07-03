@@ -1,5 +1,5 @@
 //main.js
-// BRAIN.AI - main process.
+// Caryl.ai - main process.
 // Pure Electron (Node). No Python AI runtime required for ONLINE mode - all "intelligence"
 // comes from a cloud OpenAI-compatible API; this process is the secure bridge between the
 // UI (renderer) and that API, plus local on-disk memory.
@@ -47,6 +47,9 @@ app.on('second-instance', () => {
 
 // Register a tiny scheme so generated images on disk load in the renderer reliably.
 protocol.registerSchemesAsPrivileged([{ scheme: 'brainimg', privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true } }]);
+
+// One-time data migration from the BRAIN.AI era. Must run before the first config read.
+require('./lib/migrate').run(app);
 
 const config = require('./lib/config');
 const memory = require('./lib/memory');
@@ -196,7 +199,7 @@ function buildBudgetedHistory(cfg) {
   const droppedCount = recent.length - kept.length;
   if (droppedCount > 0 && cfg && cfg.summarizeOldHistory !== false) {
     const dropped = recent.slice(0, droppedCount);
-    const gist = dropped.map((m) => (m.role === 'user' ? 'User asked: ' : 'BRAIN replied: ') +
+    const gist = dropped.map((m) => (m.role === 'user' ? 'User asked: ' : 'Assistant replied: ') +
       String(m.content || '').replace(/\s+/g, ' ').slice(0, 80)).join(' | ');
     kept.unshift({ role: 'system', content: 'Earlier in this conversation (summarized): ' + gist });
   }
@@ -697,7 +700,7 @@ async function recheckAutomationHealth() {
       automationRestartAttempts = 0; // it's genuinely working now - don't count this against the crash budget
       console.log('[automation] sidecar ready (pyautogui=' + automationPyautogui + ', uia=' + automationUia + ')');
       if (!automationUia) {
-        console.warn('[automation] UIA element location unavailable (' + (j.uia_error || 'unknown') + '). Clicks will rely on the vision model, which is far less precise. Fix: pip install uiautomation (into the same Python the sidecar uses), then restart BRAIN.');
+        console.warn('[automation] UIA element location unavailable (' + (j.uia_error || 'unknown') + '). Clicks will rely on the vision model, which is far less precise. Fix: pip install uiautomation (into the same Python the sidecar uses), then restart Caryl.');
       }
       const cfg = config.get();
       try {
@@ -1044,7 +1047,7 @@ async function decideStepViaChatModel(cfg, goal, dataUrl, sysSchemaPrompt) {
 // PERSON would follow, not actions a program performs. This nails down that BRAIN itself drives
 // the real mouse/keyboard on THIS machine.
 const AUTOMATION_FRAMING =
-  'You are BRAIN, an assistant that DIRECTLY CONTROLS this Windows PC: you move the real mouse and ' +
+  'You are Caryl, an assistant that DIRECTLY CONTROLS this Windows PC: you move the real mouse and ' +
   'type on the real keyboard to carry out the task YOURSELF, right now, on this computer. You are NOT ' +
   'giving the user advice or a list of instructions for them to follow. Absolutely never suggest ' +
   'watching a tutorial or video, using a phone or any other device, googling a how-to guide, or asking ' +
@@ -1953,7 +1956,7 @@ ipcMain.handle('voice:download', async (_e, voiceId) => {
       const win = (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : null;
       const ask = await dialog.showMessageBox(win, {
         type: 'question', buttons: ['Download', 'Cancel'], defaultId: 0, cancelId: 1, noLink: true,
-        title: 'BRAIN.AI', message: 'Download the natural-voice engine?',
+        title: 'Caryl.ai', message: 'Download the natural-voice engine?',
         detail: 'First-time setup downloads the Piper voice engine (about 25 MB). After this, switching voices is instant.'
       });
       if (ask.response !== 0) { voiceProgress(''); return { ok: false, canceled: true }; }
@@ -2131,7 +2134,7 @@ ipcMain.handle('stt:transcribe', async (_e, arrayBuffer) => {
       return {
         ok: false,
         error: 'Local voice input isn\u2019t ready (' + localErr + '). Fix: install faster-whisper for the sidecar\u2019s Python - ' +
-          '.venv\\Scripts\\python.exe -m pip install faster-whisper - then restart BRAIN. (Or save a free Groq key in Settings to use cloud voice as a fallback.)'
+          '.venv\\Scripts\\python.exe -m pip install faster-whisper - then restart Caryl. (Or save a free Groq key in Settings to use cloud voice as a fallback.)'
       };
     }
     // fall through to the cloud path below with the saved key
@@ -2527,7 +2530,7 @@ async function summarizeDocument(name, text) {
   activeController = new AbortController();
   const sp = makeSpeaker();
   let raw = '';
-  const sys = 'You are BRAIN. The user just imported a document called "' + name + '". Give a clear, concise spoken-style summary (no markdown, no bullet symbols), then invite them to ask questions about it.';
+  const sys = 'You are ' + (config.get().assistantName || 'Caryl') + '. The user just imported a document called "' + name + '". Give a clear, concise spoken-style summary (no markdown, no bullet symbols), then invite them to ask questions about it.';
   try {
     await streamChat({
       baseUrl: ai.baseUrl, apiKey: ai.apiKey, model: ai.model, temperature: cfg.temperature,
@@ -2605,7 +2608,7 @@ function createWindow() {
     minHeight: 480,
     backgroundColor: '#0b0d12',
     show: false,
-    title: 'BRAIN.AI',
+    title: 'Caryl.ai',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -2631,7 +2634,7 @@ function createWindow() {
     if (_askingMedia) return _askingMedia;                  // a prompt is already open
     _askingMedia = dialog.showMessageBox(mainWindow, {
       type: 'question', buttons: ['Allow', 'Block'], defaultId: 0, cancelId: 1, noLink: true,
-      title: 'BRAIN.AI', message: 'Allow BRAIN to use your microphone and camera?',
+      title: 'Caryl.ai', message: 'Allow Caryl to use your microphone and camera?',
       detail: 'Used for voice input and the camera vision feature. The camera only captures a frame when you ask it to. You will only be asked this once.'
     }).then((r) => {
       _mediaAllowed = (r.response === 0);
@@ -2933,7 +2936,7 @@ ipcMain.handle('ui:status', () => {
     ai_status: aiStatus,
     ai_speaking: false,          // no TTS in v1
     brain_model: chatCfg(cfg).model, // [OFFLINE-INTEGRATION] shows the ACTIVE mode's chat model
-    assistant_name: cfg.assistantName || 'BRAIN',
+    assistant_name: cfg.assistantName || 'Caryl',
     accent_color: cfg.accentColor || '#7fd1ff',
     provider: isOffline(cfg) ? 'ollama' : cfg.provider,
     voice_hotkey: activeVoiceHotkey,

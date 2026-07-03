@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BRAIN.AI</title>
+<title>Caryl.ai</title>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
 </script>
@@ -145,7 +145,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
 <canvas id="bg-canvas"></canvas>
 <div class="app">
   <div class="topbar">
-    <div class="brand"><span class="dot"></span>BRAIN<small>.AI</small></div>
+    <div class="brand"><span class="dot"></span>Caryl<small>.ai</small></div>
     <div class="tabs">
       <button class="tab active" data-view="orb" onclick="setView('orb')">Orb</button>
       <button class="tab" data-view="chat" onclick="setView('chat')">Chat</button>
@@ -171,7 +171,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
           <button onclick="stopAutomation()" style="background:var(--bad);border:none;color:#fff;border-radius:8px;padding:6px 13px;font:inherit;font-size:12px;cursor:pointer">Stop</button>
         </div>
         <div class="composer">
-          <input id="chat-input" placeholder="Message BRAIN&hellip;" onkeydown="if(event.key==='Enter')sendText()">
+          <input id="chat-input" placeholder="Message Caryl&hellip;" onkeydown="if(event.key==='Enter')sendText()">
           <button id="mic-btn" onclick="toggleRecording()" title="Talk (click to start, click to stop)" style="background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:10px;width:46px;cursor:pointer;font-size:17px;flex:0 0 auto">&#127908;</button>
           <button id="cam-btn" onclick="toggleCamera()" title="Open the live camera" style="background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:10px;width:46px;cursor:pointer;font-size:17px;flex:0 0 auto">&#128247;</button>
           <button class="send" onclick="sendText()">Send</button>
@@ -213,7 +213,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
       <div id="offline-chat-block" style="display:none">
         <div class="row" style="display:block">
           <div class="l" style="margin-bottom:2px">Offline chat model <span class="d" style="display:inline">(runs on this PC)</span></div>
-          <div class="d">Green dot = already downloaded. Press <b>Use</b> to confirm which model BRAIN should run &mdash; it's greyed out until that model is actually on your PC.</div>
+          <div class="d">Green dot = already downloaded. Press <b>Use</b> to confirm which model Caryl should run &mdash; it's greyed out until that model is actually on your PC.</div>
           <div class="field" style="margin:8px 0 2px">
             <button class="minibtn" onclick="refreshOllamaCard()" title="Re-scan this PC for installed models">Scan for installed models</button>
           </div>
@@ -263,7 +263,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
     <div class="sec">
       <h3>Voice Input</h3>
       <div class="sub">Your global hotkey (<b id="vi-current-hotkey">&mdash;</b>) toggles the mic by default. Turn this on to hold it instead, from anywhere on the PC.</div>
-      <div class="row"><div><div class="l">System-wide push-to-talk</div><div class="d">Hold the global hotkey to record, release to send &mdash; works even while BRAIN is in the background. Off = the hotkey toggles the mic as usual. Needs a one-time native component; falls back to toggle mode automatically if that can't load.</div></div>
+      <div class="row"><div><div class="l">System-wide push-to-talk</div><div class="d">Hold the global hotkey to record, release to send &mdash; works even while Caryl is in the background. Off = the hotkey toggles the mic as usual. Needs a one-time native component; falls back to toggle mode automatically if that can't load.</div></div>
         <label class="sw"><input type="checkbox" id="tog-systemptt" onchange="toggleSystemPtt()"><span></span></label></div>
       <div class="row" style="display:block">
         <div class="l" style="margin-bottom:7px">Hold-to-talk combo <span class="d" style="display:inline">(blank = reuse the global hotkey above)</span></div>
@@ -274,7 +274,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
         </div>
       </div>
       <div class="statusline" id="system-ptt-status">&mdash;</div>
-      <div class="d" style="margin-top:6px">This is separate from the in-window push-to-talk key (<b id="vi-inwindow-hotkey">\</b>) used while BRAIN itself has focus &mdash; that one keeps working no matter what you choose here.</div>
+      <div class="d" style="margin-top:6px">This is separate from the in-window push-to-talk key (<b id="vi-inwindow-hotkey">\</b>) used while Caryl itself has focus &mdash; that one keeps working no matter what you choose here.</div>
     </div>
 
     <div class="sec">
@@ -321,7 +321,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
 
     <div class="sec">
       <h3>Personality</h3>
-      <div class="sub">Tell BRAIN who to be &mdash; tone, style, how it should talk to you.</div>
+      <div class="sub">Tell Caryl who to be &mdash; tone, style, how it should talk to you.</div>
       <textarea id="persona" spellcheck="false" rows="5"
         style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px;font:inherit;font-size:12px;line-height:1.5;outline:none;resize:vertical"
         placeholder="e.g. You are JARVIS: witty, loyal, and concise. Call me 'sir'. Be a little sarcastic but always helpful."></textarea>
@@ -364,7 +364,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
     <div class="sec">
       <h3>Desktop Automation</h3>
       <div class="sub">PyAutoGUI control layer &mdash; grant scoped permissions. <span id="auto-badge" class="badge">&mdash;</span></div>
-      <div style="font-size:11.5px;color:var(--faint);line-height:1.5;margin:-2px 0 12px">BRAIN always proposes a plan and waits for you to approve it before touching the mouse or keyboard, and always asks again before running any shell command &mdash; even mid-plan.</div>
+      <div style="font-size:11.5px;color:var(--faint);line-height:1.5;margin:-2px 0 12px">Caryl always proposes a plan and waits for you to approve it before touching the mouse or keyboard, and always asks again before running any shell command &mdash; even mid-plan.</div>
       <div class="row"><div><div class="l">Allow Mouse Control</div><div class="d">Let it move and click the cursor</div></div>
         <label class="sw"><input type="checkbox" id="tog-mouse" onchange="api('/toggle_mouse_control',{enabled:this.checked})"><span></span></label></div>
       <div class="row"><div><div class="l">Allow System Scripting</div><div class="d">Keyboard automation, shell &amp; system control</div></div>
@@ -461,7 +461,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
     <button onclick="toggleCamera()" title="Exit camera" style="background:rgba(20,20,24,.55);border:1px solid var(--accent);color:#fff;border-radius:11px;padding:10px 15px;font:inherit;font-size:14px;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)">&#8592; Exit</button>
     <div style="display:flex;align-items:center;gap:9px">
       <select id="cam-pick" onchange="switchCamera()" title="Choose camera" style="display:none;background:rgba(20,20,24,.55);border:1px solid var(--accent);color:#fff;border-radius:11px;padding:9px 11px;font:inherit;font-size:12px;outline:none;max-width:190px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);cursor:pointer"></select>
-      <div style="display:flex;align-items:center;gap:7px;color:#fff;font-size:13px;background:rgba(20,20,24,.45);padding:7px 13px;border-radius:20px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;animation:campulse 1.4s infinite"></span> BRAIN is watching</div>
+      <div style="display:flex;align-items:center;gap:7px;color:#fff;font-size:13px;background:rgba(20,20,24,.45);padding:7px 13px;border-radius:20px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;animation:campulse 1.4s infinite"></span> Caryl is watching</div>
     </div>
   </div>
   <div id="cam-stage" style="position:relative;display:inline-flex;align-items:center;justify-content:center">
@@ -776,7 +776,7 @@ async function populateAiMode(){
 
 // ----- Voice Input card: system-wide push-to-talk (Settings -> Voice Input) -----
 // This is separate from the in-window PTT key (ptt_hotkey) shown elsewhere in Settings -
-// that one already works while BRAIN has focus. This card controls whether the GLOBAL voice
+// that one already works while Caryl has focus. This card controls whether the GLOBAL voice
 // hotkey behaves as a toggle (default) or hold-to-talk (needs main.js's native uiohook engine;
 // falls back to toggle automatically if that can't load - syncSettings() shows which).
 async function populateVoiceInputCard(){
@@ -1524,12 +1524,12 @@ let _lwStarting=false, _lwCommandRec=null;
 // mistook your own voice for background noise and set the bar above your actual speaking level
 // (that's why real speech never registered). A continuously-tracked floor avoids that entirely.
 let _lwAmbientFloor=0.006, _lwCapturing=false, _lwAboveSince=0, _lwHeardSpeech=false, _lwLastSpeechAt=0, _lwCapStart=0, _lwFinishFn=null, _lwVadLastLog=0;
-// Follow-up listening: once you're mid-conversation and BRAIN is unfocused in the background,
+// Follow-up listening: once you're mid-conversation and Caryl is unfocused in the background,
 // re-saying "Hey Jarvis" before every single thing gets old fast. So for a short grace window
-// after real activity (you spoke, or BRAIN just replied), the NEXT thing you say starts a
+// after real activity (you spoke, or Caryl just replied), the NEXT thing you say starts a
 // command capture directly - no wake word needed. Deliberately scoped tight: only while
 // unfocused (when focused you've got the text box and mic button right there, so there's
-// nothing for this to add), only while BRAIN isn't currently talking (so it can never mistake
+// nothing for this to add), only while Caryl isn't currently talking (so it can never mistake
 // its own TTS coming out of your speakers for you talking again), and only for a short window
 // so it can't linger and pick up an unrelated conversation later.
 let _followupGraceUntil=0, _fuAboveSince=0, _fuHeard=false;
@@ -2059,11 +2059,11 @@ function refreshSpeakingUI(){
     const ps=document.getElementById('pill-state'); if(ps && ps.textContent==='speaking') ps.textContent='idle';
     const os=document.getElementById('orb-state'); if(os && os.textContent==='speaking') os.textContent='idle';
   }
-  // Follow-up grace window: start the 25s clock the moment BRAIN actually finishes being
+  // Follow-up grace window: start the 25s clock the moment Caryl actually finishes being
   // "engaged" with you - done talking (or done generating, if TTS is off) - NOT while the
   // reply text is still streaming in. That was the bug: a long reply's TEXT finishes well
   // before its VOICE does, so refreshing on text changes let the window run out mid-speech,
-  // leaving nothing left once BRAIN actually stopped talking.
+  // leaving nothing left once Caryl actually stopped talking.
   const busyNow = speakingNow || (lastStatus && (lastStatus.ai_status==='working' || lastStatus.ai_status==='thinking'));
   if(!busyNow && _wasEngaged && !document.hasFocus()){ _followupGraceUntil = Date.now() + FOLLOWUP_GRACE_MS; }
   _wasEngaged = busyNow;

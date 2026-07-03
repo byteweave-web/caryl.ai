@@ -1,9 +1,9 @@
-# BRAIN.AI
+# Caryl.ai
 
-A fast, lightweight desktop AI companion. Pure Electron thin-client — no Python, no
-Ollama, no local model. The intelligence comes from a cloud OpenAI-compatible API, so it
-runs smoothly on any PC and replies in ~1–2 seconds. Your conversation memory is stored
-locally on disk.
+A fast, lightweight desktop AI companion (formerly BRAIN.AI). Electron app with hybrid
+cloud/local intelligence: chat, vision, voice input, and voice output can each run on a
+cloud OpenAI-compatible API or fully locally — in any combination. Your conversation
+memory is stored locally on disk.
 
 ## 1. Install
 
@@ -45,8 +45,9 @@ The portable executable lands in `dist/`. (Installer version: `npm run build:ins
 ## Where your data lives
 
 Settings and memory are JSON files in Electron's per-user data dir
-(`%APPDATA%/BRAIN.AI` on Windows). Nothing is sent anywhere except your chat text going to
-the API provider you chose, using your own key.
+(`%APPDATA%/Caryl.ai` on Windows; data from an old BRAIN.AI install is migrated
+automatically on first launch — the old folder is never modified). Nothing is sent
+anywhere except your chat text going to the API provider you chose, using your own key.
 
 ## Architecture (for later)
 

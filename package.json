@@ -1,7 +1,8 @@
 {
-  "name": "brain-ai",
+  "name": "caryl-ai",
+  "productName": "Caryl.ai",
   "version": "0.1.0",
-  "description": "BRAIN.AI - a fast, lightweight desktop AI companion (cloud thin-client).",
+  "description": "Caryl.ai - a fast, lightweight desktop AI companion (hybrid cloud/local).",
   "main": "main.js",
   "author": "Farouk",
   "license": "UNLICENSED",
@@ -17,8 +18,8 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "com.farouk.brainai",
-    "productName": "BRAIN.AI",
+    "appId": "com.farouk.caryl",
+    "productName": "Caryl.ai",
     "files": [
       "main.js",
       "preload.js",
@@ -43,7 +44,7 @@
       ]
     },
     "portable": {
-      "artifactName": "BRAIN.AI-${version}.${ext}"
+      "artifactName": "Caryl.ai-${version}.${ext}"
     }
   },
   "dependencies": {
