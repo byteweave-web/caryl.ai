@@ -115,6 +115,11 @@ _WHISPER_LRU = OrderedDict()
 _WHISPER_LRU_MAX = 2
 _whisper_lock = threading.Lock()
 
+# Cache of the last /elements walk, so /act can resolve an element_id to exact coordinates
+# without re-walking. Invalidated (overwritten) by the next /elements call.
+_ELEMENT_CACHE = {"items": [], "ts": 0.0}
+_ELEMENT_CAP = 150  # entries shown to the planner; full list stays cached for id resolution
+
 
 def _detect_whisper_device():
     """REFINED: prefer CUDA if faster-whisper + onnxruntime-gpu are installed; else CPU."""
@@ -787,6 +792,120 @@ def locate_via_uia(target):
             "uia": True, "name": name}
 
 
+def _uia_collect_permissive(root, deadline):
+    """Like _uia_collect but yields unnamed elements too (caller decides whether to drop
+    them based on interactivity). Yields (element, name, control_type, rect)."""
+    out = []
+    if root is None:
+        return out
+    try:
+        for el, depth in _uia.WalkControl(root, includeTop=False, maxDepth=_UIA_MAX_DEPTH):
+            if time.time() > deadline or len(out) >= _UIA_MAX_ELEMENTS:
+                break
+            rect = _uia_visible_rect(el)
+            if rect is None:
+                continue
+            try:
+                name = (el.Name or "").strip()
+            except Exception:
+                name = ""
+            try:
+                ctype = el.ControlTypeName or ""
+            except Exception:
+                ctype = ""
+            out.append((el, name, ctype, rect))
+    except Exception as e:
+        log_action("uia_walk_error", str(e)[:200])
+    return out
+
+
+def _uia_prev_static_text(el):
+    """Best-effort: the Name of the nearest preceding sibling that is static text
+    (used to label an adjacent unnamed field). Cheap, defensive, returns ''."""
+    try:
+        parent = el.GetParentControl()
+        if not parent:
+            return ""
+        prev = ""
+        for child in parent.GetChildren():
+            if child == el:
+                return prev
+            try:
+                if (child.ControlTypeName or "") in ("TextControl", "StaticControl") and (child.Name or "").strip():
+                    prev = child.Name.strip()
+            except Exception:
+                pass
+        return prev
+    except Exception:
+        return ""
+
+
+def _uia_labeledby_name(el):
+    try:
+        lb = el.GetLabeledByControl() if hasattr(el, "GetLabeledByControl") else None
+        return (lb.Name or "").strip() if lb else ""
+    except Exception:
+        return ""
+
+
+def _uia_collect_roots(deadline):
+    """Walk foreground + start menu + taskbar + desktop, returning raw element tuples:
+    (el, label, ctype, rect, enabled, focused, synthesized). Named non-interactive
+    elements are kept (context); unnamed elements are kept ONLY if interactive."""
+    out = []
+    try:
+        fg_el = _uia.GetForegroundControl()
+        fg_top = fg_el.GetTopLevelControl() if fg_el else None
+    except Exception:
+        fg_el, fg_top = None, None
+    roots = []
+    if fg_top is not None:
+        roots.append(fg_top)
+    # Start menu / search host (its own top-level window), taskbar, desktop icons.
+    for cls in ("Windows.UI.Core.CoreWindow", "Shell_TrayWnd"):
+        try:
+            w = _uia.WindowControl(searchDepth=1, ClassName=cls)
+            if w.Exists(0.2, 0.05):
+                roots.append(w)
+        except Exception:
+            pass
+    dk = _uia_desktop_root()
+    if dk is not None:
+        roots.append(dk)
+
+    focused_rect = None
+    try:
+        if fg_el:
+            fr = fg_el.BoundingRectangle
+            focused_rect = (fr.left, fr.top, fr.right, fr.bottom)
+    except Exception:
+        focused_rect = None
+
+    for root in roots:
+        if time.time() > deadline:
+            break
+        for el, name, ctype, rect in _uia_collect_permissive(root, deadline):
+            interactive = ctype in INTERACTIVE_TYPES
+            nm = (name or "").strip()
+            if not nm and not interactive:
+                continue  # unnamed AND non-interactive -> nothing the planner can use
+            synthesized = not nm
+            label = _uia_synth_label(nm, ctype, _uia_labeledby_name(el) if synthesized else "",
+                                     _uia_prev_static_text(el) if synthesized else "", "")
+            try:
+                enabled = bool(el.IsEnabled)
+            except Exception:
+                enabled = True
+            focused = False
+            if focused_rect is not None:
+                try:
+                    focused = (rect.left, rect.top, rect.right, rect.bottom) == focused_rect
+                except Exception:
+                    focused = False
+            out.append((el, label, ctype, rect, enabled, focused, synthesized))
+    return out
+
+
 def locate_on_screen(target, max_width=None):
     """Screenshot -> ask main.js's vision webhook where `target` is.
 
@@ -976,6 +1095,54 @@ def _hamming(a, b):
     if a is None or b is None:
         return 999
     return bin(a ^ b).count("1")
+
+
+# -------------------------------------------------------------------- /elements
+@app.route("/elements", methods=["GET", "POST"])
+def elements():
+    """Inventory of actionable on-screen elements right now (foreground + start menu +
+    taskbar + desktop). Caches the full list for /act element_id resolution."""
+    if _uia is None:
+        return jsonify({"ok": False, "error": "uiautomation not available", "elements": []})
+    wide = bool((request.get_json(silent=True) or {}).get("wide")) if request.method == "POST" else False
+    t0 = time.time()
+    deadline = t0 + (_UIA_TIME_BUDGET_S * 2.5 if wide else _UIA_TIME_BUDGET_S)
+    fg_title, fg_class = "", ""
+    items = []
+    try:
+        with _uia.UIAutomationInitializerInThread():
+            try:
+                fg = _uia.GetForegroundControl()
+                top = fg.GetTopLevelControl() if fg else None
+                if top:
+                    fg_title = (top.Name or "")[:120]
+                    fg_class = top.ClassName or ""
+            except Exception:
+                pass
+            raw = _uia_collect_roots(deadline)
+        seen = set()
+        for i, (el, label, ctype, rect, enabled, focused, synth) in enumerate(raw):
+            key = (label, ctype, int(rect.left), int(rect.top))
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append(_uia_element_dict(len(items), label, ctype,
+                                           (rect.left, rect.top, rect.right, rect.bottom),
+                                           enabled, focused, synth))
+    except Exception as e:
+        log_action("elements_error", str(e)[:200])
+        return jsonify({"ok": False, "error": str(e)[:200], "elements": []})
+
+    items.sort(key=_uia_rank_key)
+    for i, it in enumerate(items):  # renumber ids to match the (now ranked) order
+        it["id"] = i
+    _ELEMENT_CACHE["items"] = items
+    _ELEMENT_CACHE["ts"] = time.time()
+    shown = items[:_ELEMENT_CAP]
+    walk_ms = int((time.time() - t0) * 1000)
+    log_action("elements_served", "%d elements (%d shown) in %dms; fg=%r" % (len(items), len(shown), walk_ms, fg_title[:40]))
+    return jsonify({"ok": True, "elements": shown, "foreground": {"title": fg_title, "class": fg_class},
+                    "truncated": len(items) > len(shown), "walk_ms": walk_ms})
 
 
 # ----------------------------------------------------------------------- /act
