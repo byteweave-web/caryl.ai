@@ -1097,6 +1097,69 @@ def _hamming(a, b):
     return bin(a ^ b).count("1")
 
 
+def _uia_top_titles():
+    """Set of current top-level window titles (for new-window detection). Best-effort."""
+    titles = set()
+    if _uia is None:
+        return titles
+    try:
+        root = _uia.GetRootControl()
+        for w in root.GetChildren():
+            try:
+                if (w.ControlTypeName or "") == "WindowControl":
+                    n = (w.Name or "").strip()
+                    if n:
+                        titles.add(n)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return titles
+
+
+def _uia_state_report(prev_titles):
+    """Foreground + focused control snapshot after an action. prev_titles: set from before."""
+    rep = {"foreground_title": "", "foreground_class": "", "focused_name": "",
+           "focused_type": "", "new_window": None}
+    if _uia is None:
+        return rep
+    try:
+        with _uia.UIAutomationInitializerInThread():
+            try:
+                fg = _uia.GetForegroundControl()
+                top = fg.GetTopLevelControl() if fg else None
+                if top:
+                    rep["foreground_title"] = (top.Name or "")[:120]
+                    rep["foreground_class"] = top.ClassName or ""
+                if fg:
+                    rep["focused_name"] = (fg.Name or "")[:80]
+                    rep["focused_type"] = fg.ControlTypeName or ""
+            except Exception:
+                pass
+            now = _uia_top_titles()
+            fresh = now - (prev_titles or set())
+            if fresh:
+                rep["new_window"] = sorted(fresh)[0][:120]
+    except Exception:
+        pass
+    return rep
+
+
+def _uia_resolve_id(element_id):
+    """Return a fresh (x, y, name, ctype) for a cached element id. None if unknown/stale."""
+    try:
+        eid = int(element_id)
+    except Exception:
+        return None
+    for it in _ELEMENT_CACHE.get("items", []):
+        if it["id"] == eid:
+            l, t, r, b = it["rect"]
+            if r - l <= 0 or b - t <= 0:
+                return None
+            return (it["center"][0], it["center"][1], it["name"], it["type"])
+    return None
+
+
 # -------------------------------------------------------------------- /elements
 @app.route("/elements", methods=["GET", "POST"])
 def elements():
@@ -1176,12 +1239,30 @@ def act():
     highlight_ms = int(body.get("highlight_ms") or 0)
 
     try:
+        prev_titles = _uia_top_titles()
         if action in ("click", "rightclick", "doubleclick", "drag"):
-            pos = locate_on_screen(target, max_width=max_width)
+            eid = body.get("element_id", None)
+            allow_vision = bool(body.get("allow_vision", True))  # automation sets this False
+            pos = None
+            if eid is not None and action != "drag":
+                hit = _uia_resolve_id(eid)
+                if hit is None:
+                    return jsonify({"ok": False, "error": "element_id %r not found (list may be stale - re-scan)" % eid,
+                                    "stale_id": True, "state": _uia_state_report(prev_titles)})
+                pos = {"x": hit[0], "y": hit[1], "w": None, "h": None, "uia": True, "name": hit[2]}
+                log_action("act_by_id", "id=%s -> %r (%s) at (%d,%d)" % (eid, hit[2][:40], hit[3], hit[0], hit[1]))
+            if pos is None:
+                pos = locate_on_screen(target, max_width=max_width)
+            # Demote vision: a plain vision guess (not UIA, not deterministic) is suppressed
+            # when the caller disallows it, so the run escalates (re-scan/ask) instead of
+            # clicking a guessed pixel on a regular control.
+            if pos and not allow_vision and not pos.get("uia") and not pos.get("deterministic"):
+                pos = None
             if not pos and retry_width > max_width:
                 pos = locate_on_screen(target, max_width=retry_width)
             if not pos:
-                return jsonify({"ok": False, "error": "could not find \"" + target + "\" on screen"})
+                return jsonify({"ok": False, "error": "could not find \"" + target + "\" on screen",
+                                "state": _uia_state_report(prev_titles)})
             x, y = pos["x"], pos["y"]
             w = pos.get("w")
             h = pos.get("h")
@@ -1223,7 +1304,9 @@ def act():
                 verify = "changed" if diff > 6 else "no_change"
                 did = did + " (verify: " + verify + ", diff=" + str(diff) + ")"
             log_action("act", action + ": " + (target or did))
-            return jsonify({"ok": True, "did": did, "verify": verify, "x": x, "y": y})
+            state = _uia_state_report(prev_titles)
+            log_action("act_verified", "%s -> fg=%r focused=%r%s" % (action, state["foreground_title"][:40], state["focused_name"][:30], " NEWWIN" if state["new_window"] else ""))
+            return jsonify({"ok": True, "did": did, "verify": verify, "x": x, "y": y, "state": state})
 
         elif action == "type":
             text = body.get("text", "")
@@ -1232,7 +1315,8 @@ def act():
                 if not pos and retry_width > max_width:
                     pos = locate_on_screen(target, max_width=retry_width)
                 if not pos:
-                    return jsonify({"ok": False, "error": "could not find \"" + target + "\" to type into"})
+                    return jsonify({"ok": False, "error": "could not find \"" + target + "\" to type into",
+                                    "state": _uia_state_report(prev_titles)})
                 if highlight_ms > 0:
                     _highlight(pos["x"], pos["y"], pos.get("w"), pos.get("h"), highlight_ms)
                 pyautogui.click(pos["x"], pos["y"])
@@ -1240,7 +1324,19 @@ def act():
             type_text(text)
             did = "typed into \"%s\"" % (target or "the focused field")
             log_action("act", action + ": " + (target or did))
-            return jsonify({"ok": True, "did": did})
+            typed_verified = None
+            try:
+                with _uia.UIAutomationInitializerInThread():
+                    fg = _uia.GetForegroundControl()
+                    if fg and hasattr(fg, "GetValuePattern"):
+                        vp = fg.GetValuePattern()
+                        if vp and text:
+                            cur = (vp.Value or "")
+                            typed_verified = text.strip()[:40] in cur
+            except Exception:
+                typed_verified = None
+            state = _uia_state_report(prev_titles)
+            return jsonify({"ok": True, "did": did, "typed_verified": typed_verified, "state": state})
 
         elif action == "scroll":
             direction = body.get("scroll_dir", "down")
