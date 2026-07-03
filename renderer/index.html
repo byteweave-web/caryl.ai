@@ -1880,6 +1880,7 @@ function genStyled(ev, id, key){
 function approveAutomationPlan(id){ window.bridge.automationApprovePlan(id); }
 function cancelAutomationPlan(id){ window.bridge.automationCancelPlan(id); }
 function confirmAutomationShell(id, approve){ window.bridge.automationConfirmShell(id, approve); }
+function pickAutomation(id, choice){ window.bridge.automationPick(id, choice); }
 function stopAutomation(){ window.bridge.automationStop(); }
 
 // Save a generated image to disk via a native dialog.
@@ -1938,6 +1939,10 @@ function renderActs(acts){
     }
     if(a.kind==='automation_confirm'){
       return '<div class="msg ai" style="border:1px solid rgba(233,99,123,.35)"><div style="margin-bottom:7px;color:var(--bad);font-size:11px;font-family:ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase">Confirm this action</div><div style="font-family:ui-monospace,monospace;font-size:12.5px;background:var(--panel2);border-radius:6px;padding:8px 10px;margin-bottom:9px;overflow-x:auto;white-space:pre">'+esc(a.cmd)+'</div><div style="display:flex;gap:8px"><button onclick="confirmAutomationShell(\''+a.id+'\',true)" style="background:var(--bad);border:none;color:#fff;font-weight:700;border-radius:8px;padding:7px 14px;font:inherit;font-size:12px;cursor:pointer">Confirm</button><button onclick="confirmAutomationShell(\''+a.id+'\',false)" style="background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 14px;font:inherit;font-size:12px;cursor:pointer">Cancel</button></div></div>';
+    }
+    if(a.kind==='automation_pick'){
+      var opts=(a.candidates||[]).map(function(c){return '<button onclick="pickAutomation(\''+a.id+'\','+c.id+')" style="display:block;width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 11px;margin:4px 0;font:inherit;font-size:12px;cursor:pointer">'+esc(c.name)+' <span style="color:var(--faint)">('+esc(String(c.type).replace('Control',''))+')</span></button>';}).join('');
+      return '<div class="msg ai" style="border:1px solid rgba(127,209,255,.35)"><div style="margin-bottom:7px;color:var(--accent);font-size:11px;letter-spacing:.06em;text-transform:uppercase">Which one did you mean?</div><div style="font-size:12px;margin-bottom:7px">Looking for: <b>'+esc(a.wanted)+'</b></div>'+opts+'<div style="display:flex;gap:8px;margin-top:6px"><button onclick="pickAutomation(\''+a.id+'\',\'skip\')" style="background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer">Skip step</button><button onclick="pickAutomation(\''+a.id+'\',\'stop\')" style="background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer">Stop</button></div></div>';
     }
     if(a.kind==='model3d') return '<div class="msg ai" style="display:flex;align-items:center;gap:11px"><span style="font-size:22px">&#129513;</span><div style="flex:1;min-width:0"><div style="font-size:13px">3D model: <b>'+esc(a.name||'model')+'</b></div><div style="font-size:11px;color:var(--faint)">Built from shapes \u00b7 rotate &amp; download</div></div><button data-model="'+a.id+'" style="background:var(--accent);border:none;color:#fff;border-radius:8px;padding:7px 13px;font:inherit;font-size:12px;cursor:pointer;flex:0 0 auto;white-space:nowrap">View 3D</button></div>';
     if(a.kind==='action') return '<div class="msg sys">'+esc(a.text)+'</div>';

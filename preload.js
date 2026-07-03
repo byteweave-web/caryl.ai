@@ -120,6 +120,7 @@ contextBridge.exposeInMainWorld('bridge', {
   automationCancelPlan: (id) => ipcRenderer.invoke('automation:cancelPlan', id),
   automationStop: () => ipcRenderer.invoke('automation:stop'),
   automationConfirmShell: (id, approve) => ipcRenderer.invoke('automation:confirmShell', id, approve),
+  automationPick: (id, choice) => ipcRenderer.invoke('automation:pick', id, choice),
   automationSetPermissions: (perms) => ipcRenderer.invoke('automation:setPermissions', perms),
 
   // ----- [OFFLINE-INTEGRATION] Offline mode / local AI (Ollama) -----

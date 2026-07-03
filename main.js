@@ -1261,6 +1261,38 @@ async function proposeAutomationPlan(cfg, goal) {
 // checking for a stop request before every step and pausing for explicit confirmation before
 // any shell command. Runs until the model says the goal is done, the user hits Stop, an action
 // fails outright, or AUTOMATION_MAX_STEPS is reached (whichever comes first).
+// Lightweight word-overlap score (0..1) between a wanted phrase and an element name.
+// Mirrors the sidecar's _uia_score intent, JS-side, for the wide-rescan candidate ranking.
+function scoreLabel(want, name) {
+  const stop = new Set(['the', 'a', 'an', 'on', 'in', 'of', 'to', 'at', 'for', 'button', 'click', 'field']);
+  const norm = (s) => String(s || '').toLowerCase().match(/[a-z0-9]+/g) || [];
+  const w = norm(want).filter((x) => !stop.has(x));
+  const n = norm(name).filter((x) => !stop.has(x));
+  if (!w.length || !n.length) return 0;
+  const ws = new Set(w), ns = new Set(n);
+  let overlap = 0; ws.forEach((x) => { if (ns.has(x)) overlap++; });
+  if (!overlap) return 0;
+  return 0.6 * (overlap / ns.size) + 0.4 * (overlap / ws.size);
+}
+
+// Pause the run and ask the user to pick an element (or skip/stop), reusing the same
+// pending-confirm plumbing as shell confirms. Resolves to a numeric id, 'skip', or 'stop'.
+// (automation:stop resolves pendingConfirm with `false` - mapped to 'stop' here so it can
+// never be misread as element id 0.)
+function askUserToPick(wanted, candidates) {
+  return new Promise((resolve) => {
+    if (!automationState) return resolve('stop');
+    const pickId = 'autopick_' + Date.now();
+    activity.push({ kind: 'automation_pick', id: pickId, wanted: String(wanted).slice(0, 80), candidates, time: clockTime() });
+    speak('I’m not sure which one you mean. Can you pick?');
+    popOverlayForConfirm();
+    automationState.pendingConfirm = {
+      id: pickId,
+      resolve: (v) => { collapsePanelAfterConfirm(); resolve(v === false || v == null ? 'stop' : v); }
+    };
+  });
+}
+
 async function runAutomationLoop(goal) {
   // REFINED: lazy sidecar - if automation isn't up yet (because lazy mode skipped the eager
   // start), bring it up now. The user just approved a plan, so a few seconds of cold-start is
@@ -1595,6 +1627,22 @@ async function runAutomationLoop(goal) {
       continue;
     }
 
+    // Stuck escalation (from the loop-breaker): the screen hasn't changed for 2+ steps.
+    // Ask the user to point at the right element (or skip/stop) rather than flailing on.
+    if (automationState.askEscalate) {
+      automationState.askEscalate = false;
+      const answer = await askUserToPick(goal + ' (I appear stuck)', (elementList || []).slice(0, 3).map((e) => ({ id: e.id, name: e.name, type: e.type })));
+      if (answer === 'stop') { announceAndStop('■ Stopped - the task looked stuck and you ended it.'); stoppedEarly = true; break; }
+      if (answer !== 'skip') {
+        const rp = await sidecarCall('/act', { action: 'click', element_id: Number(answer) });
+        if (rp.ok) { automationState.history.push('user-picked element while stuck: ' + (rp.did || answer)); if (rp.state) automationState.lastState = rp.state; }
+      } else {
+        automationState.history.push('user let it continue past the stuck point - try a genuinely different approach');
+      }
+      automationState.stuckStreak = 0;
+      continue;
+    }
+
     // Sanity gate: reject actions that are obviously wrong before they execute.
     if (stepObj.action === 'type') {
       const txt = String(stepObj.text || '').trim().toLowerCase();
@@ -1712,18 +1760,57 @@ async function runAutomationLoop(goal) {
           automationState.history.push((r.did || (stepObj.action + ' ' + targetLabel)) + stateNote + (r.typed_verified === false ? ' [WARN: typed text not confirmed in field]' : ''));
           automationState.lastState = st;
         }
-      } else if (/could not find/i.test(r.error || '')) {
-        // A missed click target isn't a reason to give up on the whole task - it's exactly the
-        // kind of thing the model can see in its own history and adjust for (try a more specific
-        // description, a keyboard shortcut instead, etc). Record it and keep going; the overall
-        // step budget (AUTOMATION_MAX_STEPS) is what actually bounds a run that can't recover.
-        activity.push({ kind: 'action', text: '\u26A0 ' + (r.error || 'could not find that') + ' - trying a different approach.', time: clockTime() });
-        automationState.history.push('missed: ' + stepObj.action + ' "' + (stepObj.target || '') + '" (' + (r.error || '') + ') - try a more specific description or a different method next');
-        // REFINED: keyboard fallback when the target simply can't be located.
-        if (cfgNow.automationKeyboardFallback && stepObj.action === 'click') {
-          const fb = await sidecarCall('/act', { action: 'hotkey', keys: ['enter'] });
-          if (fb.ok) automationState.history.push('keyboard fallback (Enter) after missed click');
+      } else if ((/could not find/i.test(r.error || '')) || r.stale_id) {
+        // Escalation ladder (spec B4): (1) wide re-scan of all roots with a longer budget,
+        // accepting only a clearly-unique winner; (2) pause & ask the user to pick. Never a
+        // blind vision click on a regular control.
+        let recovered = false;
+        try {
+          const wide = await sidecarCall('/elements', { wide: true });
+          if (wide && wide.ok && Array.isArray(wide.elements) && wide.elements.length) {
+            elementList = wide.elements;
+            const want = String(stepObj.target || targetLabel || '').toLowerCase().trim();
+            const scored = want ? wide.elements.map((e) => ({ e, s: scoreLabel(want, e.name) })).sort((a, b) => b.s - a.s) : [];
+            console.log('[automation] wide rescan: top=' + (scored[0] ? scored[0].e.name + ' ' + scored[0].s.toFixed(2) : 'none'));
+            // Accept only a clearly-unique winner.
+            if (scored.length && scored[0].s >= 0.45 && (scored.length < 2 || scored[0].s - scored[1].s >= 0.15)) {
+              const r2 = await sidecarCall('/act', Object.assign({}, payload, { element_id: scored[0].e.id, target: '' }));
+              if (r2.ok) {
+                activity.push({ kind: 'action', text: '\u2022 ' + (r2.did || stepObj.action) + ' (re-scan: ' + scored[0].e.name + ')', time: clockTime() });
+                automationState.history.push((r2.did || stepObj.action) + ' via wide re-scan on "' + scored[0].e.name + '"');
+                if (r2.state) automationState.lastState = r2.state;
+                recovered = true;
+              }
+            }
+            // (2) Pause & ask: offer the top candidates.
+            if (!recovered) {
+              const cands = scored.slice(0, 3).filter((x) => x.s > 0).map((x) => ({ id: x.e.id, name: x.e.name, type: x.e.type }));
+              const answer = await askUserToPick(stepObj.target || targetLabel || stepObj.action, cands);
+              if (answer === 'stop') { announceAndStop('\u25A0 Stopped - you ended the run at the element picker.'); stoppedEarly = true; break; }
+              if (answer === 'skip') {
+                automationState.history.push('user SKIPPED locating "' + (stepObj.target || targetLabel) + '" - move on or try another approach');
+              } else {
+                const r3 = await sidecarCall('/act', Object.assign({}, payload, { element_id: Number(answer), target: '' }));
+                if (r3.ok) {
+                  activity.push({ kind: 'action', text: '\u2022 ' + (r3.did || stepObj.action) + ' (you picked it)', time: clockTime() });
+                  automationState.history.push((r3.did || stepObj.action) + ' (user-picked element)');
+                  if (r3.state) automationState.lastState = r3.state;
+                  recovered = true;
+                } else { automationState.history.push('user-picked element still failed: ' + (r3.error || '')); }
+              }
+            }
+          }
+        } catch (_e) { /* fall through to the plain miss note */ }
+        if (!recovered && !stoppedEarly) {
+          activity.push({ kind: 'action', text: '\u26A0 ' + (r.error || 'could not find that') + ' - trying a different approach.', time: clockTime() });
+          automationState.history.push('missed: ' + stepObj.action + ' "' + (stepObj.target || targetLabel) + '" (' + (r.error || '') + ') - try a more specific description or a different method next');
+          // REFINED: keyboard fallback when the target simply can't be located.
+          if (cfgNow.automationKeyboardFallback && stepObj.action === 'click') {
+            const fb = await sidecarCall('/act', { action: 'hotkey', keys: ['enter'] });
+            if (fb.ok) automationState.history.push('keyboard fallback (Enter) after missed click');
+          }
         }
+        if (stoppedEarly) break;
       } else {
         announceAndStop('\u26A0 ' + (r.error || 'that step failed') + ' - stopping.');
         automationState.history.push('failed: ' + stepObj.action + ' ' + (stepObj.target || '') + ' (' + (r.error || '') + ')');
@@ -3289,6 +3376,15 @@ ipcMain.handle('automation:stop', () => {
   if (automationState) {
     automationState.stopRequested = true;
     if (automationState.pendingConfirm) { automationState.pendingConfirm.resolve(false); }
+  }
+  return { ok: true };
+});
+ipcMain.handle('automation:pick', (_e, id, choice) => {
+  // choice: a number (element_id chosen), 'skip', or 'stop'
+  const idx = activity.findIndex((a) => a.kind === 'automation_pick' && a.id === id);
+  if (idx >= 0) activity.splice(idx, 1);
+  if (automationState && automationState.pendingConfirm && automationState.pendingConfirm.id === id) {
+    const r = automationState.pendingConfirm.resolve; automationState.pendingConfirm = null; r(choice);
   }
   return { ok: true };
 });
