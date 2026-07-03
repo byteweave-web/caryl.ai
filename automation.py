@@ -666,6 +666,59 @@ def _uia_score(target_words, hinted_types, name, ctype):
     return max(0.0, min(1.0, score))
 
 
+# Interactive control types: an unnamed one of these is still worth offering to the
+# planner (it can click/type into it); everything else is context only.
+INTERACTIVE_TYPES = frozenset({
+    "EditControl", "ComboBoxControl", "ButtonControl", "SplitButtonControl",
+    "MenuItemControl", "TabItemControl", "ListItemControl", "TreeItemControl",
+    "CheckBoxControl", "RadioButtonControl", "HyperlinkControl", "SliderControl",
+    "DocumentControl",
+})
+
+
+# Human-friendly type label ("EditControl" -> "Edit"), used when nothing else names an element.
+def _uia_type_label(ctype):
+    c = str(ctype or "").replace("Control", "").strip()
+    return c or "Element"
+
+
+def _uia_synth_label(name, ctype, labeledby_name, prev_text, automation_id):
+    """A never-empty label for an element: real Name > LabeledBy > nearby static text
+    > AutomationId > bare type. Pure so it's unit-testable without a live desktop."""
+    name = (name or "").strip()
+    if name:
+        return name
+    for cand in ((labeledby_name or "").strip(), (prev_text or "").strip(), (automation_id or "").strip()):
+        if cand:
+            return cand[:80]
+    return _uia_type_label(ctype) + " control"
+
+
+def _uia_element_dict(idx, name, ctype, rect, enabled, focused, synthesized):
+    """Build one /elements entry. rect is (left, top, right, bottom)."""
+    l, t, r, b = int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3])
+    return {
+        "id": int(idx),
+        "name": str(name)[:80],
+        "type": str(ctype or ""),
+        "rect": [l, t, r, b],
+        "center": [int((l + r) / 2), int((t + b) / 2)],
+        "enabled": bool(enabled),
+        "focused": bool(focused),
+        "synthesized": bool(synthesized),
+    }
+
+
+def _uia_rank_key(entry):
+    """Sort key: interactive first, then named-before-synthesized, then bigger area first.
+    Returns a tuple usable with sorted() (all ascending -> we negate 'good' signals)."""
+    interactive = 0 if entry.get("type") in INTERACTIVE_TYPES else 1
+    synthesized = 1 if entry.get("synthesized") else 0
+    l, t, r, b = entry.get("rect", [0, 0, 0, 0])
+    area = max(0, (r - l)) * max(0, (b - t))
+    return (interactive, synthesized, -area)
+
+
 def _uia_desktop_root():
     """The desktop icon list (Progman/WorkerW -> FolderView), for desktop-icon targets."""
     try:
