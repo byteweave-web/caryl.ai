@@ -125,6 +125,26 @@ element-list hash):
 (web content, where UIA truly can't see). For everything else the ladder above applies.
 Vision keeps its existing roles in `verifyAutomationDone` and screen descriptions.
 
+## B7. Frictionless execution — no plan-approval gate
+
+The user directly requests a desktop task ("open Notepad, write a paragraph, save it"),
+so making them then click "Go ahead" on a plan card is redundant friction. New behavior:
+
+- A directly-requested automation task **runs immediately** — the `automation_plan` card
+  and its approval wait are skipped. Caryl says "Starting now" and begins the grounded
+  step loop, narrating each step in the activity thread.
+- **Mid-run confirmations stay:** shell commands and file deletes keep their existing
+  `automation_confirm` cards (irreversible/dangerous ops). This is the safety boundary the
+  user chose.
+- **Stop stays live:** the bubble/panel Stop button halts any run instantly (unchanged).
+- **Reversible:** a new config flag `automationRequirePlanApproval` (default **false**) and
+  a Settings → Desktop Automation toggle "Preview & approve a plan first". When true, the
+  old propose-plan-then-approve flow returns unchanged.
+
+This removes the separate plan-proposal LLM call on the default path (also faster): the
+grounded step loop already decides and narrates each action, so a static preview adds
+latency without adding safety once dangerous ops are individually confirmed.
+
 ## B5. Error handling principles
 
 - `/elements` failure (UIA missing, walk error) degrades to today's behavior (free-text
@@ -180,7 +200,7 @@ blind vision click on a regular control.
 |---|---|
 | `automation.py` | `/elements` endpoint, multi-root collection, label synthesis, `element_id` + state report + `open_app` in `/act`, new log kinds |
 | `main.js` | grounded step prompt + id actions, sanity gate, escalation ladder, loop-breaker, pause-&-ask card wiring |
-| `renderer/index.html` | pause-&-ask card (pattern of the existing shell-confirm card) |
+| `renderer/index.html` | pause-&-ask card (pattern of the existing shell-confirm card); Desktop Automation "preview & approve" toggle |
 | `renderer/overlay.html` | same card in the overlay thread |
 | `preload.js` | confirm-answer IPC for the new card (reuse/extend existing automation confirm channel) |
 | `tests/test_automation.py` | new pure-logic test suite |

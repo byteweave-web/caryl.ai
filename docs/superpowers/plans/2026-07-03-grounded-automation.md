@@ -1074,3 +1074,85 @@ In `INSTRUCTIONS.md`, note that automation now grounds on the accessibility tree
 git add -A
 git commit -m "docs(automation): acceptance suite + grounded-automation notes - Sub-project B complete"
 ```
+
+---
+
+### Task 9: Frictionless execution — remove the plan-approval gate (spec B7)
+
+**Do this BEFORE Task 8's manual acceptance run** so the acceptance suite exercises the
+new no-approval flow.
+
+**Files:**
+- Modify: `lib/config.js` (DEFAULTS), `main.js` (`proposeAutomationPlan` ~line 1169, `ui:status`), `renderer/index.html` (Desktop Automation section ~line 371, status apply ~line 1774)
+
+**Interfaces:**
+- Consumes: existing `runAutomationLoop(goal)`, `config.get()`.
+- Produces: config flag `automationRequirePlanApproval` (default `false`); when false, a requested task runs immediately (no `automation_plan` card); mid-run shell/delete confirms unchanged.
+
+- [ ] **Step 1: Config default**
+
+In `lib/config.js` DEFAULTS, add near the other automation-ish keys:
+
+```js
+  automationRequirePlanApproval: false, // false = run directly; true = propose a plan and wait
+```
+
+- [ ] **Step 2: Gate the plan proposal**
+
+At the very top of `proposeAutomationPlan` (main.js ~line 1169), before the
+`activity.push({ ... 'Looking at your screen to plan that out...' })` line, add:
+
+```javascript
+  // Frictionless default: the user directly asked for this task, so just do it - skip the
+  // propose-a-plan-and-wait-for-"Go ahead" step. The grounded step loop narrates each action
+  // and Stop stays live; shell/delete still confirm mid-run. Opt back in via Settings.
+  if (!config.get().automationRequirePlanApproval) {
+    runAutomationLoop(goal); // fire-and-forget, same as approvePlan does
+    return;
+  }
+```
+
+- [ ] **Step 3: Expose the flag in ui:status**
+
+In the `ui:status` return object (main.js ~line 2980, near `push_to_talk_mode`), add:
+
+```javascript
+    automation_require_plan_approval: !!cfg.automationRequirePlanApproval,
+```
+
+- [ ] **Step 4: Settings toggle + copy fix**
+
+In `renderer/index.html`, replace the static Desktop Automation description line (~line 373):
+
+```html
+      <div style="font-size:11.5px;color:var(--faint);line-height:1.5;margin:-2px 0 12px">Caryl always proposes a plan and waits for you to approve it before touching the mouse or keyboard, and always asks again before running any shell command &mdash; even mid-plan.</div>
+```
+
+with a toggle row + updated copy:
+
+```html
+      <div style="font-size:11.5px;color:var(--faint);line-height:1.5;margin:-2px 0 12px">Tasks you ask for run right away; Caryl narrates each step and you can Stop anytime. Shell commands and file deletes still ask first.</div>
+      <div class="row"><div><div class="l">Preview &amp; approve a plan first</div><div class="d">Off = just do it. On = Caryl shows a plan and waits for your OK before acting.</div></div>
+        <label class="sw"><input type="checkbox" id="tog-planapproval" onchange="window.bridge.setConfig({automationRequirePlanApproval:this.checked})"><span></span></label></div>
+```
+
+- [ ] **Step 5: Reflect the toggle from status**
+
+In the status-apply function (main.js's `ui:status` consumer in index.html, ~line 1774 where `tog-mouse`/`tog-scripting` are set), add:
+
+```javascript
+  set('tog-planapproval', s.automation_require_plan_approval);
+```
+
+- [ ] **Step 6: Verify**
+
+Run: `node -e "new (require('vm').Script)(require('fs').readFileSync('main.js','utf8')); console.log('syntax OK')"` and `npm test`.
+Then `npm start`, ensure a mouse/scripting permission is on, and in chat: **"open Notepad"**.
+Expected: NO "Go ahead" plan card — it starts immediately ("▶ Starting: open Notepad") and opens Notepad. Then Settings → Desktop Automation → turn ON "Preview & approve a plan first" → ask again → the plan card returns and waits. Turn it back OFF.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add lib/config.js main.js renderer/index.html
+git commit -m "feat(automation): run requested tasks immediately by default; plan-approval now an opt-in toggle"
+```
