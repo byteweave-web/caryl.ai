@@ -15,6 +15,25 @@ Scripting** ON, and a chat/vision engine is connected (cloud key or local model)
 | 7 | Close Notepad (handle the save prompt) | | | |
 | 8 | Click the Purple Banana button in Notepad (must end at pause-&-ask, not a loop) | | | |
 
+## Extended suite — breadth across real apps
+
+Same rules (3 consecutive passes each). Notepad above is the controlled canary; these
+prove the grounded system generalizes to any UIA-exposing app.
+
+| # | Task (say in chat) | Run 1 | Run 2 | Run 3 |
+|---|---|:---:|:---:|:---:|
+| 9 | Open Calculator and compute 27 times 43 by clicking the buttons | | | |
+| 10 | Open Notepad, write me a short paragraph about space, and save it as space.txt in Documents | | | |
+| 11 | Open File Explorer, go to Downloads, and sort by date modified | | | |
+| 12 | Open Windows Settings and turn dark mode on, then back off | | | |
+| 13 | Open Calculator and Notepad, compute 15% of 80, and type the answer into Notepad | | | |
+| 14 | Take the first line in Notepad and make it ALL CAPS (select line, retype) | | | |
+| 15 | Open Paint, and draw one line, then close without saving | | | |
+
+Notes: #10 is the flagship end-to-end (content generation + typing + Save As dialog +
+filename field + folder navigation). #12-13 test window switching under the grounded
+loop. #15 uses free mouse strokes (allowed: it's a canvas, not a control).
+
 ## What "pass" means
 
 - **1–7:** the goal is actually accomplished on screen, using UIA element ids (not a
