@@ -66,7 +66,12 @@
       "Bash(git commit -m 'feat\\(automation\\): run requested tasks immediately by default; plan-approval now an opt-in toggle *)",
       "Bash(powershell -Command \"Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force\")",
       "Bash(git commit -m 'docs\\(automation\\): acceptance suite + grounded-automation notes *)",
-      "Bash(git commit -m 'fix\\(automation\\): initialize COM in _uia_top_titles \\(bare Flask threads dumped CoInitialize errors\\) *)"
+      "Bash(git commit -m 'fix\\(automation\\): initialize COM in _uia_top_titles \\(bare Flask threads dumped CoInitialize errors\\) *)",
+      "Bash(git commit -m 'docs\\(automation\\): extended acceptance suite - Calculator, Explorer, Settings, Paint, multi-app workflows *)",
+      "Bash(powershell -Command \"Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force\" 2>/dev/null; sleep 1 *)",
+      "Bash(node -e \"new \\(require\\('vm'\\).Script\\)\\(require\\('fs'\\).readFileSync\\('main.js','utf8'\\)\\); console.log\\('syntax OK'\\)\")",
+      "Bash(node -e \"new \\(require\\('vm'\\).Script\\)\\(require\\('fs'\\).readFileSync\\('main.js','utf8'\\)\\); console.log\\('main.js OK'\\)\")",
+      "Bash(git commit -m 'chore: update local tool permission allowlist *)"
     ]
   }
 }
