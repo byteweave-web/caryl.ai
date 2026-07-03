@@ -71,7 +71,23 @@
       "Bash(powershell -Command \"Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force\" 2>/dev/null; sleep 1 *)",
       "Bash(node -e \"new \\(require\\('vm'\\).Script\\)\\(require\\('fs'\\).readFileSync\\('main.js','utf8'\\)\\); console.log\\('syntax OK'\\)\")",
       "Bash(node -e \"new \\(require\\('vm'\\).Script\\)\\(require\\('fs'\\).readFileSync\\('main.js','utf8'\\)\\); console.log\\('main.js OK'\\)\")",
-      "Bash(git commit -m 'chore: update local tool permission allowlist *)"
+      "Bash(git commit -m 'chore: update local tool permission allowlist *)",
+      "Bash(node -e \"new \\(require\\('vm'\\).Script\\)\\(require\\('fs'\\).readFileSync\\('main.js','utf8'\\)\\); console.log\\('main.js syntax OK'\\)\")",
+      "Bash(D:/brain-ai/brain-ai/.venv/Scripts/python.exe tests/test_automation.py)",
+      "Bash(git commit -m 'feat\\(ui\\): app-wide theming engine \\(4 themes x 6 accents\\) via shared theme.css + data attributes *)",
+      "Bash(git commit -m 'feat\\(ui\\): Appearance theme cards + accent swatches with live apply + persistence *)",
+      "Bash(node \"C:/Users/farou/AppData/Local/Temp/claude/D--brain-ai-brain-ai--claude-worktrees-modest-merkle-8a0873/11370beb-1a3e-4528-93dd-ca14225cc9ae/scratchpad/rebuild-settings.js\")",
+      "Bash(git stash *)",
+      "Bash(node tests/test-downloads.js)",
+      "Bash(git commit -m 'feat\\(ui\\): settings modal with left-nav and 7 pages \\(unified AI engines; cloud model picker visible\\) *)",
+      "Bash(git commit -m 'docs: settings redesign + theming notes *)",
+      "Bash(git -C D:/brain-ai/brain-ai status -s)",
+      "Bash(git -C D:/brain-ai/brain-ai merge --ff-only claude/modest-merkle-8a0873)",
+      "Bash(git -C D:/brain-ai/brain-ai log --oneline -5)",
+      "Bash(rm D:/brain-ai/brain-ai/renderer/theme.css && git -C D:/brain-ai/brain-ai merge --ff-only claude/modest-merkle-8a0873 && git -C D:/brain-ai/brain-ai log --oneline -5 && git -C D:/brain-ai/brain-ai status -s)",
+      "Bash(node -e \"new \\(require\\('vm'\\).Script\\)\\(require\\('fs'\\).readFileSync\\('lib/downloads.js','utf8'\\)\\); console.log\\('downloads.js syntax OK'\\)\")",
+      "Bash(git commit -m 'fix\\(downloads\\): detect installed models from disk, not live services *)",
+      "Bash(git -C D:/brain-ai/brain-ai log --oneline -2)"
     ]
   }
 }
