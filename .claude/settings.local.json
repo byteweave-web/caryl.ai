@@ -46,7 +46,9 @@
       "Bash(git commit -m 'chore: gitignore __pycache__ *)",
       "Bash(git commit -q -m 'chore: update local tool permissions *)",
       "Bash(git merge *)",
-      "Bash(git branch *)"
+      "Bash(git branch *)",
+      "Bash(git commit -m 'Add Sub-project B design spec: grounded automation \\(UIA-first hardening\\) *)",
+      "Bash(git commit -m 'Add Sub-project B implementation plan \\(grounded automation, 8 tasks\\) *)"
     ]
   }
 }
