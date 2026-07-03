@@ -1,0 +1,221 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Welcome to Caryl.ai</title>
+<style>
+  :root{--bg:#0b0d12;--card:#11141c;--txt:#e8ecf3;--mut:#9aa4b5;--accent:#7fd1ff;--line:rgba(255,255,255,.10)}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 "Segoe UI",system-ui,sans-serif}
+  .wrap{max-width:620px;margin:0 auto;padding:40px 24px;display:flex;flex-direction:column;min-height:calc(100% - 80px)}
+  .step{display:none;flex:1}
+  .step.on{display:block;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1}}
+  h1{font-size:26px;margin:0 0 6px}
+  .sub{color:var(--mut);margin-bottom:22px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:10px 0}
+  .opt{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px;margin:8px 0;cursor:pointer;background:var(--card)}
+  .opt.sel{border-color:var(--accent);background:rgba(127,209,255,.08)}
+  input[type=text]{width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px 12px;font:inherit}
+  input[type=range]{width:100%}
+  .nav{display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:18px}
+  button{background:var(--accent);border:none;color:#06121c;border-radius:9px;padding:10px 22px;font:inherit;font-weight:600;cursor:pointer}
+  button.ghost{background:transparent;color:var(--mut);border:1px solid var(--line)}
+  .meter{height:8px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+  .meter>div{height:100%;width:0;background:var(--accent);transition:width .12s}
+  .preview{display:flex;gap:12px;margin-top:12px}
+  .pv{flex:1;height:110px;border-radius:10px;border:1px solid var(--line);position:relative;overflow:hidden;
+      background:linear-gradient(120deg,#28577e,#7a3d6e,#2c7a5c)}
+  .pv .glass{position:absolute;inset:14px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
+  .pv .blur{background:rgba(16,20,28,.45);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  .pv .solid{background:#10141c}
+  .status{color:var(--mut);font-size:12px;min-height:18px;margin-top:8px}
+  .dots{display:flex;gap:6px;justify-content:center;margin-bottom:26px}
+  .dots span{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.15)}
+  .dots span.on{background:var(--accent)}
+  small{color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="dots" id="dots"></div>
+
+  <div class="step" data-step="0">
+    <h1>Welcome to Caryl.ai</h1>
+    <div class="sub" id="welcome-sub">Your fast, private desktop AI companion. A minute of setup, then she&rsquo;s yours.</div>
+    <div class="card">Everything you pick here can be changed later in Settings. Press <b>Esc</b> anytime to skip setup entirely.</div>
+  </div>
+
+  <div class="step" data-step="1">
+    <h1>Name your assistant</h1>
+    <div class="sub">The wake word is what she listens for; the display name is what she calls herself.</div>
+    <div id="ww-list"></div>
+    <div class="card">
+      <div style="margin-bottom:6px;color:var(--mut);font-size:12px">Display name (free choice)</div>
+      <input type="text" id="display-name" placeholder="Caryl" maxlength="40">
+    </div>
+  </div>
+
+  <div class="step" data-step="2">
+    <h1>Your Windows version</h1>
+    <div class="sub" id="os-sub">Detected automatically &mdash; it controls whether overlays use real blur (Win 11) or solid panels (Win 10).</div>
+    <div class="opt" data-os="win11" onclick="pickOs('win11')"><div><b>Windows 11</b><div style="color:var(--mut);font-size:12px">Transparent acrylic blur</div></div></div>
+    <div class="opt" data-os="win10" onclick="pickOs('win10')"><div><b>Windows 10</b><div style="color:var(--mut);font-size:12px">Solid backgrounds (native blur unsupported)</div></div></div>
+    <div class="preview"><div class="pv"><div class="glass" id="pv-glass">overlay preview</div></div></div>
+  </div>
+
+  <div class="step" data-step="3">
+    <h1>Microphone &amp; camera</h1>
+    <div class="sub">Needed for voice chat and camera vision. Asked once, remembered forever.</div>
+    <div class="card"><button onclick="grantMedia()">Allow microphone &amp; camera</button><div class="status" id="media-status"></div></div>
+  </div>
+
+  <div class="step" data-step="4">
+    <h1>Pick a voice</h1>
+    <div class="sub">The built-in system voice works instantly. Neural voices download once (~110 MB) and run locally.</div>
+    <div id="voice-list"><div class="status">Loading voices&hellip;</div></div>
+    <div class="status" id="voice-status"></div>
+  </div>
+
+  <div class="step" data-step="5">
+    <h1>Wake-word check</h1>
+    <div class="sub" id="cal-sub">Say your wake word a few times and watch the meter. Lower the slider if she misses you; raise it if she false-triggers.</div>
+    <div class="card">
+      <div class="meter"><div id="cal-meter"></div></div>
+      <div style="margin-top:12px"><input type="range" id="cal-thresh" min="0.1" max="0.9" step="0.05" value="0.5"></div>
+      <div class="status" id="cal-status">Starting detector&hellip;</div>
+    </div>
+  </div>
+
+  <div class="step" data-step="6">
+    <h1>Global voice hotkey</h1>
+    <div class="sub">Toggles listening from anywhere, even when Caryl is in the background.</div>
+    <div class="card"><input type="text" id="hotkey" readonly placeholder="Click, then press a key combo" onkeydown="captureHotkey(event)" onclick="this.value=''"></div>
+  </div>
+
+  <div class="nav">
+    <button class="ghost" id="btn-back" onclick="nav(-1)">Back</button>
+    <button class="ghost" onclick="finish(true)">Skip setup</button>
+    <button id="btn-next" onclick="nav(1)">Next</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
+<script>try{ if(window.ort){ ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/'; ort.env.wasm.numThreads=1; } }catch(e){}</script>
+<script src="wakeword.js"></script>
+<script>
+  const TOTAL = 7;
+  let step = 0;
+  const picked = { wakeWordModel: 'hey_jarvis_v0.1.onnx', osVariant: '', assistantName: '', globalHotkey: '', wakeThreshold: 0.5 };
+
+  const dots = document.getElementById('dots');
+  for (let i = 0; i < TOTAL; i++) { const s = document.createElement('span'); dots.appendChild(s); }
+  function show() {
+    document.querySelectorAll('.step').forEach(el => el.classList.toggle('on', +el.dataset.step === step));
+    [...dots.children].forEach((d, i) => d.classList.toggle('on', i <= step));
+    document.getElementById('btn-back').style.visibility = step === 0 ? 'hidden' : 'visible';
+    document.getElementById('btn-next').textContent = step === TOTAL - 1 ? 'Finish' : 'Next';
+    if (step === 4) loadVoices();
+    if (step === 5) startCalibration(); else stopCalibration();
+  }
+  function nav(d) { if (step + d >= TOTAL) return finish(false); step = Math.max(0, step + d); show(); }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') finish(true); });
+
+  let finishing = false;
+  async function finish(skipped) {
+    if (finishing) return; finishing = true;
+    stopCalibration();
+    picked.assistantName = (document.getElementById('display-name').value || '').trim();
+    try { await window.bridge.onboardingComplete(skipped ? {} : picked); }
+    catch (e) { finishing = false; }
+  }
+
+  // boot: wake word choices + detected OS + migration note
+  (async function init() {
+    try {
+      const st = await window.bridge.status();
+      const choices = st.wake_word_choices || [{ file: 'hey_jarvis_v0.1.onnx', label: 'Jarvis', phrase: 'Hey Jarvis' }];
+      const list = document.getElementById('ww-list');
+      list.innerHTML = choices.map(c =>
+        '<div class="opt" data-ww="' + c.file + '" onclick="pickWw(\'' + c.file + '\')"><div><b>' + c.label + '</b><div style="color:var(--mut);font-size:12px">say &ldquo;' + c.phrase + '&rdquo;</div></div></div>').join('');
+      const cfg = await window.bridge.getConfig();
+      if (cfg.wakeWordModel) picked.wakeWordModel = cfg.wakeWordModel;
+      pickWw(picked.wakeWordModel);
+      if (cfg.assistantName) document.getElementById('display-name').value = cfg.assistantName;
+      if (cfg.migratedFrom) document.getElementById('welcome-sub').textContent = 'Your BRAIN.AI chats, settings, and key came along — nothing to redo.';
+      const shell = await window.bridge.getShellStyle();
+      pickOs(shell.osVariant === 'win10' ? 'win10' : 'win11');
+      document.getElementById('os-sub').textContent = 'We detected ' + (shell.osVariant === 'win10' ? 'Windows 10' : 'Windows 11') + ' — override if that’s wrong.';
+    } catch (e) { /* every step degrades to manual choice */ }
+    show();
+  })();
+  function pickWw(f) { picked.wakeWordModel = f; document.querySelectorAll('[data-ww]').forEach(el => el.classList.toggle('sel', el.dataset.ww === f)); }
+  function pickOs(v) {
+    picked.osVariant = v;
+    document.querySelectorAll('[data-os]').forEach(el => el.classList.toggle('sel', el.dataset.os === v));
+    const g = document.getElementById('pv-glass'); g.className = 'glass ' + (v === 'win11' ? 'blur' : 'solid');
+  }
+
+  // step 3: permissions (the same ask-once flow the app uses)
+  async function grantMedia() {
+    const ok = await window.bridge.ensureMedia();
+    document.getElementById('media-status').textContent = ok ? '✓ Allowed' : 'Blocked — you can change this later in Settings.';
+  }
+
+  // step 4: reuse the existing voice installer IPC
+  let voicesLoaded = false;
+  async function loadVoices() {
+    if (voicesLoaded) return; voicesLoaded = true;
+    const el = document.getElementById('voice-list');
+    try {
+      const voices = (await window.bridge.listVoices()) || []; // [{id,label,downloaded,active}]
+      el.innerHTML = '<div class="opt sel" onclick="pickSystemVoice(this)"><div><b>System voice</b><div style="color:var(--mut);font-size:12px">instant, no download</div></div></div>' +
+        voices.map(v => '<div class="opt' + (v.active ? ' sel' : '') + '" onclick="installVoice(\'' + v.id + '\',this)"><div><b>' + v.label + '</b><div style="color:var(--mut);font-size:12px">local neural voice · ' + (v.downloaded ? 'already downloaded' : 'downloads once') + '</div></div></div>').join('');
+    } catch (e) { el.innerHTML = '<div class="status">Voice list unavailable (offline?) — the system voice is active; add neural voices later in Settings.</div>'; }
+  }
+  function pickSystemVoice(el) {
+    document.querySelectorAll('#voice-list .opt').forEach(o => o.classList.remove('sel'));
+    el.classList.add('sel');
+  }
+  async function installVoice(id, el) {
+    document.getElementById('voice-status').textContent = 'Installing ' + id + '…';
+    try { window.bridge.onVoiceProgress(m => { document.getElementById('voice-status').textContent = m || ''; }); } catch (e) {}
+    const r = await window.bridge.installVoice(id);
+    document.getElementById('voice-status').textContent = (r && r.ok) ? '✓ Voice ready' : ('Failed: ' + ((r && r.error) || 'unknown'));
+    if (r && r.ok) { document.querySelectorAll('#voice-list .opt').forEach(o => o.classList.remove('sel')); el.classList.add('sel'); }
+  }
+
+  // step 5: live calibration on the real detector
+  let calOn = false;
+  async function startCalibration() {
+    if (calOn || !window.WakeWord) return;
+    const stat = document.getElementById('cal-status');
+    if (typeof ort === 'undefined') { stat.textContent = 'Needs internet once (detector runtime) — skip for now, calibrate later in Settings.'; return; }
+    // wakeword:ensure downloads the model named in cfg.wakeWordModel - persist the wizard's
+    // pick FIRST or the ensure step fetches the old default and load() fails "not downloaded".
+    try { await window.bridge.setConfig({ wakeWordModel: picked.wakeWordModel }); } catch (e) {}
+    calOn = true;
+    const meter = document.getElementById('cal-meter');
+    document.getElementById('cal-thresh').oninput = e => { picked.wakeThreshold = parseFloat(e.target.value); WakeWord.setThreshold(picked.wakeThreshold); };
+    WakeWord.on('score', s => { meter.style.width = Math.min(100, Math.round(s * 100)) + '%'; });
+    WakeWord.on('detect', () => { stat.textContent = '✓ Heard you! That threshold works.'; });
+    WakeWord.on('status', s => { if (stat.textContent.indexOf('Heard') === -1) stat.textContent = s; });
+    try { await WakeWord.start({ threshold: picked.wakeThreshold, model: picked.wakeWordModel }); }
+    catch (e) { stat.textContent = 'Detector unavailable: ' + ((e && e.message) || e) + ' — skip and calibrate later in Settings.'; calOn = false; }
+  }
+  function stopCalibration() { if (calOn && window.WakeWord) { try { WakeWord.stop(); } catch (e) {} calOn = false; } }
+
+  // step 6: hotkey capture
+  function captureHotkey(e) {
+    e.preventDefault();
+    if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
+    const parts = [];
+    if (e.ctrlKey) parts.push('CommandOrControl');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.altKey) parts.push('Alt');
+    parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    picked.globalHotkey = parts.join('+');
+    e.target.value = picked.globalHotkey;
+  }
+</script>
+</body>
+</html>

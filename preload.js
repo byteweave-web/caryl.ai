@@ -105,6 +105,11 @@ contextBridge.exposeInMainWorld('bridge', {
   // ----- Assistant identity -----
   setAssistantName: (name) => ipcRenderer.invoke('assistant:setName', name),
 
+  // ----- Onboarding -----
+  ensureMedia: () => ipcRenderer.invoke('media:ensure'),
+  onboardingComplete: (patch) => ipcRenderer.invoke('onboarding:complete', patch),
+  redoSetup: () => ipcRenderer.invoke('onboarding:redo'),
+
   // ----- Engines & Models download manager -----
   downloadsStatus: () => ipcRenderer.invoke('downloads:status'),
   downloadsStart: (id) => ipcRenderer.invoke('downloads:start', id),

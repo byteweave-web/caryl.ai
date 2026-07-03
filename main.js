@@ -2669,6 +2669,27 @@ ipcMain.handle('assistant:setName', async (_e, rawName) => {
 });
 
 
+// Wizard finished (or was skipped): persist choices, mark done, swap to the real app.
+ipcMain.handle('onboarding:complete', (_e, patch) => {
+  const p = patch || {};
+  const clean = { onboarded: true };
+  if (typeof p.assistantName === 'string' && p.assistantName.trim()) clean.assistantName = p.assistantName.trim().slice(0, 40);
+  if (typeof p.wakeWordModel === 'string' && p.wakeWordModel) clean.wakeWordModel = p.wakeWordModel;
+  if (p.osVariant === 'win10' || p.osVariant === 'win11') clean.osVariant = p.osVariant;
+  if (typeof p.globalHotkey === 'string' && p.globalHotkey) clean.globalHotkey = p.globalHotkey;
+  if (typeof p.wakeThreshold === 'number') clean.local_wake_threshold = Math.max(0.05, Math.min(0.95, p.wakeThreshold));
+  config.set(clean);
+  applyVoiceHotkeyMode();
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  return { ok: true };
+});
+
+ipcMain.handle('onboarding:redo', () => {
+  config.set({ onboarded: false });
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadFile(path.join(__dirname, 'renderer', 'onboarding.html'));
+  return { ok: true };
+});
+
 ipcMain.handle('doc:import', async () => {
   const parent = (overlayWindow && !overlayWindow.isDestroyed()) ? overlayWindow : mainWindow;
   overlayIgnoreBlur = true; // opening the dialog blurs the overlay - don't let that collapse it
@@ -2713,7 +2734,10 @@ function createWindow() {
   });
 
   if (typeof mainWindow.removeMenu === 'function') mainWindow.removeMenu();
-  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // First launch (or Settings -> Redo setup): the onboarding wizard runs INSTEAD of the app,
+  // then swaps to index.html via onboarding:complete. Never traps: skip also completes.
+  const entryPage = config.get().onboarded === true ? 'index.html' : 'onboarding.html';
+  mainWindow.loadFile(path.join(__dirname, 'renderer', entryPage));
   mainWindow.once('ready-to-show', () => mainWindow.show());
   // DevTools only when explicitly asked for: `npm start -- --dev` or CARYL_DEV=1.
   // (An always-open detached DevTools costs real RAM on every user launch.)
@@ -2741,6 +2765,11 @@ function createWindow() {
     }).catch(() => { _askingMedia = null; return false; });
     return _askingMedia;
   }
+  // Onboarding's permission step drives the same ask-once flow (idempotent registration:
+  // createWindow can rerun on macOS activate).
+  ipcMain.removeHandler('media:ensure');
+  ipcMain.handle('media:ensure', () => ensureMediaPermission());
+
   // Fires when the page REQUESTS a device (first getUserMedia of the session).
   mainWindow.webContents.session.setPermissionRequestHandler(async (_wc, permission, cb) => {
     if (permission === 'media') return cb(await ensureMediaPermission());
