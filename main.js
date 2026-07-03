@@ -1551,6 +1551,15 @@ async function runAutomationLoop(goal) {
       }
     }
 
+    // State-based stuck detection (complements the identical-action guard): the last action
+    // changed nothing on screen. First inject an explicit nudge; if still stuck, escalate.
+    if (automationState.stuckStreak === 1) {
+      activity.push({ kind: 'action', text: '\u21BB Nothing changed on screen - rethinking the approach.', time: clockTime() });
+      automationState.history.push('STUCK: the last action changed nothing on screen (same foreground, focus, and elements). Do something DIFFERENT - a different element_id, a keyboard shortcut, or declare the goal impossible. Do not repeat the last action.');
+    } else if (automationState.stuckStreak >= 2) {
+      automationState.askEscalate = true; // Task 7's ladder turns this into pause-&-ask
+    }
+
     if (repeatedActionCount >= 2) {
       announceAndStop('\u25A0 I chose the exact same action three times in a row (' + stepObj.action + (stepObj.target ? ' "' + stepObj.target + '"' : '') + ') without progress, so I\u2019m stopping rather than looping. Ask me to continue if you want me to try a different way.');
       break;
@@ -1584,6 +1593,18 @@ async function runAutomationLoop(goal) {
         automationState.history.push('failed to open app "' + appName + '": ' + (r.error || 'launch failed') + ' - try a different app name (e.g. "notepad", "chrome", "calc")');
       }
       continue;
+    }
+
+    // Sanity gate: reject actions that are obviously wrong before they execute.
+    if (stepObj.action === 'type') {
+      const txt = String(stepObj.text || '').trim().toLowerCase();
+      const tgt = String(stepObj.target || '').trim().toLowerCase();
+      // Typing the target DESCRIPTION as literal text (e.g. type "empty area") is the classic bug.
+      if (txt && tgt && txt === tgt) {
+        activity.push({ kind: 'action', text: '⚠ Skipped typing the target description as text.', time: clockTime() });
+        automationState.history.push('SANITY: you set "text" equal to the target description ("' + txt.slice(0, 40) + '") - that types the label instead of real content. Set "text" to what should actually be typed, and use element_id to choose WHERE.');
+        continue;
+      }
     }
 
     if (stepObj.action === 'shell') {
