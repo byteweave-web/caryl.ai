@@ -87,7 +87,15 @@
       "Bash(rm D:/brain-ai/brain-ai/renderer/theme.css && git -C D:/brain-ai/brain-ai merge --ff-only claude/modest-merkle-8a0873 && git -C D:/brain-ai/brain-ai log --oneline -5 && git -C D:/brain-ai/brain-ai status -s)",
       "Bash(node -e \"new \\(require\\('vm'\\).Script\\)\\(require\\('fs'\\).readFileSync\\('lib/downloads.js','utf8'\\)\\); console.log\\('downloads.js syntax OK'\\)\")",
       "Bash(git commit -m 'fix\\(downloads\\): detect installed models from disk, not live services *)",
-      "Bash(git -C D:/brain-ai/brain-ai log --oneline -2)"
+      "Bash(git -C D:/brain-ai/brain-ai log --oneline -2)",
+      "Bash(node -e \"const s=require\\(process.env.APPDATA+'/Caryl.ai/settings.json'\\); console.log\\('provider:',s.provider,'| model:',s.model\\); console.log\\('engines:',JSON.stringify\\(s.engines\\)\\); console.log\\('offlineModel:',s.offlineModel,'| offlineVisionModel:',s.offlineVisionModel\\)\")",
+      "Bash(awk '/const AUTOMATION_FRAMING =/{f=1} f{c+=length\\($0\\)} /genuinely the right tool/{if\\(f\\){print \"FRAMING ~\"c; f=0; c=0}}' main.js)",
+      "Bash(awk 'NR>=842 && NR<=944' main.js)",
+      "Bash(git commit -m 'fix\\(automation\\): lean UIA prompt \\(rate-limit + win+d fix\\), type-by-id with smart field clear, accurate download status *)",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget",
+      "Bash(git commit -m 'Add Settings redesign + theming design spec *)",
+      "Bash(git commit -m 'Add Settings redesign + theming implementation plan \\(4 tasks\\) *)"
     ]
   }
 }
