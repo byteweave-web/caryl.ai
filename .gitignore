@@ -1,0 +1,12 @@
+# Dependencies (restored via npm install / pip install)
+node_modules/
+.venv/
+
+# Build output
+dist/
+
+# Downloaded-on-demand heavy assets (never committed; the app fetches these)
+piper/
+
+# Runtime logs
+*.log

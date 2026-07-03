@@ -1,0 +1,8 @@
+# Python packages for the desktop automation sidecar (automation.py).
+# Install into the interpreter main.js will spawn - ideally a .venv next to main.js:
+#   python -m venv .venv
+#   .venv\Scripts\pip install -r requirements_automation.txt
+# main.js prefers .venv\Scripts\python.exe automatically when that folder exists.
+flask>=3.0
+pyautogui>=0.9.54
+pillow>=10.0

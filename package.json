@@ -1,0 +1,54 @@
+{
+  "name": "brain-ai",
+  "version": "0.1.0",
+  "description": "BRAIN.AI - a fast, lightweight desktop AI companion (cloud thin-client).",
+  "main": "main.js",
+  "author": "Farouk",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable",
+    "build:installer": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.farouk.brainai",
+    "productName": "BRAIN.AI",
+    "files": [
+      "main.js",
+      "preload.js",
+      "lib/**/*",
+      "renderer/**/*"
+    ],
+    "extraResources": [
+      { "from": "automation.py", "to": "automation.py" },
+      { "from": "requirements_automation.txt", "to": "requirements_automation.txt" }
+    ],
+    "asarUnpack": [
+      "node_modules/uiohook-napi/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "BRAIN.AI-${version}.${ext}"
+    }
+  },
+  "dependencies": {
+    "@picovoice/porcupine-web": "^4.0.1",
+    "@picovoice/web-voice-processor": "^4.0.10",
+    "pdfjs-dist": "^3.11.174",
+    "uiohook-napi": "^1.5.4"
+  }
+}

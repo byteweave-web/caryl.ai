@@ -1,0 +1,2080 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BRAIN.AI</title>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<!-- onnxruntime-web powers the local "Hey Jarvis" wake word (loaded from CDN; models are downloaded separately) -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
+<script>try{ if(window.ort){ ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/'; ort.env.wasm.numThreads=1; } }catch(e){}</script>
+<script src="wakeword.js"></script>
+<style>
+:root{
+  --bg:#08090b; --panel:#0e1014; --panel2:#14171c; --line:rgba(255,255,255,.08);
+  --txt:#e7e9ee; --mut:#8b9099; --faint:#5a5f68;
+  --accent:#e7e9ee;
+  --accent-soft:rgba(231,233,238,.14);
+  --track:#21252b;
+  --ok:#5ad19a; --warn:#e0b15a; --bad:#e9637b;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+button{font-family:inherit;cursor:pointer}
+body{
+  margin:0;background:radial-gradient(1200px 700px at 70% -10%, #14171c 0%, var(--bg) 55%);
+  color:var(--txt);font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;overflow:hidden;
+}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}
+.app{display:flex;flex-direction:column;height:100vh;position:relative;z-index:1}
+#bg-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.topbar{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
+  background:rgba(10,11,13,.6);backdrop-filter:blur(12px);z-index:20}
+.brand{font-weight:700;letter-spacing:.5px;font-size:15px;display:flex;align-items:center;gap:8px}
+.brand .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent)}
+.brand small{color:var(--accent);font-weight:600}
+.tabs{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);padding:4px;border-radius:12px}
+.tab{border:0;background:transparent;color:var(--mut);padding:7px 14px;border-radius:9px;font-size:13px;font-weight:500;transition:.15s}
+.tab.active{background:var(--accent-soft);color:var(--txt)}
+.spacer{flex:1}
+.pill{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);background:var(--panel);
+  border:1px solid var(--line);padding:6px 11px;border-radius:20px;font-variant-numeric:tabular-nums}
+.pill b{color:var(--txt);font-weight:600}
+.led{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.led.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.led.off{background:var(--bad)}
+.iconbtn{border:1px solid var(--line);background:var(--panel);color:var(--txt);width:38px;height:38px;border-radius:11px;
+  display:grid;place-items:center;transition:.15s}
+.iconbtn:hover{background:var(--panel2)}
+.stopbtn{border:1px solid rgba(233,99,123,.4);background:rgba(233,99,123,.12);color:#ffb3c0;
+  padding:0 14px;height:38px;border-radius:11px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px}
+.stopbtn:hover{background:rgba(233,99,123,.2)}
+.stage{flex:1;position:relative;overflow:hidden}
+.view{position:absolute;inset:0;display:none;flex-direction:column}
+.view.active{display:flex}
+canvas.orb{position:absolute;inset:0;width:100%;height:100%}
+.orb-meta{position:absolute;left:0;right:0;bottom:42px;text-align:center;pointer-events:none}
+.orb-state{font-size:13px;color:var(--mut);letter-spacing:3px;text-transform:uppercase}
+.orb-caption{margin-top:12px;font-size:18px;color:var(--txt);max-width:680px;margin-left:auto;margin-right:auto;
+  padding:0 24px;line-height:1.5;opacity:.92}
+.chat-wrap{display:flex;flex-direction:column;height:100%}
+.chat-scroll{flex:1;overflow-y:auto;padding:26px 18px;display:flex;flex-direction:column;gap:12px;max-width:860px;margin:0 auto;width:100%}
+.msg{max-width:78%;padding:11px 15px;border-radius:14px;font-size:14.5px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
+.msg.user{align-self:flex-end;background:var(--accent-soft);border:1px solid var(--line)}
+.msg.ai{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
+.msg .t{display:block;font-size:10px;color:var(--faint);margin-top:6px;letter-spacing:.5px}
+.msg.think{align-self:flex-start;background:transparent;color:var(--mut);font-style:italic;font-size:13px;border:0;padding:2px 6px;opacity:.8}
+.msg.sys{align-self:center;color:var(--faint);font-size:11px;background:transparent;border:0;padding:0}
+.composer{border-top:1px solid var(--line);padding:14px 18px;display:flex;gap:10px;max-width:860px;margin:0 auto;width:100%}
+.composer input{flex:1;background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:12px;
+  padding:12px 14px;font-size:14px;outline:none}
+.composer input:focus{border-color:var(--accent-soft)}
+.composer .send{border:1px solid var(--line);background:var(--accent);color:#0a0b0d;font-weight:700;border-radius:12px;padding:0 18px}
+.hint{text-align:center;color:var(--faint);font-size:11px;padding:0 0 10px}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:.2s;z-index:40}
+.scrim.open{opacity:1;pointer-events:auto}
+.settings{position:fixed;top:0;right:0;height:100%;width:420px;max-width:92vw;background:var(--panel);
+  border-left:1px solid var(--line);transform:translateX(100%);transition:.25s cubic-bezier(.4,0,.2,1);z-index:50;
+  display:flex;flex-direction:column}
+.settings.open{transform:translateX(0)}
+.settings header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line)}
+.settings header h2{margin:0;font-size:15px;font-weight:700;letter-spacing:.5px}
+.settings .body{overflow-y:auto;padding:8px 20px 30px}
+.sec{padding:18px 0;border-bottom:1px solid var(--line)}
+.sec:last-child{border-bottom:0}
+.sec h3{margin:0 0 3px;font-size:13px;font-weight:600;letter-spacing:.3px}
+.sec .sub{color:var(--faint);font-size:11px;margin-bottom:14px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0}
+.row .l{font-size:13.5px;color:var(--txt)}
+.row .d{font-size:11px;color:var(--faint);margin-top:2px}
+select,input[type=text]{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:10px;
+  padding:9px 11px;font-size:13px;outline:none;width:100%;font-family:inherit}
+.field{display:flex;gap:8px;align-items:center}
+.minibtn{border:1px solid var(--line);background:var(--panel2);color:var(--txt);border-radius:10px;padding:9px 12px;font-size:12px;white-space:nowrap}
+.minibtn:hover{background:var(--accent-soft)}
+.statusline{font-size:11px;margin-top:7px;color:var(--mut)}
+.statusline.bad{color:var(--bad)} .statusline.ok{color:var(--ok)}
+.sw{position:relative;width:42px;height:24px;flex:none}
+.sw input{opacity:0;width:0;height:0}
+.sw span{position:absolute;inset:0;background:var(--track);border-radius:20px;transition:.2s}
+.sw span:before{content:"";position:absolute;height:18px;width:18px;left:3px;top:3px;background:var(--mut);border-radius:50%;transition:.2s}
+.sw input:checked+span{background:var(--accent-soft)}
+.sw input:checked+span:before{transform:translateX(18px);background:var(--accent)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:160px;height:4px;border-radius:4px;background:var(--track);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer}
+.meter{height:6px;border-radius:6px;background:var(--track);overflow:hidden;margin-top:8px}
+.meter > i{display:block;height:100%;background:linear-gradient(90deg,var(--mut),var(--accent));width:0}
+.accents{display:flex;gap:10px;margin-top:6px}
+.acc{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);cursor:pointer}
+.acc.sel{border-color:var(--txt)}
+.badge{font-size:10px;font-family:ui-monospace,monospace;padding:3px 8px;border-radius:20px;border:1px solid var(--line)}
+/* Offline model picker: scanned/downloadable model list with per-row Use + Download actions. */
+.modellist{display:flex;flex-direction:column;gap:6px;max-height:264px;overflow-y:auto;margin:8px 0 10px;padding-right:2px}
+.modelrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+.modelrow.active{border-color:rgba(90,209,154,.4);background:rgba(90,209,154,.07)}
+.modelrow-main{min-width:0;flex:1}
+.modelrow-name{font-size:12.5px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.modelrow-tag{font-size:10px;color:var(--faint);font-family:ui-monospace,monospace;margin-left:6px}
+.modelrow-meta{font-size:10.5px;color:var(--faint);margin-top:3px;display:flex;align-items:center;gap:6px}
+.modelrow-meta .dot{width:6px;height:6px;border-radius:50%;background:var(--faint);flex:none}
+.modelrow-meta .dot.ok{background:var(--ok)}
+.modelrow-progress{font-size:10.5px;margin-top:3px;color:var(--mut)}
+.modelrow-progress.ok{color:var(--ok)} .modelrow-progress.bad{color:var(--bad)}
+.modelrow-actions{display:flex;gap:6px;align-items:center;flex:none}
+.usebtn{border:1px solid var(--line);background:var(--panel2);color:var(--txt);border-radius:8px;padding:7px 12px;font-size:11.5px;cursor:pointer;white-space:nowrap}
+.usebtn:hover:not(:disabled){background:var(--accent-soft)}
+.usebtn.active{color:var(--ok);border-color:rgba(90,209,154,.45);background:rgba(90,209,154,.10);cursor:default}
+.usebtn:disabled:not(.active){opacity:.35;cursor:not-allowed;color:var(--faint);background:var(--panel2)}
+.dlbtn{border:1px solid var(--line);background:transparent;color:var(--mut);border-radius:8px;padding:7px 11px;font-size:11.5px;cursor:pointer;white-space:nowrap}
+.dlbtn:hover:not(:disabled){background:var(--accent-soft);color:var(--txt)}
+.dlbtn:disabled{opacity:.45;cursor:not-allowed}
+.badge.ok{color:var(--ok);border-color:rgba(90,209,154,.4)} .badge.bad{color:var(--bad);border-color:rgba(233,99,123,.4)}
+@keyframes campulse{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes m3dspin{0%{transform:rotateX(-25deg) rotateY(0)}100%{transform:rotateX(-25deg) rotateY(360deg)}}
+.m3d-cube{width:62px;height:62px;position:relative;transform-style:preserve-3d;animation:m3dspin 2.4s linear infinite}
+.m3d-cube div{position:absolute;width:62px;height:62px;border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);box-shadow:0 0 18px color-mix(in srgb,var(--accent) 45%,transparent)}
+.m3d-cube .f1{transform:translateZ(31px)} .m3d-cube .f2{transform:rotateY(180deg) translateZ(31px)}
+.m3d-cube .f3{transform:rotateY(90deg) translateZ(31px)} .m3d-cube .f4{transform:rotateY(-90deg) translateZ(31px)}
+.m3d-cube .f5{transform:rotateX(90deg) translateZ(31px)} .m3d-cube .f6{transform:rotateX(-90deg) translateZ(31px)}
+</style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span>BRAIN<small>.AI</small></div>
+    <div class="tabs">
+      <button class="tab active" data-view="orb" onclick="setView('orb')">Orb</button>
+      <button class="tab" data-view="chat" onclick="setView('chat')">Chat</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill"><span id="led-ollama" class="led"></span><span id="pill-mode">Cloud</span></div>
+    <div class="pill">Model <b id="pill-model">&mdash;</b></div>
+    <div class="pill"><span id="led-listen" class="led"></span><b id="pill-state">idle</b></div>
+    <button class="stopbtn" onclick="interrupt()" title="Stop talking / thinking">&#9632; Stop</button>
+    <button class="iconbtn" onclick="openSettings()" title="Settings">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+
+  <div class="stage">
+    <div class="view" id="view-chat">
+      <div class="chat-wrap">
+        <div class="chat-scroll" id="chat-scroll"></div>
+        <div class="hint">Click the mic or hold your push-to-talk key to speak, or type below.</div>
+        <div id="auto-runbar" style="display:none;align-items:center;gap:10px;padding:8px 14px;background:rgba(224,177,90,.10);border-top:1px solid rgba(224,177,90,.25);font-size:12.5px">
+          <span style="width:7px;height:7px;border-radius:50%;background:var(--warn);flex:none;animation:campulse 1.4s infinite"></span>
+          <span style="flex:1">Automation running&hellip;</span>
+          <button onclick="stopAutomation()" style="background:var(--bad);border:none;color:#fff;border-radius:8px;padding:6px 13px;font:inherit;font-size:12px;cursor:pointer">Stop</button>
+        </div>
+        <div class="composer">
+          <input id="chat-input" placeholder="Message BRAIN&hellip;" onkeydown="if(event.key==='Enter')sendText()">
+          <button id="mic-btn" onclick="toggleRecording()" title="Talk (click to start, click to stop)" style="background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:10px;width:46px;cursor:pointer;font-size:17px;flex:0 0 auto">&#127908;</button>
+          <button id="cam-btn" onclick="toggleCamera()" title="Open the live camera" style="background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:10px;width:46px;cursor:pointer;font-size:17px;flex:0 0 auto">&#128247;</button>
+          <button class="send" onclick="sendText()">Send</button>
+        </div>
+      </div>
+    </div>
+    <div class="view active" id="view-orb">
+      <canvas class="orb" id="orb-canvas"></canvas>
+      <div class="orb-meta">
+        <div class="orb-state" id="orb-state">idle</div>
+        <div class="orb-caption" id="orb-caption"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" onclick="closeSettings()"></div>
+<aside class="settings" id="settings">
+  <header><h2>Settings</h2><button class="iconbtn" onclick="closeSettings()" style="width:32px;height:32px">&#10005;</button></header>
+  <div class="body">
+
+    <!-- [OFFLINE-INTEGRATION] AI Mode: one switch flips the whole app between the cloud
+         engine below and a fully local engine (Ollama). Same UI, same features, both ways. -->
+    <div class="sec">
+      <h3>AI Mode</h3>
+      <div class="sub">One app, two brains &mdash; flip anytime. <span id="am-badge" class="badge">&mdash;</span></div>
+      <div class="row"><div><div class="l">Offline mode (local AI)</div><div class="d">Everything runs on this PC through Ollama &mdash; private, no key needed. Off = the cloud engine below.</div></div>
+        <label class="sw"><input type="checkbox" id="tog-offline" onchange="toggleOfflineMode()"><span></span></label></div>
+
+      <div class="field" style="margin:2px 0 6px">
+        <button class="minibtn" onclick="startOllama()">Start / refresh Ollama</button>
+        <span class="statusline" id="am-status" style="margin:0">&mdash;</span>
+      </div>
+
+      <!-- Offline CHAT model: every model is listed with its real download status - a green dot
+           + "Use" button means it's already on this PC and ready; a grey dot + faded, disabled
+           "Use" button means it isn't downloaded yet (hit "Download" first). Shown only while
+           Offline mode is on (visibility handled in applyOfflineFieldVisibility). -->
+      <div id="offline-chat-block" style="display:none">
+        <div class="row" style="display:block">
+          <div class="l" style="margin-bottom:2px">Offline chat model <span class="d" style="display:inline">(runs on this PC)</span></div>
+          <div class="d">Green dot = already downloaded. Press <b>Use</b> to confirm which model BRAIN should run &mdash; it's greyed out until that model is actually on your PC.</div>
+          <div class="field" style="margin:8px 0 2px">
+            <button class="minibtn" onclick="refreshOllamaCard()" title="Re-scan this PC for installed models">Scan for installed models</button>
+          </div>
+          <div id="offline-chat-list" class="modellist"><div class="statusline">Scanning&hellip;</div></div>
+          <div class="statusline" id="offline-chat-status">&mdash;</div>
+        </div>
+      </div>
+
+      <!-- Local VISION model: used in Offline mode, or in Online mode when "Local vision" is on.
+           Same scanned-list + Use/Download pattern as the chat model above. -->
+      <div id="offline-vision-block" style="display:none">
+        <div class="row" style="display:block">
+          <div class="l" style="margin-bottom:2px">Local vision model</div>
+          <div class="d">Used for screen, camera &amp; automation targeting. "Auto" picks the best one you have installed.</div>
+          <div id="offline-vision-list" class="modellist"><div class="statusline">Scanning&hellip;</div></div>
+        </div>
+      </div>
+
+      <div class="row"><div><div class="l">Local vision (offline vision)</div><div class="d">Screen, camera &amp; automation targeting run on the local vision model. In Online mode, chat still uses the cloud &mdash; only vision goes local.</div></div>
+        <label class="sw"><input type="checkbox" id="tog-localvision" onchange="toggleLocalVision()"><span></span></label></div>
+
+      <div class="row"><div><div class="l">Local voice input (offline Whisper)</div><div class="d">Speech-to-text runs on this PC via faster-whisper. In Online mode, chat still uses the cloud &mdash; only your voice transcription goes local.</div></div>
+        <label class="sw"><input type="checkbox" id="tog-localstt" onchange="toggleLocalStt()"><span></span></label></div>
+      <!-- Local Whisper model: shown in Offline mode, or in Online mode when local voice input is on. -->
+      <div id="offline-stt-block" class="row" style="display:none">
+        <div style="width:100%">
+          <div class="l" style="margin-bottom:7px">Local Whisper model</div>
+          <div class="field">
+            <select id="offline-stt-select" onchange="setOfflineStt()">
+              <option value="">(auto &mdash; tiny.en / tiny)</option>
+              <option value="tiny.en">tiny.en &mdash; fastest, English</option>
+              <option value="base.en">base.en &mdash; more accurate, English</option>
+              <option value="small.en">small.en &mdash; best accuracy, English, slower</option>
+              <option value="tiny">tiny &mdash; multilingual</option>
+              <option value="base">base &mdash; multilingual</option>
+              <option value="small">small &mdash; multilingual, slower</option>
+            </select>
+          </div>
+          <div class="d" style="margin-top:6px">The model downloads itself automatically the first time you speak.</div>
+        </div>
+      </div>
+
+      <div class="row"><div><div class="l">Keep offline chats separate</div><div class="d">Off = both modes share the same chats &amp; history. On = offline mode keeps its own.</div></div>
+        <label class="sw"><input type="checkbox" id="tog-sepchats" onchange="toggleSepChats()"><span></span></label></div>
+    </div>
+
+    <div class="sec">
+      <h3>Voice Input</h3>
+      <div class="sub">Your global hotkey (<b id="vi-current-hotkey">&mdash;</b>) toggles the mic by default. Turn this on to hold it instead, from anywhere on the PC.</div>
+      <div class="row"><div><div class="l">System-wide push-to-talk</div><div class="d">Hold the global hotkey to record, release to send &mdash; works even while BRAIN is in the background. Off = the hotkey toggles the mic as usual. Needs a one-time native component; falls back to toggle mode automatically if that can't load.</div></div>
+        <label class="sw"><input type="checkbox" id="tog-systemptt" onchange="toggleSystemPtt()"><span></span></label></div>
+      <div class="row" style="display:block">
+        <div class="l" style="margin-bottom:7px">Hold-to-talk combo <span class="d" style="display:inline">(blank = reuse the global hotkey above)</span></div>
+        <div class="field">
+          <input id="system-ptt-hotkey" type="text" placeholder="e.g. alt+space, ctrl+shift+v" spellcheck="false"
+                 style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none"
+                 onchange="setSystemPttHotkey()">
+        </div>
+      </div>
+      <div class="statusline" id="system-ptt-status">&mdash;</div>
+      <div class="d" style="margin-top:6px">This is separate from the in-window push-to-talk key (<b id="vi-inwindow-hotkey">\</b>) used while BRAIN itself has focus &mdash; that one keeps working no matter what you choose here.</div>
+    </div>
+
+    <div class="sec">
+      <h3>AI Engine (Cloud)</h3>
+      <div class="sub">Where the intelligence comes from. Paste a key to connect. <span id="engine-badge" class="badge">&mdash;</span></div>
+      <div class="row" style="display:block">
+        <div class="l" style="margin-bottom:7px">Provider</div>
+        <div class="field">
+          <select id="provider-select" onchange="onProviderChange()">
+            <option value="groq">Groq &mdash; fast, free tier</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="openai">OpenAI</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="custom">Custom&hellip;</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="display:block">
+        <div class="l" style="margin-bottom:7px">API Key</div>
+        <input id="api-key" type="password" placeholder="paste your key" autocomplete="off" spellcheck="false"
+               style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:13px;outline:none">
+        <div class="statusline" id="key-hint">&mdash;</div>
+      </div>
+      <div class="row" style="display:block">
+        <div class="l" style="margin-bottom:7px">Base URL</div>
+        <input id="base-url" type="text" spellcheck="false"
+               style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none">
+      </div>
+      <div class="row" style="display:block" id="cloud-stt-row">
+        <div class="l" style="margin-bottom:7px">Voice model (speech-to-text)</div>
+        <input id="stt-model" type="text" spellcheck="false"
+               style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none">
+      </div>
+      <div class="row" style="display:block" id="cloud-vision-row">
+        <div class="l" style="margin-bottom:7px">Vision model (screen reading)</div>
+        <input id="vision-model" type="text" spellcheck="false"
+               style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none">
+      </div>
+      <div class="field" style="margin-top:10px">
+        <button class="minibtn" onclick="saveEngine()">Save &amp; connect</button>
+        <span class="statusline" id="engine-status" style="margin:0">&mdash;</span>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>Personality</h3>
+      <div class="sub">Tell BRAIN who to be &mdash; tone, style, how it should talk to you.</div>
+      <textarea id="persona" spellcheck="false" rows="5"
+        style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px;font:inherit;font-size:12px;line-height:1.5;outline:none;resize:vertical"
+        placeholder="e.g. You are JARVIS: witty, loyal, and concise. Call me 'sir'. Be a little sarcastic but always helpful."></textarea>
+      <div class="field" style="margin-top:8px">
+        <button class="minibtn" onclick="savePersona()">Save personality</button>
+        <span class="statusline" id="persona-status" style="margin:0">&mdash;</span>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>Chats</h3>
+      <div class="sub">Start a fresh chat or jump back into an old one.</div>
+      <div class="field"><button class="minibtn" onclick="newChat()">+ New chat</button></div>
+      <div id="chat-list" style="margin-top:10px;display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+
+    <div class="sec">
+      <h3>Models</h3>
+      <div class="sub">Models available from your provider. Load to refresh the list.</div>
+      <div class="row" style="display:block">
+        <div class="l" style="margin-bottom:7px">Reasoning Model</div>
+        <div class="field">
+          <select id="model-select" onchange="setBrainModel()"><option>&mdash;</option></select>
+          <button class="minibtn" onclick="loadModels(true)">Load</button>
+        </div>
+        <div class="statusline" id="model-status">&mdash;</div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>Appearance</h3>
+      <div class="sub">Theme accent.</div>
+      <div class="accents" id="accents"></div>
+      <div class="row" style="margin-top:10px"><div><div class="l">Show Captions on Orb</div><div class="d">Display the latest reply over the orb</div></div>
+        <label class="sw"><input type="checkbox" id="tog-orbcap" onchange="toggleOrbCap()"><span></span></label></div>
+      <div class="row" style="margin-top:10px"><div><div class="l">Background Animation</div><div class="d">Slow 3D wireframe. Turn off to save battery &amp; GPU.</div></div>
+        <label class="sw"><input type="checkbox" id="tog-bganim" onchange="toggleBgAnim()"><span></span></label></div>
+    </div>
+
+    <div class="sec">
+      <h3>Desktop Automation</h3>
+      <div class="sub">PyAutoGUI control layer &mdash; grant scoped permissions. <span id="auto-badge" class="badge">&mdash;</span></div>
+      <div style="font-size:11.5px;color:var(--faint);line-height:1.5;margin:-2px 0 12px">BRAIN always proposes a plan and waits for you to approve it before touching the mouse or keyboard, and always asks again before running any shell command &mdash; even mid-plan.</div>
+      <div class="row"><div><div class="l">Allow Mouse Control</div><div class="d">Let it move and click the cursor</div></div>
+        <label class="sw"><input type="checkbox" id="tog-mouse" onchange="api('/toggle_mouse_control',{enabled:this.checked})"><span></span></label></div>
+      <div class="row"><div><div class="l">Allow System Scripting</div><div class="d">Keyboard automation, shell &amp; system control</div></div>
+        <label class="sw"><input type="checkbox" id="tog-scripting" onchange="api('/toggle_system_scripting',{enabled:this.checked})"><span></span></label></div>
+    </div>
+
+    <div class="sec">
+      <h3>Audio &amp; Voice</h3>
+      <div class="sub">Vocal synthesizer output.</div>
+      <div class="row"><div><div class="l">Enable Text-to-Speech</div><div class="d">Speak responses aloud</div></div>
+        <label class="sw"><input type="checkbox" id="tog-tts" onchange="api('/toggle_tts',{enabled:this.checked})"><span></span></label></div>
+      <div class="row" style="display:block"><div class="l" style="margin-bottom:7px">Voice Engine</div>
+        <select id="tts-engine" onchange="onEngineChange()" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none">
+          <option value="browser">Built-in (instant, robotic)</option>
+          <option value="piper">Natural voice (downloads once)</option>
+        </select></div>
+      <div id="piper-fields" style="display:none">
+        <div class="row" style="display:block"><div class="l" style="margin-bottom:7px">Choose a voice</div>
+          <div class="field"><select id="voice-pick" style="flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none"></select></div>
+          <div class="field" style="margin-top:6px">
+            <button class="minibtn" id="voice-dl-btn" onclick="downloadVoice()">Download</button>
+            <button class="minibtn" id="voice-use-btn" onclick="useVoice()">Use</button></div>
+          <div class="statusline" id="voice-status" style="margin-top:8px">&mdash;</div>
+        </div>
+        <div class="field" style="margin-top:4px"><button class="minibtn" onclick="testVoice()">Test voice</button>
+          <span style="font-size:11px;color:var(--faint);cursor:pointer;text-decoration:underline" onclick="document.getElementById('piper-advanced').style.display=(document.getElementById('piper-advanced').style.display==='none'?'block':'none')">advanced</span></div>
+        <div id="piper-advanced" style="display:none">
+          <div class="row" style="display:block"><div class="l" style="margin-bottom:7px">Piper executable path</div>
+            <input id="piper-path" type="text" spellcheck="false" placeholder="auto-filled after download"
+              style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none"></div>
+          <div class="row" style="display:block"><div class="l" style="margin-bottom:7px">Piper voice model (.onnx)</div>
+            <input id="piper-model" type="text" spellcheck="false" placeholder="auto-filled after download"
+              style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none"></div>
+          <div class="field"><button class="minibtn" onclick="saveVoice()">Save manual paths</button></div>
+        </div>
+      </div>
+      <div class="row"><div class="l">Speech Rate</div>
+        <div style="display:flex;align-items:center;gap:10px"><input type="range" id="rate" min="120" max="260" step="5" onchange="setRate()"><b id="rate-val" style="font-size:12px;min-width:30px">195</b></div></div>
+    </div>
+
+    <div class="sec">
+      <h3>Microphone &amp; Push-to-Talk</h3>
+      <div class="sub">Input device and hotkey binding.</div>
+      <div class="row" style="display:block"><div class="l" style="margin-bottom:7px">Active Input Device</div>
+        <select id="mic-select" onchange="setMic()"><option>loading&hellip;</option></select></div>
+      <div class="row"><div class="l">Current Binding</div>
+        <div class="field" style="width:auto"><b id="ptt-binding" style="font-family:ui-monospace,monospace;font-size:12px">&mdash;</b>
+        <button class="minibtn" id="bind-btn" onclick="bindPTT()">Bind</button></div></div>
+      <div class="row"><div><div class="l">Local wake word &ldquo;Hey Jarvis&rdquo;</div><div class="d">On-device, always-on, no cloud. Downloads a small model once.</div></div>
+        <label class="sw"><input type="checkbox" id="tog-localwake" onchange="toggleLocalWake(this.checked)"><span></span></label></div>
+      <div class="row" id="lw-thresh-row" style="display:none"><div><div class="l">Sensitivity</div><div class="d">Higher = fewer false triggers. Lower = easier to trigger.</div></div>
+        <input id="lw-thresh" type="range" min="0.15" max="0.9" step="0.05" value="0.5" oninput="setWakeThreshold(this.value)" style="width:140px"></div>
+      <div class="row" id="lw-status-row" style="display:none"><div class="d" id="lw-status" style="font-size:12px">&nbsp;</div></div>
+    </div>
+
+    <div class="sec">
+      <h3>Memory &amp; Neural Parameters</h3>
+      <div class="sub">Perception, autonomy, and long-term storage.</div>
+      <div class="row"><div><div class="l">RAG Memory <span id="mem-badge" class="badge">&mdash;</span></div><div class="d" id="mem-vectors">&mdash; vectors &middot; SQLite embeddings</div></div></div>
+      <div class="row" style="display:block">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+          <div class="l">Stored messages (this chat)</div>
+          <div class="field" style="width:auto"><button class="minibtn" onclick="loadMemoryList()">Refresh</button><button class="minibtn" onclick="clearCurrentChat()">Clear chat</button></div>
+        </div>
+        <div id="mem-list" style="display:flex;flex-direction:column;gap:5px;max-height:240px;overflow:auto"></div>
+      </div>
+      <div class="row"><div><div class="l">Screen Perception</div><div class="d">Continuously watch &amp; comment</div></div>
+        <label class="sw"><input type="checkbox" id="tog-screen" onchange="api('/toggle_screen_watch',{enabled:this.checked})"><span></span></label></div>
+      <div class="row"><div><div class="l">Proactive Thinking</div><div class="d">Initiate unprompted conversations</div></div>
+        <label class="sw"><input type="checkbox" id="tog-proactive" onchange="api('/toggle_proactive_thinking',{enabled:this.checked})"><span></span></label></div>
+      <div class="row"><div><div class="l">Persistent Memory</div><div class="d">Learn &amp; store facts over time</div></div>
+        <label class="sw"><input type="checkbox" id="tog-persistent" onchange="api('/toggle_memory_saving',{enabled:this.checked})"><span></span></label></div>
+      <div class="row" style="display:block"><div style="display:flex;justify-content:space-between"><div class="l">Storage Budget</div><b id="budget-val" style="font-size:12px">4 GB</b></div>
+        <input type="range" id="budget" min="1" max="50" step="1" style="width:100%;margin-top:8px" onchange="setBudget()">
+        <div class="meter"><i id="budget-meter"></i></div>
+        <div class="statusline" id="budget-use">&mdash;</div></div>
+    </div>
+
+    <div class="sec">
+      <h3>Engine Status</h3>
+      <div class="sub">Cloud API connection.</div>
+      <div class="row"><div class="l">Connection</div><span id="engine-link" class="badge">&mdash;</span></div>
+      <div class="row"><div class="l">Core Model</div><b id="engine-model" style="font-family:ui-monospace,monospace;font-size:12px;color:var(--accent)">&mdash;</b></div>
+      <div class="row"><div class="l">Vision Model</div><b id="engine-vision" style="font-family:ui-monospace,monospace;font-size:12px">&mdash;</b></div>
+      <div class="row"><div class="l">Screen OCR</div><span id="engine-ocr" class="badge">&mdash;</span></div>
+    </div>
+
+  </div>
+</aside>
+
+<!-- Fullscreen live camera -->
+<div id="cam-full" style="display:none;position:fixed;inset:0;z-index:9999;background:#000;flex-direction:column;align-items:center;justify-content:center;overflow:hidden">
+  <div style="position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;z-index:3">
+    <button onclick="toggleCamera()" title="Exit camera" style="background:rgba(20,20,24,.55);border:1px solid var(--accent);color:#fff;border-radius:11px;padding:10px 15px;font:inherit;font-size:14px;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)">&#8592; Exit</button>
+    <div style="display:flex;align-items:center;gap:9px">
+      <select id="cam-pick" onchange="switchCamera()" title="Choose camera" style="display:none;background:rgba(20,20,24,.55);border:1px solid var(--accent);color:#fff;border-radius:11px;padding:9px 11px;font:inherit;font-size:12px;outline:none;max-width:190px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);cursor:pointer"></select>
+      <div style="display:flex;align-items:center;gap:7px;color:#fff;font-size:13px;background:rgba(20,20,24,.45);padding:7px 13px;border-radius:20px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;animation:campulse 1.4s infinite"></span> BRAIN is watching</div>
+    </div>
+  </div>
+  <div id="cam-stage" style="position:relative;display:inline-flex;align-items:center;justify-content:center">
+    <video id="cam-live" autoplay muted playsinline style="display:block;max-width:100vw;max-height:100vh"></video>
+    <canvas id="cam-overlay" style="position:absolute;left:0;top:0;pointer-events:none"></canvas>
+  </div>
+  <div id="cam-caption" style="position:absolute;bottom:104px;left:50%;transform:translateX(-50%);max-width:82%;text-align:center;color:#fff;font-size:15px;line-height:1.4;background:rgba(20,20,24,.6);padding:11px 18px;border-radius:13px;display:none;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)"></div>
+  <div style="position:absolute;bottom:0;left:0;right:0;display:flex;gap:9px;padding:18px 16px;justify-content:center;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.65))">
+    <input id="cam-input" placeholder="Ask about what you're showing&hellip;" onkeydown="if(event.key==='Enter')camSendInput()" style="flex:0 1 420px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);color:#fff;border-radius:24px;padding:12px 17px;font:inherit;font-size:14px;outline:none">
+    <button id="cam-mic" onclick="toggleRecording()" title="Talk" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);color:#fff;border-radius:50%;width:48px;height:48px;cursor:pointer;font-size:18px;flex:0 0 auto">&#127908;</button>
+    <button onclick="askAboutCamera()" style="background:var(--accent);border:none;color:#fff;border-radius:24px;padding:12px 22px;font:inherit;font-size:14px;cursor:pointer;flex:0 0 auto">What is this?</button>
+    <button onclick="makeModelFromCamera()" title="Build a 3D model of what you're showing" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);color:#fff;border-radius:24px;padding:12px 18px;font:inherit;font-size:14px;cursor:pointer;flex:0 0 auto">&#129513; Make 3D</button>
+  </div>
+</div>
+
+<!-- 3D model viewer -->
+<div id="model3d-fs" style="display:none;position:fixed;inset:0;z-index:10000;background:radial-gradient(circle at 50% 38%,#11141d,#06070b);flex-direction:column;align-items:center;justify-content:center;overflow:hidden">
+  <div style="position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;z-index:3">
+    <button onclick="closeModel3D()" style="background:rgba(20,20,24,.55);border:1px solid var(--accent);color:#fff;border-radius:11px;padding:10px 15px;font:inherit;font-size:14px;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)">&#8592; Back</button>
+    <div id="model3d-name" style="color:#fff;font-size:14px;background:rgba(20,20,24,.45);padding:8px 15px;border-radius:20px;max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)">3D model</div>
+    <button id="model3d-dl" onclick="downloadModel3D()" style="background:var(--accent);border:none;color:#fff;border-radius:11px;padding:10px 15px;font:inherit;font-size:14px;cursor:pointer">&#10515; Download .glb</button>
+  </div>
+  <div id="model3d-stage" style="width:100%;height:100%;cursor:grab"></div>
+  <div id="model3d-hint" style="position:absolute;bottom:18px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.5);font-size:12px;z-index:3">Drag to rotate</div>
+  <div id="model3d-loading" style="display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;gap:26px;background:rgba(6,7,11,.6);z-index:4">
+    <div class="m3d-cube"><div class="f1"></div><div class="f2"></div><div class="f3"></div><div class="f4"></div><div class="f5"></div><div class="f6"></div></div>
+    <div style="color:#fff;font-size:15px;letter-spacing:.3px">Sculpting your 3D model&hellip;</div>
+  </div>
+</div>
+
+<script>
+let lastStatus = {};
+let orb = {level:0, speaking:false, target:0};
+
+async function api(path, body){
+  body = body || {};
+  try{
+    if(path==='/send_text')        return await window.bridge.sendText(body.text);
+    if(path==='/interrupt')        return await window.bridge.stopChat();
+    if(path==='/set_brain_model')  return await window.bridge.setModel(body.model);
+    // The old voice/automation/screen toggles are persisted but inert in this cloud
+    // build; they still resolve cleanly so the existing UI keeps working untouched.
+    if(path.indexOf('/toggle_')===0 || path.indexOf('/set_')===0)
+      return await window.bridge.setFlag(path, body);
+    return {};
+  }catch(e){ console.error('api',path,e); return null; }
+}
+async function getJSON(path){
+  try{
+    if(path==='/status')          return await window.bridge.status();
+    if(path==='/activity')        return await window.bridge.activity();
+    if(path==='/get_models')      return await window.bridge.getModels();
+    if(path==='/get_mic_devices') return {devices:[], current:null};
+    return null;
+  }catch(e){ return null; }
+}
+
+function setView(v){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.view===v));
+  document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
+  document.getElementById('view-'+v).classList.add('active');
+  _curView=v; _bgApply();   // animated background runs in Chat view only
+}
+function openSettings(){ document.getElementById('settings').classList.add('open'); document.getElementById('scrim').classList.add('open'); populateEngine(); populateAiMode(); populateVoiceInputCard(); syncSettings(); loadModels(); loadMics(); populateExtras(); }
+
+// ---- Personality, chats, voice, wake word, memory management ----
+async function populateExtras(){
+  const cfg=await window.bridge.getConfig(); if(!cfg) return;
+  const pe=document.getElementById('persona'); if(pe) pe.value=cfg.systemPrompt||'';
+  const te=document.getElementById('tts-engine'); if(te) te.value=cfg.ttsEngine||'browser';
+  const pp=document.getElementById('piper-path'); if(pp) pp.value=cfg.piperPath||'';
+  const pm=document.getElementById('piper-model'); if(pm) pm.value=cfg.piperModel||'';
+  togglePiperFields();
+  loadVoiceList(cfg);
+  loadChatList();
+  loadMemoryList();
+}
+function togglePiperFields(){
+  const v=document.getElementById('tts-engine'); const box=document.getElementById('piper-fields');
+  if(v&&box) box.style.display=(v.value==='piper')?'block':'none';
+}
+async function onEngineChange(){
+  const engine=document.getElementById('tts-engine').value;
+  await window.bridge.setConfig({ ttsEngine:engine });
+  togglePiperFields();
+  if(engine==='piper') loadVoiceList();
+}
+let _voicesLoaded=false;
+async function loadVoiceList(cfg){
+  const sel=document.getElementById('voice-pick'); if(!sel) return;
+  const voices=await window.bridge.listVoices();
+  if(voices&&voices.length){
+    const prev=sel.value;
+    sel.innerHTML=voices.map(function(v){ return '<option value="'+v.id+'">'+(v.active?'\u25CF ':'')+esc(v.label)+(v.downloaded?'  \u2713':'')+'</option>'; }).join('');
+    if(prev) sel.value=prev;
+    _voicesLoaded=true;
+  }
+  const c=cfg||await window.bridge.getConfig();
+  const st=document.getElementById('voice-status');
+  if(st && c){ if(c.ttsEngine==='piper' && c.piperModel){ const m=c.piperModel.split(/[\\/]/).pop().replace('.onnx',''); st.textContent='Using: '+m+'  (\u2713 = downloaded)'; st.className='statusline ok'; } else { st.textContent='Download a voice, then click Use.  (\u2713 = downloaded)'; st.className='statusline'; } }
+}
+async function downloadVoice(){
+  const id=document.getElementById('voice-pick').value;
+  const dl=document.getElementById('voice-dl-btn'); const use=document.getElementById('voice-use-btn'); const st=document.getElementById('voice-status');
+  if(dl){ dl.disabled=true; dl.textContent='Downloading\u2026'; } if(use){ use.disabled=true; }
+  if(st){ st.textContent='Starting download\u2026'; st.className='statusline'; }
+  try{
+    const r=await window.bridge.downloadVoice(id);
+    if(r&&r.ok){ if(st){ st.textContent='\u2713 Downloaded \u2014 click Use to switch to it.'; st.className='statusline ok'; } }
+    else { if(st){ st.textContent='\u26A0 '+((r&&r.error)||'failed'); st.className='statusline bad'; } }
+  }catch(e){ if(st){ st.textContent='\u26A0 '+(e&&e.message?e.message:e); st.className='statusline bad'; } }
+  if(dl){ dl.disabled=false; dl.textContent='Download'; } if(use){ use.disabled=false; }
+  loadVoiceList();
+}
+async function useVoice(){
+  const id=document.getElementById('voice-pick').value;
+  const use=document.getElementById('voice-use-btn'); const st=document.getElementById('voice-status');
+  if(use){ use.disabled=true; use.textContent='\u2026'; }
+  try{
+    const r=await window.bridge.useVoice(id);
+    if(r&&r.ok){ if(st){ st.textContent='\u2713 Now using this voice.'; st.className='statusline ok'; }
+      const c=await window.bridge.getConfig(); const eng=document.getElementById('tts-engine'); if(eng&&c&&c.ttsEngine) eng.value=c.ttsEngine;
+      const pp=document.getElementById('piper-path'); const pm=document.getElementById('piper-model'); if(pp&&c) pp.value=c.piperPath||''; if(pm&&c) pm.value=c.piperModel||'';
+    } else { if(st){ st.textContent='\u26A0 '+((r&&r.error)||'download it first'); st.className='statusline bad'; } }
+  }catch(e){ if(st){ st.textContent='\u26A0 '+(e&&e.message?e.message:e); st.className='statusline bad'; } }
+  if(use){ use.disabled=false; use.textContent='Use'; }
+  loadVoiceList();
+}
+if(window.bridge && window.bridge.onVoiceProgress){ window.bridge.onVoiceProgress(function(msg){ const st=document.getElementById('voice-status'); if(st && msg){ st.textContent=msg; st.className='statusline'; } }); }
+async function savePersona(){
+  const v=document.getElementById('persona').value;
+  await window.bridge.setConfig({ systemPrompt:v });
+  const st=document.getElementById('persona-status'); if(st){ st.textContent='Saved.'; st.className='statusline ok'; }
+}
+async function saveVoice(){
+  togglePiperFields();
+  const engine=document.getElementById('tts-engine').value;
+  const piperPath=document.getElementById('piper-path').value.trim();
+  const piperModel=document.getElementById('piper-model').value.trim();
+  await window.bridge.setConfig({ ttsEngine:engine, piperPath:piperPath, piperModel:piperModel });
+  const st=document.getElementById('voice-status'); if(st){ st.textContent=(engine==='piper'&&(!piperPath||!piperModel))?'Saved \u2014 set both Piper paths to use it.':'Saved.'; st.className='statusline '+((engine==='piper'&&(!piperPath||!piperModel))?'bad':'ok'); }
+}
+async function testVoice(){
+  await saveVoice();   // save current paths first so we test what's on screen
+  const st=document.getElementById('voice-status'); if(st){ st.textContent='Testing voice\u2026'; st.className='statusline'; }
+  try{
+    const r=await window.bridge.testVoice();
+    if(st){
+      if(r&&r.ok){ st.textContent=(r.engine==='piper')?'\u2713 Piper works \u2014 you should hear it now.':'\u2713 Built-in voice played.'; st.className='statusline ok'; }
+      else { st.textContent='\u26A0 '+((r&&r.error)||'failed'); st.className='statusline bad'; }
+    }
+  }catch(e){ if(st){ st.textContent='\u26A0 '+(e&&e.message?e.message:e); st.className='statusline bad'; } }
+}
+async function newChat(){ await window.bridge.newChat(); expandedThink=new Set(); bootScrolled=false; await pollActivity(); loadChatList(); loadMemoryList(); }
+async function loadChatList(){
+  const box=document.getElementById('chat-list'); if(!box) return;
+  const chats=await window.bridge.listChats(); if(!chats){ box.innerHTML=''; return; }
+  box.innerHTML=chats.map(function(c){
+    const t=esc(c.title||'Chat');
+    const act=c.active?'border-color:var(--accent)':'border-color:var(--line)';
+    return '<div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);'+act+';border-radius:8px;padding:8px 10px">'
+      +'<div style="flex:1;min-width:0;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" onclick="switchChat(\''+c.id+'\')">'+(c.active?'\u25cf ':'')+t+' <span style="color:var(--faint)">\u00b7 '+c.count+'</span></div>'
+      +'<span onclick="deleteChat(\''+c.id+'\')" title="Delete chat" style="cursor:pointer;color:var(--faint);font-size:15px;padding:0 4px">\u00d7</span></div>';
+  }).join('')||'<div class="statusline">No chats yet.</div>';
+}
+async function switchChat(id){ await window.bridge.switchChat(id); expandedThink=new Set(); bootScrolled=false; await pollActivity(); loadChatList(); loadMemoryList(); }
+async function deleteChat(id){ await window.bridge.deleteChat(id); expandedThink=new Set(); bootScrolled=false; await pollActivity(); loadChatList(); loadMemoryList(); }
+async function loadMemoryList(){
+  const box=document.getElementById('mem-list'); if(!box) return;
+  const msgs=await window.bridge.listMemory(); if(!msgs){ box.innerHTML=''; return; }
+  if(!msgs.length){ box.innerHTML='<div class="statusline">This chat is empty.</div>'; return; }
+  box.innerHTML=msgs.map(function(m){
+    const who=m.role==='user'?'you':(m.role==='assistant'?'brain':m.role);
+    const txt=esc(String(m.content||'').slice(0,160));
+    return '<div style="display:flex;align-items:flex-start;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:11px">'
+      +'<div style="flex:1;min-width:0"><span style="color:var(--faint)">'+who+':</span> '+txt+'</div>'
+      +'<span onclick="deleteMemoryItem('+m.index+')" title="Delete message" style="cursor:pointer;color:var(--faint);font-size:14px">\u00d7</span></div>';
+  }).join('');
+}
+async function deleteMemoryItem(index){ await window.bridge.deleteMessage(index); await pollActivity(); loadMemoryList(); }
+async function clearCurrentChat(){ await window.bridge.clearMemory(); await pollActivity(); loadMemoryList(); }
+function closeSettings(){ document.getElementById('settings').classList.remove('open'); document.getElementById('scrim').classList.remove('open'); }
+
+async function interrupt(){ stopSpeaking(); await api('/interrupt',{}); }
+async function sendText(){
+  const i=document.getElementById('chat-input'); const t=i.value.trim(); if(!t) return;
+  i.value='';
+  stopSpeaking(); // clear any speech still queued/playing from the previous reply
+  await api('/send_text',{text:t});
+}
+
+// Pick a sensible chat model: prefer the provider's default, otherwise the first
+// model that isn't a speech/vision/embedding/guard model (those return blank for chat).
+function pickChatModel(models){
+  const prov=(engineCfg&&engineCfg.provider)||(lastStatus&&lastStatus.provider)||'groq';
+  const pref=(ENGINE_PRESETS[prov]||{}).model;
+  if(pref && models.indexOf(pref)>=0) return pref;
+  const bad=/whisper|tts|embed|guard|moderation|vision|stable-|sora|dall|image/i;
+  // [OFFLINE-INTEGRATION] local tag names for vision/embedding models don't contain the words
+  // above ("moondream", "llava", ...) - filter them too so auto-pick never makes a vision
+  // model the chat brain in offline mode.
+  const badLocal=/moondream|llava|bakllava|minicpm|nomic/i;
+  const offlineMode=(lastStatus&&lastStatus.mode==='offline');
+  const good=models.filter(function(m){ return !bad.test(m) && !(offlineMode&&badLocal.test(m)); });
+  return good[0]||models[0];
+}
+async function loadModels(force){
+  const sel=document.getElementById('model-select'); const st=document.getElementById('model-status');
+  if(st){ st.textContent='Loading models\u2026'; st.className='statusline'; }
+  const data=await getJSON('/get_models');
+  const offlineMode=(lastStatus&&lastStatus.mode==='offline'); // [OFFLINE-INTEGRATION] mode-aware hints
+  if(!data){ if(st){ st.textContent=offlineMode?'Could not load local models \u2014 is Ollama running? (AI Mode \u2192 Start Ollama)':'Could not load models. Check your API key in AI Engine above.'; st.className='statusline bad'; } if(sel) sel.innerHTML='<option>not connected</option>'; return; }
+  const models=data.models||[]; let current=data.current||'';
+  if(models.length===0){ if(st){ st.textContent=(data.error?('Error: '+data.error):(offlineMode?'No local models yet \u2014 run: ollama pull qwen2.5:7b':'No models returned. Check your key.')); st.className='statusline bad'; } if(sel) sel.innerHTML='<option value="'+current+'">'+(current||'none')+'</option>'; return; }
+  // Auto-connect: if no model is set, or the saved one isn't a valid/usable chat model, pick one.
+  if(!current || models.indexOf(current)<0){
+    current=pickChatModel(models);
+    await window.bridge.setModel(current);   // persist so chat works immediately
+    if(engineCfg) engineCfg.model=current;
+  }
+  if(sel) sel.innerHTML=models.map(function(m){ return '<option value="'+m+'"'+(m===current?' selected':'')+'>'+m+'</option>'; }).join('');
+  if(st){ st.textContent=models.length+' model'+(models.length>1?'s':'')+' available.'; st.className='statusline ok'; }
+}
+async function setBrainModel(){
+  const m=document.getElementById('model-select').value; if(!m) return;
+  await api('/set_brain_model',{model:m});
+}
+
+// ---- AI Engine (Cloud) settings ----
+const ENGINE_PRESETS={
+  groq:{url:'https://api.groq.com/openai/v1', hint:'Free key at console.groq.com \u2014 no card needed.', model:'llama-3.3-70b-versatile'},
+  gemini:{url:'https://generativelanguage.googleapis.com/v1beta/openai', hint:'Free key at aistudio.google.com.', model:'gemini-2.5-flash'},
+  openai:{url:'https://api.openai.com/v1', hint:'Key from platform.openai.com (paid).', model:'gpt-4o-mini'},
+  openrouter:{url:'https://openrouter.ai/api/v1', hint:'Key from openrouter.ai.', model:''},
+  custom:{url:'', hint:'Any OpenAI-compatible endpoint.', model:''}
+};
+let engineCfg=null;          // cached config (holds providerKeys / providerModels)
+let curProvider='groq';      // provider currently shown in the dropdown
+async function populateEngine(){
+  engineCfg=await window.bridge.getConfig(); if(!engineCfg) return;
+  curProvider=engineCfg.provider||'groq';
+  const keys=engineCfg.providerKeys||{};
+  document.getElementById('provider-select').value=curProvider;
+  document.getElementById('api-key').value=keys[curProvider]||engineCfg.apiKey||'';
+  document.getElementById('base-url').value=engineCfg.baseUrl||'';
+  document.getElementById('stt-model').value=engineCfg.sttModel||'';
+  document.getElementById('vision-model').value=engineCfg.visionModel||'';
+  const p=ENGINE_PRESETS[curProvider]||ENGINE_PRESETS.custom;
+  document.getElementById('key-hint').textContent=p.hint;
+  const hasKey=!!document.getElementById('api-key').value.trim();
+  const eb=document.getElementById('engine-badge');
+  eb.textContent=hasKey?'CONNECTED':'NO KEY'; eb.className='badge '+(hasKey?'ok':'bad');
+}
+function onProviderChange(){
+  // remember the key currently typed for the provider we're leaving
+  if(engineCfg){ engineCfg.providerKeys=engineCfg.providerKeys||{}; engineCfg.providerKeys[curProvider]=document.getElementById('api-key').value.trim(); }
+  const p=document.getElementById('provider-select').value;
+  const preset=ENGINE_PRESETS[p]||ENGINE_PRESETS.custom;
+  if(p!=='custom') document.getElementById('base-url').value=preset.url;
+  document.getElementById('key-hint').textContent=preset.hint;
+  // auto-fill the saved key for the provider we're switching to
+  const keys=(engineCfg&&engineCfg.providerKeys)||{};
+  const k=keys[p]||'';
+  document.getElementById('api-key').value=k;
+  const eb=document.getElementById('engine-badge');
+  eb.textContent=k?'CONNECTED':'NO KEY'; eb.className='badge '+(k?'ok':'bad');
+  curProvider=p;
+}
+async function saveEngine(){
+  const st=document.getElementById('engine-status'); st.textContent='Saving\u2026'; st.className='statusline';
+  const p=document.getElementById('provider-select').value;
+  const key=document.getElementById('api-key').value.trim();
+  const keys=Object.assign({}, (engineCfg&&engineCfg.providerKeys)||{}); keys[p]=key;
+  const pModels=(engineCfg&&engineCfg.providerModels)||{};
+  const preset=ENGINE_PRESETS[p]||ENGINE_PRESETS.custom;
+  const model=pModels[p]||preset.model||(engineCfg&&engineCfg.model)||'';
+  await window.bridge.setConfig({
+    provider:p,
+    apiKey:key,
+    baseUrl:document.getElementById('base-url').value.trim(),
+    sttModel:document.getElementById('stt-model').value.trim(),
+    visionModel:document.getElementById('vision-model').value.trim(),
+    providerKeys:keys,
+    model:model
+  });
+  if(engineCfg){ engineCfg.providerKeys=keys; engineCfg.provider=p; engineCfg.apiKey=key; engineCfg.model=model; }
+  curProvider=p;
+  const eb=document.getElementById('engine-badge');
+  eb.textContent=key?'CONNECTED':'NO KEY'; eb.className='badge '+(key?'ok':'bad');
+  st.textContent=key?'Saved.':'Saved \u2014 but no key yet.'; st.className='statusline '+(key?'ok':'bad');
+  loadModels(true);
+}
+
+// ---- [OFFLINE-INTEGRATION] AI Mode (online/offline switch, local vision, storage) ----
+// Everything here rides the existing bridge: mode/vision/storage are plain config keys
+// (main.js reacts to them), Ollama info comes from the two new bridge calls. The chat
+// model itself is picked in the existing Models section - getModels/setModel are
+// mode-aware in main.js, so that UI needs no changes at all.
+let _ollamaCatalog=null;      // cached {chat:[...], vision:[...]} curated download lists
+let _pullInFlight=false;      // guard so the UI never fires two downloads at once
+async function populateAiMode(){
+  const cfg=await window.bridge.getConfig(); if(!cfg) return;
+  set('tog-offline', (cfg.mode||'online')==='offline');
+  set('tog-localvision', !!cfg.useLocalVision);
+  set('tog-localstt', !!cfg.useLocalStt);
+  set('tog-sepchats', !!cfg.separateOfflineChats);
+  const sttSel=document.getElementById('offline-stt-select'); if(sttSel) sttSel.value=cfg.offlineSttModel||'';
+  applyOfflineFieldVisibility();
+  await loadOllamaCatalog();
+  refreshOllamaCard(cfg);
+}
+
+// ----- Voice Input card: system-wide push-to-talk (Settings -> Voice Input) -----
+// This is separate from the in-window PTT key (ptt_hotkey) shown elsewhere in Settings -
+// that one already works while BRAIN has focus. This card controls whether the GLOBAL voice
+// hotkey behaves as a toggle (default) or hold-to-talk (needs main.js's native uiohook engine;
+// falls back to toggle automatically if that can't load - syncSettings() shows which).
+async function populateVoiceInputCard(){
+  const cfg=await window.bridge.getConfig(); if(!cfg) return;
+  set('tog-systemptt', !!cfg.pushToTalkMode);
+  const el=document.getElementById('system-ptt-hotkey'); if(el && document.activeElement!==el) el.value=cfg.pttHotkey||'';
+}
+async function toggleSystemPtt(){
+  await window.bridge.setConfig({pushToTalkMode:document.getElementById('tog-systemptt').checked});
+}
+async function setSystemPttHotkey(){
+  await window.bridge.setConfig({pttHotkey:document.getElementById('system-ptt-hotkey').value.trim()});
+}
+
+// Show/hide the local blocks and the now-redundant cloud fields, based on the toggles.
+// Offline mode => everything local. Online mode => a cloud field only hides when its matching
+// "run this locally" toggle is on. Reads the checkboxes directly so it's correct after any
+// toggle change or status sync without needing a fresh config fetch.
+function applyOfflineFieldVisibility(){
+  const offline=!!(document.getElementById('tog-offline')||{}).checked;
+  const localVision=!!(document.getElementById('tog-localvision')||{}).checked;
+  const localStt=!!(document.getElementById('tog-localstt')||{}).checked;
+  const show=(id,on)=>{ const el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
+  show('offline-chat-block', offline);
+  show('offline-vision-block', offline||localVision);
+  show('offline-stt-block', offline||localStt);
+  // Hide the cloud model fields whenever the local equivalent is doing that job.
+  show('cloud-vision-row', !(offline||localVision));
+  show('cloud-stt-row', !(offline||localStt));
+}
+
+async function loadOllamaCatalog(){
+  if(_ollamaCatalog) return _ollamaCatalog;
+  try{ _ollamaCatalog=await window.bridge.ollamaCatalog(); }catch(e){ _ollamaCatalog={chat:[],vision:[]}; }
+  return _ollamaCatalog;
+}
+
+function escapeHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
+}
+
+// Merge the curated catalog with whatever's actually installed, so a model the user pulled
+// manually (outside the curated list) still shows up, correctly marked as downloaded.
+function buildModelRows(catalog, installed, current){
+  const installedSet=new Set(installed||[]);
+  const seen=new Set();
+  const rows=[];
+  (catalog||[]).forEach(function(m){
+    seen.add(m.tag);
+    rows.push({ tag:m.tag, name:m.label, size:m.size, downloaded:installedSet.has(m.tag), active:m.tag===current });
+  });
+  (installed||[]).forEach(function(tag){
+    if(seen.has(tag)) return;
+    rows.push({ tag:tag, name:tag, size:'', downloaded:true, active:tag===current });
+  });
+  if(current && !rows.some(function(r){ return r.tag===current; })){
+    rows.unshift({ tag:current, name:current, size:'', downloaded:false, active:true });
+  }
+  return rows;
+}
+
+// Renders one model list (chat or vision) into a container: a green dot + enabled "Use" for
+// anything already on this PC, a grey dot + faded/disabled "Use" (plus a "Download" button)
+// for anything that isn't. Clicking is handled by one delegated listener per list, so it
+// survives re-renders (e.g. after a scan or a completed download) with no leftover handlers.
+function renderModelList(containerId, rows, kind){
+  const el=document.getElementById(containerId); if(!el) return;
+  if(!rows || !rows.length){ el.innerHTML='<div class="statusline">No models yet \u2014 install Ollama and download one below.</div>'; return; }
+  el.innerHTML=rows.map(function(r){
+    const isAuto=!!r.auto;
+    const usable=r.downloaded||isAuto;   // whether "Use" can ever be pressed for this row
+    const metaText=isAuto
+      ? ('Automatic'+(r.autoPicked?(' \u2014 currently: '+escapeHtml(r.autoPicked)):' \u2014 no vision model installed yet'))
+      : ((r.downloaded?'Downloaded':'Not downloaded')+(r.size?(' \u00b7 '+escapeHtml(r.size)):''));
+    const dotCls=(isAuto?(r.autoPicked?'ok':''):(r.downloaded?'ok':''));
+    // The button's own look/label follows ONLY "is it downloaded" - never fake a green "in use"
+    // state for a saved-but-missing model. The row's highlight (below) still marks it as your
+    // configured pick even while its Use button stays faded, so that context isn't lost.
+    const confirmed=r.active && usable;
+    const useDisabled=!usable;
+    const useLabel=confirmed?'\u2713 In use':'Use';
+    const dlBtn=(!r.downloaded && !isAuto)
+      ? '<button class="dlbtn" data-dl="'+escapeHtml(r.tag)+'">Download</button>'
+      : '';
+    return '<div class="modelrow'+(r.active?' active':'')+'">'
+      + '<div class="modelrow-main">'
+        + '<div class="modelrow-name">'+escapeHtml(r.name)+(r.tag?' <span class="modelrow-tag">'+escapeHtml(r.tag)+'</span>':'')+'</div>'
+        + '<div class="modelrow-meta"><span class="dot '+dotCls+'"></span>'+metaText+'</div>'
+        + '<div class="modelrow-progress" data-progress="'+escapeHtml(r.tag)+'"></div>'
+      + '</div>'
+      + '<div class="modelrow-actions">'
+        + dlBtn
+        + '<button class="usebtn'+(confirmed?' active':'')+'" data-use="'+escapeHtml(r.tag)+'"'+(useDisabled?' disabled':'')+'>'+useLabel+'</button>'
+      + '</div>'
+    + '</div>';
+  }).join('');
+  el.onclick=function(ev){
+    const useBtn=ev.target.closest('[data-use]');
+    if(useBtn && !useBtn.disabled){ (kind==='vision'?useOfflineVisionModel:useOfflineChatModel)(useBtn.getAttribute('data-use')); return; }
+    const dlBtn=ev.target.closest('[data-dl]');
+    if(dlBtn && !dlBtn.disabled){ downloadOfflineModel(kind, dlBtn.getAttribute('data-dl'), dlBtn); }
+  };
+}
+
+async function refreshOllamaCard(cfg){
+  try{
+    cfg = cfg || await window.bridge.getConfig() || {};
+    await loadOllamaCatalog();
+    const info = await window.bridge.ollamaModels(); // {ok, up, models, vision, picked}
+    const installed = info.models || [];
+    const b=document.getElementById('am-badge');
+    if(b){ b.textContent=info.up?'OLLAMA RUNNING':'OLLAMA OFF'; b.className='badge '+(info.up?'ok':'bad'); }
+
+    // ---- offline CHAT model list (scanned installed + curated catalog, each with Use/Download) ----
+    const curChat=cfg.offlineModel||'qwen2.5:7b';
+    renderModelList('offline-chat-list', buildModelRows(_ollamaCatalog.chat, installed, curChat), 'chat');
+    const cst=document.getElementById('offline-chat-status');
+    if(cst){
+      const n=installed.length;
+      cst.textContent=info.up?(n+' model'+(n===1?'':'s')+' found on this PC'):'Ollama isn\u2019t running \u2014 click Start / refresh above.';
+      cst.className='statusline '+(info.up?(n?'ok':'bad'):'bad');
+    }
+
+    // ---- local VISION model list, with an always-available "Auto" row on top ----
+    const visionInstalled=(info.vision&&info.vision.length)?info.vision:installed;
+    const curVision=cfg.offlineVisionModel||'';
+    const visionRows=buildModelRows(_ollamaCatalog.vision, visionInstalled, curVision);
+    visionRows.unshift({ tag:'', name:'Auto (recommended)', auto:true, autoPicked:info.picked||'', active:curVision==='' });
+    renderModelList('offline-vision-list', visionRows, 'vision');
+
+    const st=document.getElementById('am-status');
+    if(st){
+      if(info.up){
+        const n=installed.length;
+        st.textContent=n+' local model'+(n===1?'':'s')+' installed \u00b7 vision: '+(cfg.offlineVisionModel||info.picked||'none');
+        st.className='statusline ok';
+      } else {
+        st.textContent='Ollama isn\u2019t running \u2014 click Start / refresh (install it from ollama.com if you haven\u2019t).';
+        st.className='statusline bad';
+      }
+    }
+  }catch(e){}
+}
+
+async function toggleOfflineMode(){
+  const on=document.getElementById('tog-offline').checked;
+  await window.bridge.setConfig({mode:on?'offline':'online'});
+  applyOfflineFieldVisibility();
+  if(on) setTimeout(refreshOllamaCard, 1600); // main.js auto-starts the server; give it a beat
+  loadModels(true); // the Models list below follows the active mode
+}
+async function toggleLocalVision(){
+  const on=document.getElementById('tog-localvision').checked;
+  await window.bridge.setConfig({useLocalVision:on});
+  applyOfflineFieldVisibility();
+  if(on) setTimeout(refreshOllamaCard, 1600);
+}
+async function toggleLocalStt(){
+  const on=document.getElementById('tog-localstt').checked;
+  await window.bridge.setConfig({useLocalStt:on});
+  applyOfflineFieldVisibility();
+}
+async function toggleSepChats(){
+  await window.bridge.setConfig({separateOfflineChats:document.getElementById('tog-sepchats').checked});
+}
+async function setOfflineStt(){
+  await window.bridge.setConfig({offlineSttModel:document.getElementById('offline-stt-select').value}); // '' = auto
+}
+
+// "Use" button handlers - only reachable when the button isn't disabled, i.e. the model is
+// already downloaded (or, for vision, the always-available "Auto" row).
+async function useOfflineChatModel(tag){
+  if(!tag) return;
+  await window.bridge.setModel(tag);   // main.js sets offlineModel + warms it in offline mode
+  refreshOllamaCard();
+  loadModels(true);                    // keep the Models section in sync
+}
+async function useOfflineVisionModel(tag){
+  await window.bridge.setConfig({offlineVisionModel:tag}); // '' = Auto
+  refreshOllamaCard();
+}
+
+function setDownloadButtonsEnabled(enabled){
+  document.querySelectorAll('.modellist [data-dl]').forEach(function(b){ b.disabled=!enabled; });
+}
+function setRowProgress(tag, text, cls){
+  document.querySelectorAll('.modelrow-progress[data-progress="'+String(tag).replace(/"/g,'')+'"]').forEach(function(el){
+    el.textContent=text||''; el.className='modelrow-progress'+(cls?(' '+cls):'');
+  });
+}
+
+// Download a curated model in-app via `ollama pull`. Live % streams into that row's own
+// progress line via onOllamaPullProgress; on success the next refreshOllamaCard() call flips
+// the row to "Downloaded" and un-fades its Use button automatically.
+async function downloadOfflineModel(kind, tag, btnEl){
+  if(!tag || _pullInFlight) return;
+  _pullInFlight=true;
+  setDownloadButtonsEnabled(false);
+  if(btnEl) btnEl.textContent='Downloading\u2026';
+  setRowProgress(tag, 'Starting download\u2026', '');
+  try{
+    const r=await window.bridge.ollamaPull(tag); // resolves when finished; live % via onOllamaPullProgress
+    if(r && r.ok) setRowProgress(tag, 'Downloaded \u2014 ready to use.', 'ok');
+    else setRowProgress(tag, 'Download failed: '+((r&&r.error)||'unknown error'), 'bad');
+  }catch(e){
+    setRowProgress(tag, 'Download failed: '+((e&&e.message)||e), 'bad');
+  }finally{
+    _pullInFlight=false;
+    setDownloadButtonsEnabled(true);
+    refreshOllamaCard();          // re-scan -> the row now shows Downloaded + an active Use button
+    if(lastStatus && lastStatus.mode==='offline') loadModels(true);
+  }
+}
+
+// Live pull progress (fired from main.js as `ollama pull` streams), routed to the specific
+// row's own progress line so multiple in-flight/queued statuses never collide.
+if(window.bridge && window.bridge.onOllamaPullProgress){
+  window.bridge.onOllamaPullProgress(function(p){
+    if(!p || !p.model) return;
+    if(p.done && p.status==='error'){ setRowProgress(p.model, 'Download failed: '+(p.error||'unknown error'), 'bad'); return; }
+    if(p.done){ setRowProgress(p.model, 'Downloaded \u2014 ready to use.', 'ok'); return; }
+    const pct=(typeof p.percent==='number')?(' '+p.percent+'%'):'';
+    const label=(p.status||'downloading').replace(/^pulling\s+/i,'pulling ');
+    setRowProgress(p.model, label+pct, '');
+  });
+}
+
+async function startOllama(){
+  const st=document.getElementById('am-status'); if(st){ st.textContent='Starting Ollama\u2026'; st.className='statusline'; }
+  try{ await window.bridge.ollamaEnsure(); }catch(e){}
+  await refreshOllamaCard();
+  if(lastStatus && lastStatus.mode==='offline') loadModels(true);
+}
+
+
+async function loadMics(){
+  const sel=document.getElementById('mic-select');
+  if(!sel) return;
+  try{
+    // Labels only appear once mic permission is granted, so request it briefly.
+    try{ const s=await navigator.mediaDevices.getUserMedia({audio:true}); s.getTracks().forEach(t=>t.stop()); }catch(e){}
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const mics=devices.filter(d=>d.kind==='audioinput');
+    if(!mics.length){ sel.innerHTML='<option>No microphones found</option>'; return; }
+    const savedId=localStorage.getItem('micDeviceId')||'';
+    sel.innerHTML=mics.map((m,i)=>'<option value="'+m.deviceId+'"'+(m.deviceId===savedId?' selected':'')+'>'+(m.label||('Microphone '+(i+1)))+'</option>').join('');
+  }catch(e){ sel.innerHTML='<option>Mic access blocked</option>'; }
+}
+function setMic(){ try{ localStorage.setItem('micDeviceId', document.getElementById('mic-select').value); }catch(e){} }
+
+// ---- Text-to-speech (browser speechSynthesis by default; Piper audio if configured) ----
+// Main streams the reply one sentence/line at a time. The OS voice on some machines REORDERS
+// sentences whenever more than one utterance sits in its queue at once. So we never give it
+// more than one: we speak a chunk, wait for it to finish, then hand over the next. With only
+// one utterance in the engine at any moment there is nothing to reorder. A short pause between
+// chunks gives a natural "breath" at each sentence/line break. Short chunks also dodge Chrome's
+// long-utterance bug that made a big reply restart/repeat. A strong ref keeps the current
+// utterance from being garbage-collected mid-flight; a watchdog recovers if 'end' never fires.
+let ttsEnabled = true;
+let _ttsAudio = null;
+
+let _q = [];            // pending chunk texts, in order
+let _speaking = false;  // is a chunk currently handed to the engine?
+let _cur = null;        // strong ref to the current utterance (anti-GC)
+let _curAdvance = null; // idempotent "this chunk finished" fn (shared by onend + watchdog)
+let _gen = 0;           // bumped by stopSpeaking() to cancel in-flight callbacks
+let _idle = 0;          // watchdog idle-tick counter
+const _breathMs = 160;  // pause between chunks (the breath)
+
+function speak(text){
+  if(!ttsEnabled) return;
+  const s = String(text||'').trim();
+  if(!s) return;
+  _q.push(s);
+  _pump();
+}
+function _pump(){
+  if(_speaking) return;
+  if(!_q.length) return;
+  const text = _q.shift();
+  _speaking = true;
+  _idle = 0;
+  const gen = _gen;
+  let advanced = false;
+  const advance = function(){
+    if(advanced || gen !== _gen) return;  // already moved on, or we were stopped
+    advanced = true;
+    _cur = null; _curAdvance = null; _speaking = false;
+    setTimeout(function(){ if(gen === _gen) _pump(); }, _breathMs); // breath, then next chunk
+  };
+  _curAdvance = advance;
+  try{
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.03; u.pitch = 1.0;
+    u.onend = advance;
+    u.onerror = advance;
+    _cur = u;                              // keep alive until it ends
+    window.speechSynthesis.speak(u);
+    try{ window.speechSynthesis.resume(); }catch(e){} // unstick a paused engine (no-op otherwise)
+  }catch(e){ advance(); }
+}
+// Watchdog: if we think a chunk is playing but the engine reports nothing playing/pending for
+// a while, the 'end' event was lost - advance through the SAME idempotent fn (so it can't
+// double-advance or overlap). Generous threshold so it never fires mid-speech.
+setInterval(function(){
+  if(!_speaking){ _idle = 0; return; }
+  let busy = false;
+  try{ busy = window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending); }catch(e){ busy = false; }
+  if(busy){ _idle = 0; return; }
+  _idle++;
+  if(_idle >= 4 && _curAdvance){ _idle = 0; _curAdvance(); } // ~1.6s of confirmed silence
+}, 400);
+
+// --- Piper WAV queue (strictly sequential, keep a ref to the playing clip) ---
+let _audioQueue = [];
+function _enqueueAudio(buf){
+  _audioQueue.push(buf);
+  _drainAudioQueue();
+}
+function _drainAudioQueue(){
+  if(_ttsAudio && !_ttsAudio.ended && !_ttsAudio.paused) return; // still playing one
+  const buf = _audioQueue.shift();
+  if(!buf) return;
+  try{
+    const blob = new Blob([buf], { type:'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const a = new Audio(url);
+    _ttsAudio = a;             // strong ref
+    const next = function(){ try{ URL.revokeObjectURL(url); }catch(e){} if(_ttsAudio===a) _ttsAudio = null; _drainAudioQueue(); };
+    a.onended = next;
+    a.onerror = next;
+    a.play().catch(next);
+  }catch(e){ _ttsAudio = null; _drainAudioQueue(); }
+}
+
+function stopSpeaking(){
+  _gen++;                       // invalidate any pending advance/breath callbacks
+  _q = []; _speaking = false; _cur = null; _curAdvance = null; _idle = 0;
+  _audioQueue = [];
+  try{ window.speechSynthesis.cancel(); }catch(e){}
+  try{ if(_ttsAudio){ _ttsAudio.pause(); _ttsAudio=null; } }catch(e){}
+}
+function ttsActive(){
+  try{ if(window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) return true; }catch(e){}
+  if(_speaking || _q.length) return true;
+  if(_audioQueue.length) return true;
+  if(_ttsAudio && !_ttsAudio.paused && !_ttsAudio.ended) return true;
+  return false;
+}
+if(window.bridge && window.bridge.onSpeak){ window.bridge.onSpeak(function(text){ speak(text); }); }
+// Piper voice: queue the WAV that main synthesized so clips play in order.
+if(window.bridge && window.bridge.onTtsAudio){ window.bridge.onTtsAudio(function(buf){
+  if(!ttsEnabled) return;
+  _enqueueAudio(buf);
+}); }
+
+// Warm up the browser speech engine at launch (load the voice list). We deliberately do NOT
+// speak a muted "primer" utterance here - on Windows that primer can get stuck 'pending' in
+// the engine, and every real sentence then waits behind it, which made long replies sit
+// silent for ~10s before the backlog suddenly played. getVoices() alone is enough warm-up.
+(function _warmTTS(){
+  try{
+    if(!window.speechSynthesis) return;
+    window.speechSynthesis.getVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', function(){ try{ window.speechSynthesis.getVoices(); }catch(e){} });
+  }catch(e){}
+})();
+
+// ---- Speech-to-text (record -> Whisper -> send) ----
+let mediaRecorder=null, audioChunks=[], recording=false, pttDown=false;
+let voiceHotkeyLabel='', hintLocked=false;
+function prettyHotkey(a){ return String(a||'').replace(/CommandOrControl|Control/g,'Ctrl').replace('Command','Cmd'); }
+function defaultHintText(){
+  return voiceHotkeyLabel
+    ? ('Press '+voiceHotkeyLabel+' anywhere to talk (press again to stop) \u00b7 or click the mic')
+    : 'Click the mic or hold your push-to-talk key to speak, or type below.';
+}
+function setHint(text, lockMs){
+  const h=document.querySelector('.hint'); if(!h) return;
+  h.textContent=text;
+  if(lockMs){ hintLocked=true; setTimeout(function(){ hintLocked=false; const h2=document.querySelector('.hint'); if(h2) h2.textContent=defaultHintText(); }, lockMs); }
+}
+function setMicState(on, transcribing){
+  recording=!!on;
+  const btn=document.getElementById('mic-btn'); if(!btn) return;
+  btn.innerHTML = transcribing ? '&hellip;' : (on ? '&#9209;' : '&#127908;');
+  btn.style.background = on ? '#7a2230' : 'var(--panel2)';
+  btn.style.borderColor = on ? '#c0556a' : 'var(--line)';
+  if(orb){ orb.target = on ? 0.85 : 0; }
+}
+// ---- Webcam vision: a live preview the user can see, ask about anytime ----
+let _liveStream=null;
+function camConstraints(){
+  const camId=localStorage.getItem('camDeviceId')||'';
+  return { video: camId ? { deviceId:{exact:camId}, width:{ideal:1280}, height:{ideal:720} } : { width:{ideal:1280}, height:{ideal:720} } };
+}
+async function toggleCamera(){
+  const full=document.getElementById('cam-full'); const btn=document.getElementById('cam-btn');
+  if(_liveStream){
+    try{ _liveStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
+    _liveStream=null;
+    stopFocusBoxes();
+    const v=document.getElementById('cam-live'); if(v) v.srcObject=null;
+    if(full) full.style.display='none';
+    const cap=document.getElementById('cam-caption'); if(cap){ cap.style.display='none'; cap.textContent=''; }
+    if(btn){ btn.style.background='var(--panel2)'; btn.style.borderColor='var(--line)'; }
+    if(recording) stopRecording();
+    return;
+  }
+  setHint('Opening camera\u2026',1500);
+  try{
+    _liveStream=await navigator.mediaDevices.getUserMedia(camConstraints());
+    const v=document.getElementById('cam-live'); if(v){ v.srcObject=_liveStream; try{ await v.play(); }catch(e){} }
+    if(full) full.style.display='flex';
+    if(btn){ btn.style.background='var(--accent)'; btn.style.borderColor='var(--accent)'; }
+    populateCameras();
+    startFocusBoxes();
+  }catch(e){ _liveStream=null; setHint('Camera error: '+((e&&e.message)?e.message:'no camera found'),4000); }
+}
+// Scan for available cameras and fill the picker (labels only appear after permission is granted).
+async function populateCameras(){
+  const sel=document.getElementById('cam-pick'); if(!sel) return;
+  try{
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const cams=devices.filter(function(d){ return d.kind==='videoinput'; });
+    if(!cams.length){ sel.style.display='none'; return; }
+    const cur=localStorage.getItem('camDeviceId')||'';
+    sel.innerHTML=cams.map(function(c,i){ return '<option value="'+c.deviceId+'">'+esc(c.label||('Camera '+(i+1)))+'</option>'; }).join('');
+    if(cur) sel.value=cur;
+    sel.style.display = cams.length>1 ? '' : 'none';   // only show a picker when there's a choice
+  }catch(e){ sel.style.display='none'; }
+}
+// Switch to the chosen camera and restart the live feed + detection.
+async function switchCamera(){
+  const sel=document.getElementById('cam-pick'); if(!sel) return;
+  localStorage.setItem('camDeviceId', sel.value);
+  try{ if(_liveStream) _liveStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
+  stopFocusBoxes();
+  try{
+    _liveStream=await navigator.mediaDevices.getUserMedia(camConstraints());
+    const v=document.getElementById('cam-live'); if(v){ v.srcObject=_liveStream; try{ await v.play(); }catch(e){} }
+    startFocusBoxes();
+  }catch(e){ setHint('Could not switch camera',3000); }
+}
+// Grab one still frame. Uses the live camera if open; otherwise opens it briefly.
+async function grabCameraFrame(){
+  let canvas=document.getElementById('cam-canvas');
+  if(!canvas){ canvas=document.createElement('canvas'); canvas.id='cam-canvas'; canvas.style.display='none'; document.body.appendChild(canvas); }
+  let video, tempStream=null, tempVideo=null;
+  if(_liveStream){ video=document.getElementById('cam-live'); }
+  else{
+    tempVideo=document.createElement('video'); tempVideo.autoplay=true; tempVideo.muted=true; tempVideo.setAttribute('playsinline',''); tempVideo.style.display='none'; document.body.appendChild(tempVideo);
+    tempStream=await navigator.mediaDevices.getUserMedia(camConstraints());
+    tempVideo.srcObject=tempStream; try{ await tempVideo.play(); }catch(e){}
+    await new Promise(function(res){ if(tempVideo.readyState>=2) return res(); tempVideo.onloadedmetadata=function(){ res(); }; });
+    await new Promise(function(r){ setTimeout(r,350); }); // let exposure settle
+    video=tempVideo;
+  }
+  const w=(video&&video.videoWidth)||1280, h=(video&&video.videoHeight)||720;
+  canvas.width=w; canvas.height=h;
+  canvas.getContext('2d').drawImage(video,0,0,w,h);
+  const dataUrl=canvas.toDataURL('image/jpeg',0.85);
+  if(tempStream){ try{ tempStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){} if(tempVideo){ tempVideo.srcObject=null; try{ tempVideo.remove(); }catch(e){} } }
+  return dataUrl;
+}
+// "What is this?" button -> instant describe of the current frame.
+async function askAboutCamera(){
+  if(!_liveStream){ toggleCamera(); return; }
+  try{ const dataUrl=await grabCameraFrame(); await window.bridge.lookCamera(dataUrl,''); }
+  catch(e){ setHint('Camera error',3000); }
+}
+// Fullscreen text box -> route through the normal brain (can describe, close camera, etc).
+function camSendInput(){
+  const i=document.getElementById('cam-input'); if(!i) return; const t=i.value.trim(); if(!t) return;
+  i.value=''; window.bridge.sendText(t);
+}
+// Voice path: main asks the renderer for a frame when the user says "look at me" / "what is this".
+if(window.bridge && window.bridge.onCameraCapture){
+  window.bridge.onCameraCapture(async function(){
+    try{ const dataUrl=await grabCameraFrame(); window.bridge.cameraFrame(dataUrl); }
+    catch(e){ window.bridge.cameraFrame(''); }
+  });
+}
+// Voice "close the camera" -> exit fullscreen.
+if(window.bridge && window.bridge.onCameraClose){
+  window.bridge.onCameraClose(function(){ if(_liveStream) toggleCamera(); });
+}
+
+// ---- Live focus boxes (on-device object detection; optional, loads from CDN) ----
+let _cocoModel=null, _detectRAF=null, _detectBusy=false, _detectFailed=false;
+function loadScript(src){ return new Promise(function(res,rej){ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=function(){ rej(new Error('load fail')); }; document.head.appendChild(s); }); }
+async function ensureDetector(){
+  if(_cocoModel) return _cocoModel;
+  if(_detectFailed) return null;
+  try{
+    if(!window.cocoSsd){
+      await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js');
+      await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js');
+    }
+    if(!window.cocoSsd) throw new Error('no cocoSsd');
+    _cocoModel=await window.cocoSsd.load();
+    return _cocoModel;
+  }catch(e){ _detectFailed=true; return null; } // boxes are a bonus - camera still works without them
+}
+function getAccentColor(){ try{ const v=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(); return v||'#3b82f6'; }catch(e){ return '#3b82f6'; } }
+function startFocusBoxes(){
+  const video=document.getElementById('cam-live'); const canvas=document.getElementById('cam-overlay'); if(!video||!canvas) return;
+  ensureDetector().then(function(model){
+    if(!model || !_liveStream) return;
+    let last=0;
+    (function loop(ts){
+      if(!_liveStream){ try{ const c=canvas.getContext('2d'); c.clearRect(0,0,canvas.width,canvas.height); }catch(e){} return; }
+      _detectRAF=requestAnimationFrame(loop);
+      if(_detectBusy || !video.videoWidth) return;
+      if(ts-last<200) return; last=ts;
+      _detectBusy=true;
+      model.detect(video).then(function(preds){ drawBoxes(canvas, video, preds); }).catch(function(){}).finally(function(){ _detectBusy=false; });
+    })(0);
+  });
+}
+function stopFocusBoxes(){
+  if(_detectRAF){ cancelAnimationFrame(_detectRAF); _detectRAF=null; }
+  const canvas=document.getElementById('cam-overlay'); if(canvas){ try{ canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height); }catch(e){} }
+}
+function drawBoxes(canvas, video, preds){
+  const W=video.clientWidth||video.videoWidth, H=video.clientHeight||video.videoHeight;
+  if(canvas.width!==W) canvas.width=W; if(canvas.height!==H) canvas.height=H;
+  const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,W,H);
+  const sx=W/(video.videoWidth||W), sy=H/(video.videoHeight||H);
+  const accent=getAccentColor();
+  ctx.lineWidth=Math.max(2,Math.round(W/340)); ctx.strokeStyle=accent; ctx.font='600 13px system-ui,sans-serif';
+  (preds||[]).forEach(function(p){
+    if(p.score<0.5) return;
+    const x=p.bbox[0]*sx, y=p.bbox[1]*sy, w=p.bbox[2]*sx, h=p.bbox[3]*sy;
+    ctx.strokeRect(x,y,w,h);
+    const label=p.class+' '+Math.round(p.score*100)+'%';
+    const tw=ctx.measureText(label).width+10;
+    ctx.fillStyle=accent; ctx.globalAlpha=0.85; ctx.fillRect(x,Math.max(0,y-19),tw,18); ctx.globalAlpha=1;
+    ctx.fillStyle='#fff'; ctx.fillText(label,x+5,Math.max(12,y-5));
+  });
+}
+// ---- 3D model viewer (AI-built from shapes; three.js loaded on demand) ----
+let _THREE=null, _GLTFExporter=null;
+async function ensureThree(){
+  if(_THREE) return true;
+  try{
+    const t=await import('three');
+    const ex=await import('three/addons/exporters/GLTFExporter.js');
+    _THREE=t; _GLTFExporter=ex.GLTFExporter;
+    return true;
+  }catch(e){ return false; }
+}
+function buildModelGroup(THREE, data){
+  const group=new THREE.Group();
+  ((data&&data.parts)||[]).forEach(function(p){
+    const s=p.size||[1,1,1]; const shape=(p.shape||'box').toLowerCase(); let geo;
+    if(shape==='sphere') geo=new THREE.SphereGeometry(Math.abs(s[0])||0.5,24,16);
+    else if(shape==='cylinder') geo=new THREE.CylinderGeometry(Math.abs(s[0])||0.5,Math.abs(s[0])||0.5,Math.abs(s[1])||1,24);
+    else if(shape==='cone') geo=new THREE.ConeGeometry(Math.abs(s[0])||0.5,Math.abs(s[1])||1,24);
+    else if(shape==='torus') geo=new THREE.TorusGeometry(Math.abs(s[0])||0.5,Math.abs(s[1])||0.15,16,32);
+    else geo=new THREE.BoxGeometry(Math.abs(s[0])||1,Math.abs(s[1])||1,Math.abs(s[2])||1);
+    let col='#cccccc'; try{ if(typeof p.color==='string'&&p.color) col=p.color; }catch(e){}
+    const mat=new THREE.MeshStandardMaterial({ color:col, roughness:0.62, metalness:0.12 });
+    const mesh=new THREE.Mesh(geo,mat);
+    const pos=p.pos||[0,0,0]; mesh.position.set(pos[0]||0,pos[1]||0,pos[2]||0);
+    const rot=p.rot||[0,0,0]; mesh.rotation.set(rot[0]||0,rot[1]||0,rot[2]||0);
+    group.add(mesh);
+  });
+  return group;
+}
+let _m3dRenderer=null,_m3dScene=null,_m3dCamera=null,_m3dRAF=null,_m3dWrap=null,_currentModelGroup=null,_currentModelName='model';
+let _m3dDrag=false,_m3dPX=0,_m3dPY=0,_m3dRX=0,_m3dRY=0,_m3dAuto=true;
+function showModelLoading(on){
+  const el=document.getElementById('model3d-loading'); if(el) el.style.display=on?'flex':'none';
+  if(on){ const fs=document.getElementById('model3d-fs'); if(fs) fs.style.display='flex'; const nm=document.getElementById('model3d-name'); if(nm) nm.textContent='Building\u2026'; }
+}
+async function openModel3D(m){
+  _currentModelName=(m&&m.name)||'model';
+  const nm=document.getElementById('model3d-name'); if(nm) nm.textContent=_currentModelName;
+  const fs=document.getElementById('model3d-fs'); if(fs) fs.style.display='flex';
+  showModelLoading(false);
+  const ok=await ensureThree();
+  const stage=document.getElementById('model3d-stage');
+  if(!ok||!stage){ setHint('Could not load the 3D viewer (no internet?)',4500); return; }
+  const THREE=_THREE;
+  if(_m3dRAF){ cancelAnimationFrame(_m3dRAF); _m3dRAF=null; }
+  if(_m3dRenderer){ try{ _m3dRenderer.dispose(); }catch(e){} try{ if(_m3dRenderer.domElement&&_m3dRenderer.domElement.parentNode) _m3dRenderer.domElement.parentNode.removeChild(_m3dRenderer.domElement); }catch(e){} }
+  const W=stage.clientWidth||window.innerWidth, H=stage.clientHeight||window.innerHeight;
+  _m3dScene=new THREE.Scene();
+  _m3dCamera=new THREE.PerspectiveCamera(45,W/H,0.1,1000); _m3dCamera.position.set(0,1.4,7);
+  _m3dRenderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  _m3dRenderer.setPixelRatio(Math.min(devicePixelRatio||1,2)); _m3dRenderer.setSize(W,H);
+  stage.appendChild(_m3dRenderer.domElement);
+  _m3dScene.add(new THREE.AmbientLight(0xffffff,0.75));
+  const d1=new THREE.DirectionalLight(0xffffff,0.9); d1.position.set(5,8,6); _m3dScene.add(d1);
+  const d2=new THREE.DirectionalLight(0xffffff,0.35); d2.position.set(-6,2,-5); _m3dScene.add(d2);
+  _currentModelGroup=buildModelGroup(THREE,(m&&m.data)||{parts:[]});
+  const box=new THREE.Box3().setFromObject(_currentModelGroup);
+  const ctr=box.getCenter(new THREE.Vector3()); const sz=box.getSize(new THREE.Vector3());
+  _currentModelGroup.position.sub(ctr);
+  const maxd=Math.max(sz.x,sz.y,sz.z)||1; _currentModelGroup.scale.setScalar(3.2/maxd);
+  _m3dWrap=new THREE.Group(); _m3dWrap.add(_currentModelGroup); _m3dScene.add(_m3dWrap);
+  _m3dRX=0; _m3dRY=0; _m3dAuto=true;
+  (function loop(){ _m3dRAF=requestAnimationFrame(loop); if(_m3dAuto&&!_m3dDrag) _m3dRY+=0.008; _m3dWrap.rotation.set(_m3dRX,_m3dRY,0); _m3dRenderer.render(_m3dScene,_m3dCamera); })();
+}
+function closeModel3D(){
+  const fs=document.getElementById('model3d-fs'); if(fs) fs.style.display='none';
+  if(_m3dRAF){ cancelAnimationFrame(_m3dRAF); _m3dRAF=null; }
+  if(_m3dRenderer){ try{ _m3dRenderer.dispose(); }catch(e){} try{ if(_m3dRenderer.domElement&&_m3dRenderer.domElement.parentNode) _m3dRenderer.domElement.parentNode.removeChild(_m3dRenderer.domElement); }catch(e){} _m3dRenderer=null; }
+}
+function downloadModel3D(){
+  if(!_currentModelGroup||!_GLTFExporter){ setHint('Nothing to export yet',2500); return; }
+  try{
+    const exporter=new _GLTFExporter();
+    exporter.parse(_currentModelGroup,function(result){
+      try{
+        const bytes=new Uint8Array(result); let bin=''; const CH=0x8000;
+        for(let i=0;i<bytes.length;i+=CH){ bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH)); }
+        const b64=btoa(bin);
+        window.bridge.saveModel(_currentModelName,b64).then(function(r){ if(r&&r.ok) setHint('\u2713 Saved to '+(r.path||'disk'),3500); else if(!(r&&r.canceled)) setHint('Save failed: '+((r&&r.error)||'error'),3500); });
+      }catch(e){ setHint('Export failed',3000); }
+    },function(){ setHint('Export failed',3000); },{binary:true});
+  }catch(e){ setHint('Export failed',3000); }
+}
+async function makeModelFromCamera(){
+  try{ const dataUrl=await grabCameraFrame(); window.bridge.makeModelFromImage(dataUrl); }
+  catch(e){ setHint('Camera error',3000); }
+}
+(function(){
+  const stage=document.getElementById('model3d-stage'); if(!stage) return;
+  stage.addEventListener('mousedown',function(e){ _m3dDrag=true; _m3dAuto=false; _m3dPX=e.clientX; _m3dPY=e.clientY; stage.style.cursor='grabbing'; });
+  window.addEventListener('mousemove',function(e){ if(!_m3dDrag) return; _m3dRY+=(e.clientX-_m3dPX)*0.01; _m3dRX+=(e.clientY-_m3dPY)*0.01; _m3dPX=e.clientX; _m3dPY=e.clientY; });
+  window.addEventListener('mouseup',function(){ if(_m3dDrag){ _m3dDrag=false; const s=document.getElementById('model3d-stage'); if(s) s.style.cursor='grab'; } });
+})();
+if(window.bridge && window.bridge.onShowModel){ window.bridge.onShowModel(function(m){ openModel3D(m); }); }
+if(window.bridge && window.bridge.onModelLoading){ window.bridge.onModelLoading(function(on){ if(on) showModelLoading(true); else { const fs=document.getElementById('model3d-fs'); if(fs&&!_m3dRenderer) fs.style.display='none'; showModelLoading(false); } }); }
+
+// Auto-stop VAD for the mic-button / global-hotkey / PTT recorder: tracks the ambient noise
+// floor while you haven't spoken yet, and once real speech HAS been heard, ~1.8s of trailing
+// silence stops the recording by itself. No more capturing 25+ seconds of dead air for
+// Whisper to hallucinate words out of. Releasing the PTT key / clicking the mic again still
+// stops it earlier, exactly as before; 8s of never-speaking or a 30s hard cap also end it.
+let _recVadCtx=null, _recVadTimer=null;
+function _stopRecVad(){
+  if(_recVadTimer){ clearInterval(_recVadTimer); _recVadTimer=null; }
+  try{ if(_recVadCtx) _recVadCtx.close(); }catch(e){}
+  _recVadCtx=null;
+}
+async function startRecording(){
+  if(recording) return;
+  try{
+    stopSpeaking();
+    const micId=localStorage.getItem('micDeviceId')||'';
+    const constraints={ audio: micId ? { deviceId:{exact:micId} } : true };
+    const stream=await navigator.mediaDevices.getUserMedia(constraints);
+    audioChunks=[];
+    mediaRecorder=new MediaRecorder(stream);
+    mediaRecorder.ondataavailable=function(e){ if(e.data && e.data.size>0) audioChunks.push(e.data); };
+    mediaRecorder.onstop=async function(){
+      _stopRecVad();
+      stream.getTracks().forEach(function(t){ t.stop(); });
+      const blob=new Blob(audioChunks,{type:'audio/webm'});
+      if(blob.size<1400){ setMicState(false); return; }   // too short / silence
+      setMicState(false, true);                            // show transcribing
+      try{
+        const buf=await blob.arrayBuffer();
+        const res=await window.bridge.transcribe(buf);
+        setMicState(false);
+        if(res && res.ok && res.text){
+          const inp=document.getElementById('chat-input');
+          inp.value=res.text;
+          sendText();
+        } else if(res && res.error){
+          setHint('\u26A0 Voice: '+res.error, 6000);
+        }
+      }catch(e){ setMicState(false); setHint('\u26A0 Voice failed: '+(e&&e.message?e.message:e), 6000); }
+    };
+    mediaRecorder.start();
+    setMicState(true);
+
+    // ---- trailing-silence auto-stop (same floor/threshold math as the wake-word VAD) ----
+    try{
+      _recVadCtx=new (window.AudioContext||window.webkitAudioContext)();
+      if(_recVadCtx.state==='suspended'){ try{ await _recVadCtx.resume(); }catch(e){} }
+      const src=_recVadCtx.createMediaStreamSource(stream);
+      const an=_recVadCtx.createAnalyser(); an.fftSize=2048;
+      src.connect(an);
+      const buf=new Float32Array(an.fftSize);
+      let floor=0.006, heard=false, above=0, lastSpeech=0;
+      const t0=Date.now();
+      const SILENCE_MS=1800, NO_SPEECH_MS=8000, MAX_MS=30000;
+      _recVadTimer=setInterval(function(){
+        if(!recording){ _stopRecVad(); return; }
+        an.getFloatTimeDomainData(buf);
+        let ss=0; for(let i=0;i<buf.length;i++) ss+=buf[i]*buf[i];
+        const lvl=Math.sqrt(ss/buf.length);
+        // adapt the floor only BEFORE speech is heard - once you're talking, the bar is locked
+        // so a long sentence can't drag the threshold up above your own voice
+        if(!heard){ if(lvl<floor) floor=floor*0.7+lvl*0.3; else floor=floor*0.995+lvl*0.005; }
+        const thr=Math.max(0.008, floor*2.5+0.003);
+        const now=Date.now();
+        if(lvl>thr){
+          if(!above) above=now;
+          if(!heard && (now-above)>=180) heard=true; // sustained -> real speech, not a blip
+          if(heard) lastSpeech=now;
+        } else { above=0; }
+        if(heard && lastSpeech && (now-lastSpeech)>=SILENCE_MS){ stopRecording(); return; } // done talking
+        if(!heard && (now-t0)>=NO_SPEECH_MS){ stopRecording(); return; }                    // never spoke
+        if((now-t0)>=MAX_MS){ stopRecording(); }                                            // safety cap
+      },100);
+    }catch(e){ /* VAD unavailable - manual stop still works exactly as before */ }
+  }catch(e){ setMicState(false); setHint('\u26A0 Mic blocked: '+(e&&e.message?e.message:e), 6000); }
+}
+function stopRecording(){ if(recording && mediaRecorder){ try{ mediaRecorder.stop(); }catch(e){} } }
+function toggleRecording(){ recording ? stopRecording() : startRecording(); }
+
+// Global voice hotkey (works in the background) toggles recording.
+if(window.bridge && window.bridge.onToggleMic){ window.bridge.onToggleMic(function(){ toggleRecording(); }); }
+
+// System-wide push-to-talk (Settings -> Voice Input): main.js sends these only while the
+// native hold-to-talk engine is actually running; if it can't load, main.js falls back to
+// normal toggle mode on its own; so there's nothing extra to do here on failure.
+if(window.bridge && window.bridge.onPttStart){ window.bridge.onPttStart(function(){ if(!recording) startRecording(); }); }
+if(window.bridge && window.bridge.onPttStop){ window.bridge.onPttStop(function(){ if(recording) stopRecording(); }); }
+
+// Push-to-talk: hold the configured single-character key (default "\") while not typing.
+document.addEventListener('keydown', function(e){
+  if(e.repeat) return;
+  const a=document.activeElement;
+  const typing=a && (a.tagName==='INPUT' || a.tagName==='TEXTAREA' || a.isContentEditable);
+  const ptt=String((lastStatus&&lastStatus.ptt_hotkey)||'\\').toLowerCase();
+  if(!typing && ptt.length===1 && e.key.toLowerCase()===ptt && !pttDown){ pttDown=true; e.preventDefault(); startRecording(); }
+});
+document.addEventListener('keyup', function(e){
+  const ptt=String((lastStatus&&lastStatus.ptt_hotkey)||'\\').toLowerCase();
+  if(ptt.length===1 && e.key.toLowerCase()===ptt && pttDown){ pttDown=false; stopRecording(); }
+});
+
+// ===== Local wake word ("Hey Jarvis" via openWakeWord, on-device) =====
+let _lwStarting=false, _lwCommandRec=null;
+// Shared voice-activity state for the post-wake command capture. The ambient noise floor is
+// tracked CONTINUOUSLY, the whole time the engine is idle-listening - NOT sampled fresh right
+// after "Hey Jarvis" fires. That earlier approach measured the floor from the 250ms right after
+// detection, which is still contaminated by the tail of you saying "...jarvis" itself, so it
+// mistook your own voice for background noise and set the bar above your actual speaking level
+// (that's why real speech never registered). A continuously-tracked floor avoids that entirely.
+let _lwAmbientFloor=0.006, _lwCapturing=false, _lwAboveSince=0, _lwHeardSpeech=false, _lwLastSpeechAt=0, _lwCapStart=0, _lwFinishFn=null, _lwVadLastLog=0;
+// Follow-up listening: once you're mid-conversation and BRAIN is unfocused in the background,
+// re-saying "Hey Jarvis" before every single thing gets old fast. So for a short grace window
+// after real activity (you spoke, or BRAIN just replied), the NEXT thing you say starts a
+// command capture directly - no wake word needed. Deliberately scoped tight: only while
+// unfocused (when focused you've got the text box and mic button right there, so there's
+// nothing for this to add), only while BRAIN isn't currently talking (so it can never mistake
+// its own TTS coming out of your speakers for you talking again), and only for a short window
+// so it can't linger and pick up an unrelated conversation later.
+let _followupGraceUntil=0, _fuAboveSince=0, _fuHeard=false;
+const FOLLOWUP_GRACE_MS=25000;
+function lwStatus(msg){ const el=document.getElementById('lw-status'); if(el) el.textContent=msg||'\u00A0'; }
+function lwShowRows(on){
+  const t=document.getElementById('lw-thresh-row'), s=document.getElementById('lw-status-row');
+  if(t) t.style.display=on?'flex':'none';
+  if(s) s.style.display=on?'flex':'none';
+}
+function wireWakeWord(){
+  if(!window.WakeWord || WakeWord._wired) return;
+  WakeWord._wired=true;
+  WakeWord.on('status', lwStatus);
+  WakeWord.on('error', function(e){ lwStatus('\u26A0 '+((e&&e.message)||e)); });
+  WakeWord.on('detect', onWakeDetected);
+  // live score readout so we can see whether the model reacts when you speak
+  let _lwPeak=0, _lwPeakT=0;
+  WakeWord.on('score', function(sc){
+    if(sc>_lwPeak) _lwPeak=sc;
+    const now=Date.now();
+    if(now-_lwPeakT>250){ _lwPeakT=now; if(window.WakeWord && WakeWord.running && !_lwCommandRec) lwStatus('Listening for \u201CHey Jarvis\u201D\u2026  (score '+_lwPeak.toFixed(2)+')'); _lwPeak=0; }
+  });
+  if(window.bridge && window.bridge.onWakewordProgress){ window.bridge.onWakewordProgress(function(m){ if(m) lwStatus(m); }); }
+
+  // ONE persistent level subscriber for the whole app lifetime (never replaced/overwritten):
+  // while idle it slowly tracks the ambient noise floor; while a command is being captured it
+  // runs the trailing-silence VAD against that pre-established floor.
+  WakeWord.on('level', function(lvl){
+    const now=Date.now();
+    if(!_lwCapturing){
+      // slow-moving floor: adopt quieter readings fast, drift upward only very slowly
+      if(lvl<_lwAmbientFloor) _lwAmbientFloor=_lwAmbientFloor*0.7+lvl*0.3;
+      else _lwAmbientFloor=_lwAmbientFloor*0.995+lvl*0.005;
+
+      // Follow-up listening (see the comment on _followupGraceUntil above for the full "why").
+      const busy = lastStatus && (lastStatus.ai_status==='working' || lastStatus.ai_status==='thinking');
+      const inGrace = now < _followupGraceUntil && !document.hasFocus() && !busy && !ttsActive();
+      if(inGrace){
+        const thr=Math.max(0.008, _lwAmbientFloor*2.5+0.003);
+        if(lvl>thr){
+          if(!_fuAboveSince) _fuAboveSince=now;
+          // 280ms sustained (was 180): a cough / keyboard clack / chair creak no longer opens
+          // a capture that Whisper then hallucinates a "command" out of
+          if(!_fuHeard && (now-_fuAboveSince)>=280){ _fuHeard=true; _fuAboveSince=0; onWakeDetected(1); }
+        } else { _fuAboveSince=0; }
+      } else { _fuAboveSince=0; _fuHeard=false; }
+      return;
+    }
+    const threshold=Math.max(0.008, _lwAmbientFloor*2.5+0.003); // must clear ambient by a real margin
+    if(lvl>threshold){
+      if(!_lwAboveSince) _lwAboveSince=now;
+      if(!_lwHeardSpeech && (now-_lwAboveSince)>=180) _lwHeardSpeech=true; // sustained -> real speech, not a blip
+      if(_lwHeardSpeech) _lwLastSpeechAt=now;
+    } else { _lwAboveSince=0; }
+    if(now-_lwVadLastLog>500){ _lwVadLastLog=now; try{ console.log('[wake-vad]', _lwHeardSpeech?'speech':'...', 'lvl='+lvl.toFixed(4), 'thr='+threshold.toFixed(4), 'floor='+_lwAmbientFloor.toFixed(4)); }catch(e){} }
+    const SILENCE_MS=2000, NO_SPEECH_TIMEOUT_MS=6000, MAX_MS=20000;
+    if(_lwHeardSpeech && _lwLastSpeechAt && (now-_lwLastSpeechAt)>=SILENCE_MS){ if(_lwFinishFn) _lwFinishFn(); return; }   // 2s real quiet -> done
+    if(!_lwHeardSpeech && (now-_lwCapStart)>=NO_SPEECH_TIMEOUT_MS){ if(_lwFinishFn) _lwFinishFn(); return; }               // said nothing -> give up
+    if((now-_lwCapStart)>=MAX_MS){ if(_lwFinishFn) _lwFinishFn(); }                                                        // safety cap
+  });
+}
+async function toggleLocalWake(on){
+  wireWakeWord();
+  await window.bridge.setFlag('/toggle_local_wake',{enabled:!!on});
+  lwShowRows(!!on);
+  if(on){
+    if(_lwStarting || (window.WakeWord && WakeWord.running)) return;
+    _lwStarting=true;
+    try{
+      const thr=parseFloat((document.getElementById('lw-thresh')||{}).value||'0.5');
+      await WakeWord.start({ threshold: thr });
+    }catch(e){
+      // failed -> flip the toggle back off so the UI matches reality
+      const t=document.getElementById('tog-localwake'); if(t) t.checked=false;
+      lwShowRows(false);
+      await window.bridge.setFlag('/toggle_local_wake',{enabled:false});
+    }finally{ _lwStarting=false; }
+  }else{
+    try{ if(window.WakeWord) WakeWord.stop(); }catch(e){}
+    lwStatus('Wake word off.');
+  }
+}
+function setWakeThreshold(v){
+  const val=parseFloat(v)||0.5;
+  if(window.WakeWord) WakeWord.setThreshold(val);
+  window.bridge.setFlag('/set_wake_threshold',{value:val});
+}
+// When "Hey Jarvis" is heard: record the command and keep listening until real trailing
+// silence (2s) follows actual speech - see the persistent 'level' handler in wireWakeWord()
+// for the VAD logic itself; this just starts/stops the recorder and reads its result.
+function onWakeDetected(score){
+  if(_lwCommandRec) return; // already capturing a command
+  lwStatus('Heard you \u2014 listening for your command\u2026');
+  setHint('Yes? I\u2019m listening\u2026', 8000);
+  try{ refreshSpeakingUI && refreshSpeakingUI(); }catch(e){}
+  const stream = window.WakeWord && WakeWord.stream;
+  if(!stream){ lwStatus('Listening for \u201CHey Jarvis\u201D\u2026'); return; }
+  let mime='audio/webm'; try{ if(!MediaRecorder.isTypeSupported(mime)) mime=''; }catch(e){ mime=''; }
+  let rec; try{ rec = mime ? new MediaRecorder(stream,{mimeType:mime}) : new MediaRecorder(stream); }catch(e){ lwStatus('Could not record command.'); return; }
+  _lwCommandRec = rec;
+  const chunks=[];
+  rec.ondataavailable=function(e){ if(e.data&&e.data.size) chunks.push(e.data); };
+
+  _lwAboveSince=0; _lwHeardSpeech=false; _lwLastSpeechAt=0; _lwCapStart=Date.now(); _lwCapturing=true;
+  _fuAboveSince=0; _fuHeard=false; // ready for another follow-up trigger once THIS capture finishes
+  let stopped=false;
+  _lwFinishFn=function(){
+    if(stopped) return; stopped=true;
+    _lwCapturing=false; _lwFinishFn=null;
+    try{ if(rec.state!=='inactive') rec.stop(); }catch(e){}
+  };
+
+  rec.onstop=async function(){
+    _lwCommandRec=null; _lwCapturing=false; _lwFinishFn=null;
+    lwStatus('Listening for \u201CHey Jarvis\u201D\u2026');
+    try{
+      const blob=new Blob(chunks,{type:'audio/webm'});
+      if(blob.size<1200 || !_lwHeardSpeech) return; // nothing useful / no real speech heard
+      const res=await window.bridge.transcribe(await blob.arrayBuffer());
+      if(res&&res.ok&&res.text){ submitVoiceCommand(res.text); }
+    }catch(e){}
+  };
+  try{ rec.start(); }catch(e){ _lwCommandRec=null; _lwCapturing=false; _lwFinishFn=null; return; }
+}
+
+
+// Submit a voice-derived command to the chat (used by the local wake-word command capture).
+// Whisper's signature silence/noise hallucinations ("Thank you.", ".", "you", "Thanks for
+// watching!") must NEVER become chat messages from the hands-free paths - each one was
+// landing in chat and even re-triggering the previous automation plan over and over. Only
+// whole-result matches are dropped: deliberate speech that merely CONTAINS these words
+// (e.g. "thank you, now open chrome") passes straight through.
+function looksLikeSttHallucination(t){
+  const s=String(t||'').trim();
+  if(!s) return true;
+  if(!/[a-z0-9]/i.test(s)) return true; // punctuation-only transcripts ("." "...")
+  return /^(you|bye|so|the|uh+|um+|hmm+|okay|thanks?|thank\s*(you|u)(\s+so\s+much)?|so\s+thank\s+(you|u)|thanks?\s+for\s+watching|please\s+(like\s+and\s+)?subscribe.*|subtitles?\s+by.*|www\.[\w.-]+)[.!?\s]*$/i.test(s);
+}
+function submitVoiceCommand(cmd){
+  cmd=String(cmd||'').trim();
+  if(!cmd || looksLikeSttHallucination(cmd)){ if(cmd) console.log('[voice] dropped hallucinated transcript:', cmd); return; }
+  const inp=document.getElementById('chat-input'); if(inp){ inp.value=cmd; sendText(); }
+}
+
+function bindPTT(){
+  const btn=document.getElementById('bind-btn'); btn.textContent='Press a key&hellip;';
+  const map={' ':'space','Control':'ctrl','Shift':'shift','Alt':'alt','Meta':'windows','ArrowUp':'up','ArrowDown':'down','ArrowLeft':'left','ArrowRight':'right','Escape':'esc'};
+  function handler(e){
+    e.preventDefault();
+    let k=(map[e.key]!==undefined)?map[e.key]:e.key.toLowerCase();
+    window.removeEventListener('keydown',handler,true);
+    btn.textContent='Bind';
+    api('/set_ptt_hotkey',{hotkey:k}).then(r=>{ if(r&&r.hotkey) document.getElementById('ptt-binding').textContent=r.hotkey.toUpperCase(); });
+  }
+  window.addEventListener('keydown',handler,true);
+}
+
+function setRate(){ const v=document.getElementById('rate').value; document.getElementById('rate-val').textContent=v; api('/set_speech_rate',{rate:parseInt(v)}); }
+function setBudget(){ const v=document.getElementById('budget').value; document.getElementById('budget-val').textContent=v+' GB'; api('/set_memory_budget',{gb:parseFloat(v)}); }
+
+const ACCENTS=[['Mono','#e7e9ee'],['Ice','#7fd1ff'],['Mint','#5ad19a'],['Amber','#e0b15a'],['Rose','#e9637b'],['Violet','#b08cff']];
+function buildAccents(){
+  const box=document.getElementById('accents'); const saved=localStorage.getItem('accent')||'#e7e9ee';
+  box.innerHTML=ACCENTS.map(function(p){return '<div class="acc'+(p[1]===saved?' sel':'')+'" title="'+p[0]+'" style="background:'+p[1]+'" onclick="setAccent(\''+p[1]+'\')"></div>';}).join('');
+  applyTheme(saved);
+}
+function setAccent(c){ localStorage.setItem('accent',c); applyTheme(c); buildAccents(); if(window.bridge&&window.bridge.setConfig) window.bridge.setConfig({accentColor:c}); }
+function hexToHSL(hex){
+  hex=hex.replace('#',''); if(hex.length===3)hex=hex.split('').map(function(x){return x+x;}).join('');
+  let r=parseInt(hex.slice(0,2),16)/255, g=parseInt(hex.slice(2,4),16)/255, b=parseInt(hex.slice(4,6),16)/255;
+  const max=Math.max(r,g,b),min=Math.min(r,g,b); let h=0,s=0,l=(max+min)/2;
+  if(max!==min){ const d=max-min; s=l>0.5?d/(2-max-min):d/(max+min);
+    if(max===r)h=(g-b)/d+(g<b?6:0); else if(max===g)h=(b-r)/d+2; else h=(r-g)/d+4; h/=6; }
+  return [Math.round(h*360), Math.round(s*100), Math.round(l*100)];
+}
+function applyTheme(hex){
+  const hsl=hexToHSL(hex), h=hsl[0], mono=hsl[1]<12;
+  const bgSat=mono?0:24, txtSat=mono?0:12, lineSat=mono?0:30;
+  const S=document.documentElement.style;
+  S.setProperty('--accent',hex);
+  S.setProperty('--accent-soft','hsla('+h+','+(mono?0:65)+'%,68%,.16)');
+  S.setProperty('--bg','hsl('+h+','+bgSat+'%,5%)');
+  S.setProperty('--panel','hsl('+h+','+bgSat+'%,8.5%)');
+  S.setProperty('--panel2','hsl('+h+','+bgSat+'%,12%)');
+  S.setProperty('--track','hsl('+h+','+bgSat+'%,17%)');
+  S.setProperty('--line','hsla('+h+','+lineSat+'%,80%,.10)');
+  S.setProperty('--txt','hsl('+h+','+txtSat+'%,93%)');
+  S.setProperty('--mut','hsl('+h+','+txtSat+'%,62%)');
+  S.setProperty('--faint','hsl('+h+','+txtSat+'%,42%)');
+  document.body.style.background='radial-gradient(1200px 700px at 70% -10%, hsl('+h+','+bgSat+'%,11%) 0%, hsl('+h+','+bgSat+'%,4%) 55%)';
+}
+
+function set(id,val){ const el=document.getElementById(id); if(el&&el.type==='checkbox') el.checked=!!val; }
+function syncSettings(){
+  const s=lastStatus;
+  set('tog-mouse',s.allow_mouse_control); set('tog-scripting',s.allow_system_scripting);
+  set('tog-tts',s.tts_enabled);
+  set('tog-localwake',s.local_wake_enabled); lwShowRows(!!s.local_wake_enabled);
+  if(typeof s.local_wake_threshold==='number'){ const el=document.getElementById('lw-thresh'); if(el) el.value=s.local_wake_threshold; }
+  set('tog-screen',s.screen_watch_enabled); set('tog-proactive',s.proactive_thinking_enabled); set('tog-persistent',s.memory_saving_enabled);
+  // [OFFLINE-INTEGRATION] AI Mode card follows live status (same pattern as the toggles above)
+  set('tog-offline', s.mode==='offline'); set('tog-localvision', s.use_local_vision); set('tog-localstt', s.use_local_stt); set('tog-sepchats', s.separate_offline_chats);
+  if(typeof s.offline_stt_model==='string'){ const el=document.getElementById('offline-stt-select'); if(el && document.activeElement!==el) el.value=s.offline_stt_model; }
+  if(typeof applyOfflineFieldVisibility==='function') applyOfflineFieldVisibility();
+  const amb=document.getElementById('am-badge');
+  if(amb && typeof s.ollama_up!=='undefined'){ amb.textContent=s.ollama_up?'OLLAMA RUNNING':'OLLAMA OFF'; amb.className='badge '+(s.ollama_up?'ok':'bad'); }
+  if(s.speech_rate){ document.getElementById('rate').value=s.speech_rate; document.getElementById('rate-val').textContent=s.speech_rate; }
+  if(s.ptt_hotkey) document.getElementById('ptt-binding').textContent=String(s.ptt_hotkey).toUpperCase();
+  const viInWin=document.getElementById('vi-inwindow-hotkey'); if(viInWin && s.ptt_hotkey) viInWin.textContent=String(s.ptt_hotkey);
+  set('tog-systemptt', s.push_to_talk_mode);
+  const viCur=document.getElementById('vi-current-hotkey'); if(viCur) viCur.textContent=prettyHotkey(s.voice_hotkey||'')||'(none registered)';
+  const viStatus=document.getElementById('system-ptt-status');
+  if(viStatus){
+    if(!s.push_to_talk_mode){ viStatus.textContent='Off \u2014 the hotkey above toggles the mic as usual.'; viStatus.className='statusline'; }
+    else if(s.system_ptt_active){ viStatus.textContent='\u2713 Hold-to-talk is live on '+prettyHotkey(s.voice_hotkey||''); viStatus.className='statusline ok'; }
+    else { viStatus.textContent='\u26A0 Couldn\u2019t start hold-to-talk'+(s.system_ptt_unavailable_reason?(': '+s.system_ptt_unavailable_reason):'')+' \u2014 using toggle mode instead for now.'; viStatus.className='statusline bad'; }
+  }
+  const mu=s.memory_usage||{};
+  if(mu.budget_gb){ document.getElementById('budget').value=Math.round(mu.budget_gb); document.getElementById('budget-val').textContent=Math.round(mu.budget_gb)+' GB'; }
+  const ab=document.getElementById('auto-badge');
+  ab.textContent=s.automation_available?'PYAUTOGUI READY':'NOT INSTALLED'; ab.className='badge '+(s.automation_available?'ok':'bad');
+  const rb=document.getElementById('auto-runbar');
+  if(rb) rb.style.display = s.automation_running ? 'flex' : 'none';
+}
+
+async function poll(){
+  const s=await getJSON('/status');
+  document.getElementById('led-ollama').className='led '+(s&&s.ollama_available?'on':'off');
+  if(!s){ document.getElementById('pill-state').textContent='offline'; document.getElementById('led-listen').className='led off'; return; }
+  lastStatus=s;
+  ttsEnabled = s.tts_enabled!==false;
+
+  // [OFFLINE-INTEGRATION] the topbar pill names the ACTIVE engine (Cloud / Local)
+  const pmode=document.getElementById('pill-mode');
+  if(pmode){ const t=(s.mode==='offline')?'Local':'Cloud'; if(pmode.textContent!==t) pmode.textContent=t; }
+
+  // Auto-start the local wake word on launch if it was left enabled - this must live in poll()
+  // (which runs immediately and every second from app start) rather than in syncSettings()
+  // (which only runs while the Settings panel happens to be open), or it silently never starts
+  // until the user opens Settings once.
+  if(s.local_wake_enabled && !window._lwAutoStarted){
+    window._lwAutoStarted=true;
+    wireWakeWord();
+    if(window.WakeWord && !WakeWord.running) toggleLocalWake(true);
+  }
+
+  document.getElementById('pill-model').textContent=s.brain_model||'\u2014';
+
+  // The voice plays in THIS window (renderer), but main reports ai_speaking:false and goes
+  // idle the moment text generation ends - so treat local TTS playback as "speaking" too.
+  const speakingNow = !!s.ai_speaking || ttsActive();
+
+  let state='idle', busy=false;
+  if(speakingNow){ state='speaking'; busy=true; }
+  else if(s.ai_status==='researching'||s.ai_status==='working'){ state='working on it'; busy=true; }
+  else if(s.ai_status==='thinking'){ state='thinking'; busy=true; }
+  else if(recording){ state='listening'; }   // mic actively recording (push-to-talk / wake command)
+  else if(s.ai_status==='listening' || (s.latest_volume||0)>0.6){ state='listening'; }
+  document.getElementById('pill-state').textContent=state;
+  document.getElementById('led-listen').className='led '+(state==='idle'?'':'on');
+
+  orb.speaking=speakingNow;
+  orb.busy=busy;
+  orb.target=recording?0.85:(speakingNow?1:(busy?0.7:Math.min(1,(s.latest_volume||0)/6)));
+  const os=document.getElementById('orb-state'); if(os) os.textContent=state;
+
+  // Show which global voice hotkey actually registered (so the user knows what to press).
+  if(s.voice_hotkey){ voiceHotkeyLabel=prettyHotkey(s.voice_hotkey); }
+  if(!hintLocked && !recording){ const h=document.querySelector('.hint'); if(h) h.textContent=defaultHintText(); }
+
+  const link=document.getElementById('engine-link'); if(link){ link.textContent=s.ollama_available?'LINKED':'OFFLINE'; link.className='badge '+(s.ollama_available?'ok':'bad'); }
+  const em=document.getElementById('engine-model'); if(em) em.textContent=s.brain_model||'\u2014';
+  const ev=document.getElementById('engine-vision'); if(ev){ ev.textContent=s.vision_model||'not installed'; ev.style.color=s.vision_model?'var(--accent)':'var(--bad)'; }
+  const eo=document.getElementById('engine-ocr'); if(eo){ eo.textContent=s.ocr_available?'ENABLED':'OFF'; eo.className='badge '+(s.ocr_available?'ok':'bad'); }
+
+  const mu=s.memory_usage||{};
+  const mb=document.getElementById('mem-badge'); if(mb){ mb.textContent=s.embeddings_available?'ON':'OFF'; mb.className='badge '+(s.embeddings_available?'ok':'bad'); }
+  const mv=document.getElementById('mem-vectors'); if(mv) mv.textContent=(mu.count||0).toLocaleString()+' vectors \u00b7 SQLite embeddings';
+  const usedGb=mu.gb||0, budgetGb=mu.budget_gb||1;
+  const usedLabel=usedGb<0.01?((mu.mb||0).toFixed(1)+' MB'):(usedGb.toFixed(2)+' GB');
+  const bu=document.getElementById('budget-use'); if(bu) bu.textContent='Using '+usedLabel+' of '+budgetGb+' GB';
+  const bmeter=document.getElementById('budget-meter'); if(bmeter) bmeter.style.width=Math.min(100,mu.percent||0)+'%';
+
+  if(document.getElementById('settings').classList.contains('open')) syncSettings();
+}
+
+let lastActLen=0;
+let lastActs=[];
+let expandedThink=new Set();
+let bootScrolled=false;
+function toggleThink(i){ if(expandedThink.has(i)) expandedThink.delete(i); else expandedThink.add(i); renderActs(lastActs); }
+// User tapped a style button under an image request -> generate in that style.
+function genStyled(ev, id, key){
+  try{ const box=ev.target.parentElement; box.querySelectorAll('button').forEach(function(b){ b.disabled=true; b.style.opacity='0.5'; }); ev.target.textContent='Creating\u2026'; ev.target.style.opacity='1'; }catch(e){}
+  window.bridge.generateImage(id, key);
+}
+// ---------- desktop automation: plan approval, per-command shell confirmation, stop ----------
+function approveAutomationPlan(id){ window.bridge.automationApprovePlan(id); }
+function cancelAutomationPlan(id){ window.bridge.automationCancelPlan(id); }
+function confirmAutomationShell(id, approve){ window.bridge.automationConfirmShell(id, approve); }
+function stopAutomation(){ window.bridge.automationStop(); }
+
+// Save a generated image to disk via a native dialog.
+async function saveImageSrc(src, btn){
+  if(btn){ btn.disabled=true; btn.textContent='Saving\u2026'; }
+  try{
+    const r=await window.bridge.saveImage(src);
+    if(r&&r.ok){ setHint('\u2713 Saved to '+(r.path||'disk'),3500); }
+    else if(r&&r.canceled){ /* user cancelled */ }
+    else { setHint('Save failed: '+((r&&r.error)||'error'),3500); }
+  }catch(e){ setHint('Save failed',3000); }
+  try{ if(btn&&btn.isConnected){ btn.disabled=false; btn.textContent='\u2913 Save'; } }catch(_e){}
+}
+let _lastActsSig='';
+function renderActs(acts){
+  const box=document.getElementById('chat-scroll'); if(!box) return;
+  // Delegate Save clicks to the stable container so they work even while the thread re-renders.
+  if(!box._saveDelegated){
+    box._saveDelegated=true;
+    box.addEventListener('click',function(e){
+      const b=e.target&&e.target.closest?e.target.closest('[data-save]'):null; if(b){ saveImageSrc(b.getAttribute('data-save'),b); return; }
+      const md=e.target&&e.target.closest?e.target.closest('[data-model]'):null; if(md){ const id=md.getAttribute('data-model'); const ent=(lastActs||[]).find(function(a){return a.kind==='model3d'&&a.id===id;}); if(ent) openModel3D({id:ent.id,name:ent.name,data:ent.data}); }
+    });
+  }
+  // Only rebuild when something actually changed - otherwise buttons get destroyed mid-click.
+  const sig=JSON.stringify(acts)+'|'+Array.from(expandedThink).join(',');
+  if(sig===_lastActsSig) return;
+  _lastActsSig=sig;
+  const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<120;
+  box.innerHTML=acts.map(function(a,i){
+    if(a.kind==='heard') return '<div class="msg user">'+esc(a.text)+'<span class="t">you \u00b7 '+a.time+'</span></div>';
+    if(a.kind==='said'){
+      let h='<div class="msg ai">'+esc(a.text);
+      if(a.thinking){
+        const open=expandedThink.has(i);
+        h+='<div onclick="toggleThink('+i+')" style="margin-top:7px;font-size:11px;color:var(--faint);cursor:pointer;user-select:none">'+(open?'\u25be hide reasoning':'\u25b8 show reasoning')+'</div>';
+        if(open) h+='<div style="margin-top:6px;padding:8px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;font-size:11px;color:var(--faint);white-space:pre-wrap;max-height:240px;overflow:auto">'+esc(a.thinking)+'</div>';
+      }
+      h+='<span class="t">brain \u00b7 '+a.time+'</span></div>';
+      return h;
+    }
+    if(a.kind==='thought') return '<div class="msg think">\u21ba '+esc(a.text)+'</div>';
+    if(a.kind==='image') return '<div class="msg ai" style="padding:6px"><img src="'+a.src+'" alt="" loading="lazy" style="max-width:100%;border-radius:8px;display:block"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px"><div style="font-size:11px;color:var(--faint);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.text||'')+'</div><button data-save="'+a.src+'" style="background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:5px 12px;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap">\u2913 Save</button></div></div>';
+    if(a.kind==='image_styles'){
+      const styles=[['Realistic','realistic'],['Anime','anime'],['Digital Art','digital'],['Oil Painting','oil'],['3D Render','render3d'],['Pixar / 3D','pixar'],['Cyberpunk','cyberpunk'],['Watercolor','watercolor'],['Surprise me','any']];
+      let h='<div class="msg ai"><div style="margin-bottom:9px">Pick a style for: <b>'+esc(a.prompt)+'</b></div><div style="display:flex;flex-wrap:wrap;gap:6px">';
+      h+=styles.map(function(s){ return '<button onclick="genStyled(event,\''+a.id+'\',\''+s[1]+'\')" style="background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer">'+s[0]+'</button>'; }).join('');
+      h+='</div></div>';
+      return h;
+    }
+    if(a.kind==='automation_plan'){
+      let h='<div class="msg ai"><div style="margin-bottom:7px">Plan for: <b>'+esc(a.goal)+'</b></div><ol style="margin:0 0 10px 18px;padding:0;font-size:13px;line-height:1.6">';
+      h+=(a.steps||[]).map(function(s){ return '<li>'+esc(s)+'</li>'; }).join('');
+      h+='</ol><div style="display:flex;gap:8px"><button onclick="approveAutomationPlan(\''+a.id+'\')" style="background:var(--accent);border:none;color:#0a0b0d;font-weight:700;border-radius:8px;padding:7px 14px;font:inherit;font-size:12px;cursor:pointer">Go ahead</button><button onclick="cancelAutomationPlan(\''+a.id+'\')" style="background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 14px;font:inherit;font-size:12px;cursor:pointer">Cancel</button></div></div>';
+      return h;
+    }
+    if(a.kind==='automation_confirm'){
+      return '<div class="msg ai" style="border:1px solid rgba(233,99,123,.35)"><div style="margin-bottom:7px;color:var(--bad);font-size:11px;font-family:ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase">Confirm this action</div><div style="font-family:ui-monospace,monospace;font-size:12.5px;background:var(--panel2);border-radius:6px;padding:8px 10px;margin-bottom:9px;overflow-x:auto;white-space:pre">'+esc(a.cmd)+'</div><div style="display:flex;gap:8px"><button onclick="confirmAutomationShell(\''+a.id+'\',true)" style="background:var(--bad);border:none;color:#fff;font-weight:700;border-radius:8px;padding:7px 14px;font:inherit;font-size:12px;cursor:pointer">Confirm</button><button onclick="confirmAutomationShell(\''+a.id+'\',false)" style="background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 14px;font:inherit;font-size:12px;cursor:pointer">Cancel</button></div></div>';
+    }
+    if(a.kind==='model3d') return '<div class="msg ai" style="display:flex;align-items:center;gap:11px"><span style="font-size:22px">&#129513;</span><div style="flex:1;min-width:0"><div style="font-size:13px">3D model: <b>'+esc(a.name||'model')+'</b></div><div style="font-size:11px;color:var(--faint)">Built from shapes \u00b7 rotate &amp; download</div></div><button data-model="'+a.id+'" style="background:var(--accent);border:none;color:#fff;border-radius:8px;padding:7px 13px;font:inherit;font-size:12px;cursor:pointer;flex:0 0 auto;white-space:nowrap">View 3D</button></div>';
+    if(a.kind==='action') return '<div class="msg sys">'+esc(a.text)+'</div>';
+    return '';
+  }).join('');
+  if(nearBottom||acts.length!==lastActLen) box.scrollTop=box.scrollHeight;
+  if(!bootScrolled && acts.length){ bootScrolled=true; requestAnimationFrame(function(){ box.scrollTop=box.scrollHeight; }); }
+  lastActLen=acts.length;
+  const oc=document.getElementById('orb-caption');
+  if(oc){ if(orbCapOn()){ const lastSaid=acts.slice().reverse().find(function(a){return a.kind==='said';}); oc.textContent=lastSaid?lastSaid.text:''; } else { oc.textContent=''; } }
+  const cf=document.getElementById('cam-full');
+  if(cf && cf.style.display!=='none'){ const cap=document.getElementById('cam-caption'); if(cap){ const ls=acts.slice().reverse().find(function(a){return a.kind==='said';}); if(ls&&ls.text){ cap.textContent=ls.text; cap.style.display='block'; } } }
+}
+async function pollActivity(){
+  const d=await getJSON('/activity'); if(!d||!d.activity) return;
+  lastActs=d.activity;
+  renderActs(lastActs);
+}
+function esc(t){ return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function initOrb(canvasId){
+  const cv=document.getElementById(canvasId); const ctx=cv.getContext('2d');
+  function resize(){ const r=cv.getBoundingClientRect(); cv.width=r.width*devicePixelRatio; cv.height=r.height*devicePixelRatio; }
+  resize(); new ResizeObserver(resize).observe(cv);
+  let t=0;
+  (function draw(){
+    t+=0.016;
+    orb.level += (orb.target-orb.level)*0.08;
+    const w=cv.width,h=cv.height,cx=w/2,cy=h/2;
+    ctx.clearRect(0,0,w,h);
+    const acc=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#e7e9ee';
+    const base=Math.min(w,h)*0.16;
+    const R=base*(1+orb.level*0.5+Math.sin(t*1.6)*0.03);
+    const g=ctx.createRadialGradient(cx,cy,R*0.2,cx,cy,R*2.4);
+    g.addColorStop(0,hexToRgba(acc,0.5+orb.level*0.4));
+    g.addColorStop(0.35,hexToRgba(acc,0.10));
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,R*2.4,0,7); ctx.fill();
+    const cg=ctx.createRadialGradient(cx-R*0.3,cy-R*0.3,R*0.1,cx,cy,R);
+    cg.addColorStop(0,hexToRgba(acc,0.95)); cg.addColorStop(1,hexToRgba(acc,0.18));
+    ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.fill();
+    ctx.lineWidth=Math.max(1,devicePixelRatio);
+    for(let i=0;i<3;i++){
+      const rr=R*(1.5+i*0.45)+Math.sin(t*(1+i*0.5))*R*0.08;
+      ctx.strokeStyle=hexToRgba(acc,0.12-i*0.03+orb.level*0.1);
+      ctx.beginPath();
+      for(let a=0;a<=6.3;a+=0.1){ const wob=1+Math.sin(a*3+t*(1.5+i))*0.03*(1+orb.level); const x=cx+Math.cos(a)*rr*wob; const y=cy+Math.sin(a)*rr*wob; if(a===0){ctx.moveTo(x,y);}else{ctx.lineTo(x,y);} }
+      ctx.stroke();
+    }
+    requestAnimationFrame(draw);
+  })();
+}
+function orbCapOn(){ return localStorage.getItem('orbcap')==='1'; }
+function toggleOrbCap(){ localStorage.setItem('orbcap', document.getElementById('tog-orbcap').checked?'1':'0'); }
+function hexToRgbArr(hex){ hex=hex.replace('#',''); if(hex.length===3)hex=hex.split('').map(function(c){return c+c;}).join(''); const n=parseInt(hex,16); return [(n>>16)&255,(n>>8)&255,n&255]; }
+// --- Background: a single slow-tumbling 3D wireframe icosahedron (Canvas 2D) ---
+// Deliberately minimal: 12 vertices + 30 edges, depth-shaded, dual-axis tumble,
+// 30fps cap, render resolution capped at 1.5x, and PAUSED when hidden or toggled
+// off. Far lighter than a particle field — a clean 3D object, not clutter.
+let _bg = null;  // {cv, ctx, verts, edges, ax, ay, raf, last, dpr}
+function initBackground(){
+  const cv=document.getElementById('bg-canvas'); if(!cv) return;
+  const ctx=cv.getContext('2d');
+  const DPR=Math.min(devicePixelRatio||1, 1.5);  // cap pixels -> big memory/fill saver on hi-dpi laptops
+  function resize(){ cv.width=Math.max(1,Math.round(innerWidth*DPR)); cv.height=Math.max(1,Math.round(innerHeight*DPR)); }
+  resize(); addEventListener('resize',resize);
+  // Icosahedron: 12 vertices from golden-ratio coords, normalized to unit radius.
+  const P=(1+Math.sqrt(5))/2, L=Math.hypot(1,P,0);
+  const raw=[[0,1,P],[0,-1,P],[0,1,-P],[0,-1,-P],[1,P,0],[-1,P,0],[1,-P,0],[-1,-P,0],[P,0,1],[-P,0,1],[P,0,-1],[-P,0,-1]];
+  const verts=raw.map(function(v){return [v[0]/L,v[1]/L,v[2]/L];});
+  // 30 edges = connect each vertex to its 5 nearest neighbors (computed once).
+  const edges=[], seen={};
+  for(let i=0;i<verts.length;i++){
+    const d=[];
+    for(let j=0;j<verts.length;j++) if(j!==i){
+      const dx=verts[i][0]-verts[j][0], dy=verts[i][1]-verts[j][1], dz=verts[i][2]-verts[j][2];
+      d.push([dx*dx+dy*dy+dz*dz, j]);
+    }
+    d.sort(function(a,b){return a[0]-b[0];});
+    for(let k=0;k<5;k++){ const j=d[k][1], key=i<j?(i+'-'+j):(j+'-'+i); if(!seen[key]){ seen[key]=1; edges.push([i,j]); } }
+  }
+  _bg={cv:cv, ctx:ctx, verts:verts, edges:edges, ax:0.5, ay:0, raf:null, last:0, dpr:DPR};
+}
+function _bgDraw(now){
+  if(!_bg) return;
+  if(now-_bg.last<33){ _bg.raf=requestAnimationFrame(_bgDraw); return; }  // ~30fps cap
+  const dt=Math.min(50, (now-_bg.last)||16); _bg.last=now;
+  const cv=_bg.cv, ctx=_bg.ctx, verts=_bg.verts, edges=_bg.edges, dpr=_bg.dpr;
+  const w=cv.width, h=cv.height, cx=w/2, cy=h/2;
+  ctx.clearRect(0,0,w,h);
+  const acc=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#e7e9ee';
+  const rgb=hexToRgbArr(acc);
+  const lvl=(typeof orb!=='undefined'&&orb)?orb.level:0;
+  const R=Math.min(w,h)*0.30, view=3.0;
+  const spd=(0.00010 + lvl*0.00035)*dt;             // slow tumble; a touch faster when the AI is active
+  _bg.ay += spd; _bg.ax += spd*0.55;
+  const cay=Math.cos(_bg.ay), say=Math.sin(_bg.ay), cax=Math.cos(_bg.ax), sax=Math.sin(_bg.ax);
+  // Project the 12 vertices: rotate around Y, then X, then perspective.
+  const pr=new Array(verts.length);
+  for(let i=0;i<verts.length;i++){
+    const vx=verts[i][0], vy=verts[i][1], vz=verts[i][2];
+    const x1=vx*cay - vz*say, z1=vx*say + vz*cay;
+    const y1=vy*cax - z1*sax, z2=vy*sax + z1*cax;
+    const persp=view/(view - z2);
+    pr[i]={sx:cx+x1*R*persp, sy:cy+y1*R*persp, depth:(z2+1)/2, persp:persp};
+  }
+  // Edges, shaded by depth (far = fainter) for a real 3D read.
+  ctx.lineWidth=Math.max(1, dpr*0.8);
+  for(let e=0;e<edges.length;e++){
+    const a=pr[edges[e][0]], b=pr[edges[e][1]], dep=(a.depth+b.depth)/2;
+    const al=(0.05+dep*0.22)*(0.75+lvl*0.5);
+    ctx.strokeStyle='rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+al+')';
+    ctx.beginPath(); ctx.moveTo(a.sx,a.sy); ctx.lineTo(b.sx,b.sy); ctx.stroke();
+  }
+  // Vertices, small glints (near = bigger + brighter).
+  for(let i=0;i<pr.length;i++){
+    const q=pr[i];
+    const rad=(1.0+q.depth*q.depth*2.0)*dpr*q.persp;
+    const al=(0.18+q.depth*q.depth*0.55)*(0.75+lvl*0.5);
+    ctx.fillStyle='rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+al+')';
+    ctx.beginPath(); ctx.arc(q.sx,q.sy,Math.max(0.8,rad),0,7); ctx.fill();
+  }
+  _bg.raf=requestAnimationFrame(_bgDraw);
+}
+function startBackground(){ if(!_bg) initBackground(); if(_bg && !_bg.raf){ _bg.last=0; _bg.raf=requestAnimationFrame(_bgDraw); } }
+function stopBackground(){
+  if(_bg && _bg.raf){ cancelAnimationFrame(_bg.raf); _bg.raf=null; }
+  const cv=document.getElementById('bg-canvas'); if(cv){ cv.getContext('2d').clearRect(0,0,cv.width,cv.height); }
+}
+// The animated background plays only in the Chat view — the Orb view keeps a clean
+// backdrop so the orb stands alone. It also respects the on/off toggle and tab visibility.
+let _curView='orb';
+function _bgApply(){
+  if(bgAnimOn() && _curView!=='orb' && !document.hidden){ startBackground(); }
+  else { stopBackground(); }
+}
+function bgAnimOn(){ return localStorage.getItem('bganim')!=='0'; }   // default ON
+function toggleBgAnim(){
+  localStorage.setItem('bganim', document.getElementById('tog-bganim').checked?'1':'0');
+  _bgApply();
+}
+// Pause when the window is hidden/minimized — zero work in the background.
+document.addEventListener('visibilitychange', _bgApply);
+function hexToRgba(hex,a){ hex=hex.replace('#',''); if(hex.length===3)hex=hex.split('').map(function(c){return c+c;}).join(''); const n=parseInt(hex,16); return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
+
+buildAccents();
+initBackground();
+initOrb('orb-canvas');
+_bgApply();   // respects toggle + starts only if not on the Orb view
+if(document.getElementById('tog-orbcap')) document.getElementById('tog-orbcap').checked=orbCapOn();
+if(document.getElementById('tog-bganim')) document.getElementById('tog-bganim').checked=bgAnimOn();
+poll(); setInterval(poll,1000);
+// The orb's "speaking" look is driven by the renderer's own audio (ttsActive). poll() runs
+// only once a second, so this faster ticker makes the orb pulse the instant the voice starts
+// and relax the instant it stops, without waiting for the next poll.
+let _wasEngaged=false;
+function refreshSpeakingUI(){
+  const speakingNow = ttsActive();
+  if(speakingNow){
+    orb.speaking = true;
+    if(!recording) orb.target = 1;
+    const ps=document.getElementById('pill-state'); if(ps && ps.textContent!=='speaking') ps.textContent='speaking';
+    const os=document.getElementById('orb-state'); if(os && os.textContent!=='speaking') os.textContent='speaking';
+    const ll=document.getElementById('led-listen'); if(ll) ll.className='led on';
+  } else if(orb.speaking){
+    orb.speaking = false; // just stopped; relax until the next poll sets the precise state
+    if(!recording) orb.target = 0;
+    const ps=document.getElementById('pill-state'); if(ps && ps.textContent==='speaking') ps.textContent='idle';
+    const os=document.getElementById('orb-state'); if(os && os.textContent==='speaking') os.textContent='idle';
+  }
+  // Follow-up grace window: start the 25s clock the moment BRAIN actually finishes being
+  // "engaged" with you - done talking (or done generating, if TTS is off) - NOT while the
+  // reply text is still streaming in. That was the bug: a long reply's TEXT finishes well
+  // before its VOICE does, so refreshing on text changes let the window run out mid-speech,
+  // leaving nothing left once BRAIN actually stopped talking.
+  const busyNow = speakingNow || (lastStatus && (lastStatus.ai_status==='working' || lastStatus.ai_status==='thinking'));
+  if(!busyNow && _wasEngaged && !document.hasFocus()){ _followupGraceUntil = Date.now() + FOLLOWUP_GRACE_MS; }
+  _wasEngaged = busyNow;
+}
+setInterval(refreshSpeakingUI, 200);
+pollActivity(); setInterval(pollActivity,150);
+// Auto-connect on launch: load saved settings, then connect and lock onto a valid chat model.
+(async function autoConnect(){
+  try{ engineCfg=await window.bridge.getConfig(); }catch(e){}
+  loadModels(true);
+})();
+</script>
+</body>
+</html>
