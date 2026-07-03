@@ -370,7 +370,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
     <div class="sec">
       <h3>Desktop Automation</h3>
       <div class="sub">PyAutoGUI control layer &mdash; grant scoped permissions. <span id="auto-badge" class="badge">&mdash;</span></div>
-      <div style="font-size:11.5px;color:var(--faint);line-height:1.5;margin:-2px 0 12px">Caryl always proposes a plan and waits for you to approve it before touching the mouse or keyboard, and always asks again before running any shell command &mdash; even mid-plan.</div>
+      <div style="font-size:11.5px;color:var(--faint);line-height:1.5;margin:-2px 0 12px">Tasks you ask for run right away; Caryl narrates each step and you can Stop anytime. Shell commands and file deletes still ask first.</div>
+      <div class="row"><div><div class="l">Preview &amp; approve a plan first</div><div class="d">Off = just do it. On = Caryl shows a plan and waits for your OK before acting.</div></div>
+        <label class="sw"><input type="checkbox" id="tog-planapproval" onchange="window.bridge.setConfig({automationRequirePlanApproval:this.checked})"><span></span></label></div>
       <div class="row"><div><div class="l">Allow Mouse Control</div><div class="d">Let it move and click the cursor</div></div>
         <label class="sw"><input type="checkbox" id="tog-mouse" onchange="api('/toggle_mouse_control',{enabled:this.checked})"><span></span></label></div>
       <div class="row"><div><div class="l">Allow System Scripting</div><div class="d">Keyboard automation, shell &amp; system control</div></div>
@@ -1771,7 +1773,7 @@ function applyTheme(hex){
 function set(id,val){ const el=document.getElementById(id); if(el&&el.type==='checkbox') el.checked=!!val; }
 function syncSettings(){
   const s=lastStatus;
-  set('tog-mouse',s.allow_mouse_control); set('tog-scripting',s.allow_system_scripting);
+  set('tog-mouse',s.allow_mouse_control); set('tog-scripting',s.allow_system_scripting); set('tog-planapproval',s.automation_require_plan_approval);
   set('tog-tts',s.tts_enabled);
   set('tog-localwake',s.local_wake_enabled); lwShowRows(!!s.local_wake_enabled);
   if(typeof s.local_wake_threshold==='number'){ const el=document.getElementById('lw-thresh'); if(el) el.value=s.local_wake_threshold; }

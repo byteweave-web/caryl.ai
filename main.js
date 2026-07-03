@@ -1167,6 +1167,13 @@ async function verifyAutomationDone(cfg, goal, twoStage) {
 }
 
 async function proposeAutomationPlan(cfg, goal) {
+  // Frictionless default: the user directly asked for this task, so just do it - skip the
+  // propose-a-plan-and-wait-for-"Go ahead" step. The grounded step loop narrates each action
+  // and Stop stays live; shell/delete still confirm mid-run. Opt back in via Settings.
+  if (!config.get().automationRequirePlanApproval) {
+    runAutomationLoop(goal); // fire-and-forget, same as approvePlan does
+    return;
+  }
   activity.push({ kind: 'action', text: 'Looking at your screen to plan that out...', time: clockTime() });
   aiStatus = 'working';
   // REFINED: cached screenshot (same cache as the step loop, so a plan + immediate first step
@@ -3262,6 +3269,7 @@ ipcMain.handle('ui:status', () => {
     speech_rate: cfg.speech_rate || 195,
     ptt_hotkey: cfg.ptt_hotkey || '\\',
     push_to_talk_mode: !!cfg.pushToTalkMode,
+    automation_require_plan_approval: !!cfg.automationRequirePlanApproval,
     system_ptt_active: pttEngineActive,
     system_ptt_unavailable_reason: pttEngineActive ? '' : pttUnavailableReason,
     memory_usage: { count: mem().all().length, gb: 0, mb: 0, budget_gb: cfg.memory_budget_gb || 5, percent: 0 },
