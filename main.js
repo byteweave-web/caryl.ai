@@ -59,6 +59,18 @@ const { streamChat, listModels } = require('./lib/providers');
 const ollama = require('./lib/ollama');
 const OfflineMemory = require('./lib/offline-memory');
 const localSearch = require('./lib/local-search');
+const enginesLib = require('./lib/engines');
+
+// Ensure cfg.engines exists (one-time derivation from the pre-Caryl flags).
+{
+  const norm = enginesLib.normalizeEngines(config.get());
+  if (norm.changed) config.set({ engines: norm.engines });
+}
+
+// The single question every feature path asks: which engine serves this capability NOW?
+function engineOf(capability) {
+  return enginesLib.resolveEngine(config.get(), capability);
+}
 
 // ===================== [OFFLINE-INTEGRATION] Mode resolution =====================
 // Everything below funnels through these helpers instead of reading cfg.baseUrl /
@@ -79,7 +91,7 @@ const DEFAULT_OFFLINE_MODEL = 'qwen2.5:7b';
 let offlineMemory = null; // lazy - only ever created if the user opts into separate storage
 
 function isOffline(cfg) {
-  return ((cfg || config.get()).mode || 'online') === 'offline';
+  return enginesLib.resolveEngine(cfg || config.get(), 'chat') === 'offline';
 }
 
 // The active CHAT endpoint+model. Ollama speaks the OpenAI /v1 protocol, so the existing
@@ -109,11 +121,14 @@ function localVisionModel(cfg) {
 function visionCfg(cfg) {
   cfg = cfg || config.get();
   const lv = localVisionModel(cfg);
-  if (isOffline(cfg)) {
-    return { baseUrl: ollama.BASE_V1, apiKey: 'ollama', model: lv || (cfg.offlineModel || DEFAULT_OFFLINE_MODEL) };
-  }
-  if (cfg.useLocalVision && ollama.isUp() && lv) {
-    return { baseUrl: ollama.BASE_V1, apiKey: 'ollama', model: lv };
+  if (enginesLib.resolveEngine(cfg, 'vision') === 'offline') {
+    if (ollama.isUp() && lv) return { baseUrl: ollama.BASE_V1, apiKey: 'ollama', model: lv };
+    if (isOffline(cfg)) {
+      // fully-local setup: still answer via the chat model rather than silently failing
+      return { baseUrl: ollama.BASE_V1, apiKey: 'ollama', model: lv || (cfg.offlineModel || DEFAULT_OFFLINE_MODEL) };
+    }
+    // hybrid (chat online, vision offline but not ready): visible cloud fallback, never dead air
+    console.warn('[engines] vision=offline but not ready (' + enginesLib.engineReady(cfg, 'vision', { ollamaUp: ollama.isUp(), localVisionModel: lv }).reason + ') - using cloud vision');
   }
   const VISION = { groq: cfg.visionModel || 'qwen/qwen3.6-27b', gemini: 'gemini-2.5-flash', openai: 'gpt-4o-mini' };
   return { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: VISION[cfg.provider] || cfg.visionModel || cfg.model };
@@ -374,7 +389,7 @@ function speak(text) {
   if (cfg.tts_enabled === false) return;
   const spoken = cleanForSpeech(text);
   if (!spoken) return;
-  if (cfg.ttsEngine === 'piper' && cfg.piperPath && cfg.piperModel) {
+  if (enginesLib.resolveEngine(cfg, 'tts') === 'offline' && cfg.piperPath && cfg.piperModel) {
     // Chained onto piperChain (not fired in parallel): without this, a short LATER sentence
     // can finish synthesizing before a longer EARLIER one, so its audio reaches - and plays
     // in - the renderer first, and the reply comes out spoken in the wrong order.
@@ -1205,9 +1220,8 @@ async function proposeAutomationPlan(cfg, goal) {
     // Surface whatever the model actually said (trimmed) instead of a generic dead-end -
     // if it was confused about what it was looking at, this is the clue that shows it.
     const hint = lastRaw.trim().slice(0, 140);
-    const online = !isOffline(cfg);
-    const visionHint = (online && !cfg.useLocalVision)
-      ? ' If this keeps happening, your current model may not be able to see the screen - set a vision-capable model in Settings \u2192 AI Mode (turn on Local vision with e.g. minicpm-v, or choose a multimodal cloud model).'
+    const visionHint = (enginesLib.resolveEngine(cfg, 'vision') === 'online')
+      ? ' If this keeps happening, your current model may not be able to see the screen - set a vision-capable model in Settings \u2192 Engines & Models (flip Vision to local with e.g. minicpm-v, or choose a multimodal cloud model).'
       : '';
     activity.push({ kind: 'action', text: '\u26A0 Could not put together a workable plan for that' + (hint ? ' - it said: "' + hint + '"' : '') + '.' + visionHint, time: clockTime() });
     return;
@@ -2000,7 +2014,7 @@ ipcMain.handle('voice:use', async (_e, voiceId) => {
   const cfg = config.get();
   let piperExe = (cfg.piperPath && fs.existsSync(cfg.piperPath)) ? cfg.piperPath : findPiperExe(base);
   if (!piperExe) return { ok: false, error: 'Piper engine missing - download a voice first.' };
-  config.set({ ttsEngine: 'piper', tts_enabled: true, piperPath: piperExe, piperModel: onnx });
+  config.set({ ttsEngine: 'piper', tts_enabled: true, piperPath: piperExe, piperModel: onnx, engines: Object.assign({}, enginesLib.normalizeEngines(config.get()).engines, { tts: 'offline' }) });
   speak('This is how I sound now.');
   return { ok: true };
 });
@@ -2037,7 +2051,7 @@ ipcMain.handle('voice:install', async (_e, voiceId) => {
       await downloadFile(VOICE_BASE + '/' + v.dir + '/' + v.name + '.onnx.json', onnx + '.json');
     }
     // 3. Configure automatically (the user never touches paths).
-    config.set({ ttsEngine: 'piper', tts_enabled: true, piperPath: piperExe, piperModel: onnx });
+    config.set({ ttsEngine: 'piper', tts_enabled: true, piperPath: piperExe, piperModel: onnx, engines: Object.assign({}, enginesLib.normalizeEngines(config.get()).engines, { tts: 'offline' }) });
     voiceProgress('');
     speak('Voice installed. This is how I sound now.');
     return { ok: true };
@@ -2121,7 +2135,7 @@ ipcMain.handle('stt:transcribe', async (_e, arrayBuffer) => {
 
   // [OFFLINE-INTEGRATION] use local whisper when the whole app is offline OR the user turned on
   // "local voice input" for online mode.
-  if (isOffline(cfg) || cfg.useLocalStt) {
+  if (enginesLib.resolveEngine(cfg, 'stt') === 'offline') {
     let localErr = '';
     try {
       const local = await localTranscribe(buf, lang, whisperModel);
@@ -2881,7 +2895,7 @@ app.whenReady().then(() => {
   // cfg.ollamaLazyStart is on (default). The status badge will show "Ollama: offline" until
   // then, and the first request triggers ensureRunning() with a brief "Starting Ollama..."
   // message.
-  if (cfg0.mode === 'offline' || cfg0.useLocalVision) {
+  if (enginesLib.resolveEngine(cfg0, 'chat') === 'offline' || enginesLib.resolveEngine(cfg0, 'vision') === 'offline') {
     if (cfg0.ollamaLazyStart === false) ollamaBoot();
     else console.log('[ollama] lazy mode - will boot on first chat/vision/stt request');
   }
@@ -2900,12 +2914,30 @@ ipcMain.handle('config:set', (_e, patch) => {
   const prev = config.get(); // [OFFLINE-INTEGRATION] snapshot so we can detect what changed
   const r = config.set(patch || {});
   if (patch && (patch.globalHotkey || ('pushToTalkMode' in patch) || ('pttHotkey' in patch))) applyVoiceHotkeyMode();
-  // [OFFLINE-INTEGRATION] react to mode / storage / model changes made from the settings UI:
-  if (patch && (('mode' in patch) || ('separateOfflineChats' in patch))) {
-    rebuildActivityFromMemory(); // the visible chat thread follows the active store
+  // Translate legacy mode flags (old settings UI / old renderer versions) into engines,
+  // and keep legacy flags in sync when engines is patched directly - both directions,
+  // so either vocabulary keeps working during and after the transition.
+  if (patch && !patch.engines && (('mode' in patch) || ('useLocalVision' in patch) || ('useLocalStt' in patch) || ('ttsEngine' in patch))) {
+    config.set({ engines: enginesLib.deriveFromLegacy(config.get()) });
+  }
+  if (patch && patch.engines) {
+    const e = enginesLib.normalizeEngines(config.get()).engines;
+    config.set({
+      mode: e.chat === 'offline' ? 'offline' : 'online',
+      useLocalVision: e.vision === 'offline',
+      useLocalStt: e.stt === 'offline',
+      ttsEngine: e.tts === 'offline' ? 'piper' : 'browser'
+    });
+  }
+  // React to mode / storage / engine changes made from the settings UI: the visible chat
+  // thread follows the active store, which can swap when engines.chat flips.
+  if (patch && (('mode' in patch) || ('separateOfflineChats' in patch) || ('engines' in patch))) {
+    rebuildActivityFromMemory();
   }
   const now = config.get();
-  if (patch && ((patch.mode === 'offline') || patch.useLocalVision === true)) {
+  const needsOllama = enginesLib.resolveEngine(now, 'chat') === 'offline' || enginesLib.resolveEngine(now, 'vision') === 'offline';
+  const engineFlip = patch && (patch.engines || patch.mode === 'offline' || patch.useLocalVision === true);
+  if (engineFlip && needsOllama) {
     ollamaBoot(); // fire-and-forget: make sure the local engine is up now that it's needed
   }
   if (patch && ('offlineModel' in patch) && isOffline(now) && prev.offlineModel !== now.offlineModel) {
@@ -2944,7 +2976,7 @@ ipcMain.handle('ui:status', () => {
     local_wake_threshold: typeof cfg.local_wake_threshold === 'number' ? cfg.local_wake_threshold : 0.5,
     tts_engine: cfg.ttsEngine || 'browser',
     latest_volume: 0,
-    vision_model: (isOffline(cfg) || cfg.useLocalVision) ? (localVisionModel(cfg) || null) : null,
+    vision_model: (enginesLib.resolveEngine(cfg, 'vision') === 'offline') ? (localVisionModel(cfg) || null) : null,
     ocr_available: false,
     embeddings_available: true,  // local memory is always on
     automation_available: automationReady && automationPyautogui,
@@ -2962,6 +2994,9 @@ ipcMain.handle('ui:status', () => {
     system_ptt_active: pttEngineActive,
     system_ptt_unavailable_reason: pttEngineActive ? '' : pttUnavailableReason,
     memory_usage: { count: mem().all().length, gb: 0, mb: 0, budget_gb: cfg.memory_budget_gb || 5, percent: 0 },
+    // Per-capability hybrid routing (drives the Engines & Models card + onboarding)
+    engines: enginesLib.normalizeEngines(cfg).engines,
+    wake_word_model: cfg.wakeWordModel || 'hey_jarvis_v0.1.onnx',
     // [OFFLINE-INTEGRATION] extra fields for the AI Mode settings card (harmless elsewhere)
     mode: cfg.mode || 'online',
     ollama_up: ollama.isUp(),
