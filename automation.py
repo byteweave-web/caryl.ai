@@ -1098,20 +1098,25 @@ def _hamming(a, b):
 
 
 def _uia_top_titles():
-    """Set of current top-level window titles (for new-window detection). Best-effort."""
+    """Set of current top-level window titles (for new-window detection). Best-effort.
+    Self-initializing: /act calls this from bare Flask request threads, and COM must be
+    initialized per-thread or uiautomation dumps 'CoInitialize has not been called' errors
+    into @AutomationLog.txt on every action. (Nested initializers are ref-counted - safe
+    when the caller already holds one, e.g. _uia_state_report.)"""
     titles = set()
     if _uia is None:
         return titles
     try:
-        root = _uia.GetRootControl()
-        for w in root.GetChildren():
-            try:
-                if (w.ControlTypeName or "") == "WindowControl":
-                    n = (w.Name or "").strip()
-                    if n:
-                        titles.add(n)
-            except Exception:
-                pass
+        with _uia.UIAutomationInitializerInThread():
+            root = _uia.GetRootControl()
+            for w in root.GetChildren():
+                try:
+                    if (w.ControlTypeName or "") == "WindowControl":
+                        n = (w.Name or "").strip()
+                        if n:
+                            titles.add(n)
+                except Exception:
+                    pass
     except Exception:
         pass
     return titles

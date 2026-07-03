@@ -48,7 +48,25 @@
       "Bash(git merge *)",
       "Bash(git branch *)",
       "Bash(git commit -m 'Add Sub-project B design spec: grounded automation \\(UIA-first hardening\\) *)",
-      "Bash(git commit -m 'Add Sub-project B implementation plan \\(grounded automation, 8 tasks\\) *)"
+      "Bash(git commit -m 'Add Sub-project B implementation plan \\(grounded automation, 8 tasks\\) *)",
+      "Bash(git commit -m 'Add B7 \\(frictionless execution\\) to spec + Task 9 to plan *)",
+      "Bash(.venv/Scripts/python.exe tests/test_automation.py)",
+      "Bash(git commit -m 'feat\\(automation\\): pure UIA helpers for element inventory \\(label synth, ranking\\) + tests *)",
+      "Bash(git commit -m 'feat\\(automation\\): /elements inventory across foreground/start/taskbar/desktop with unnamed-control labels *)",
+      "Bash(git commit -m 'feat\\(automation\\): /act element_id targeting, post-action state report, typed-text verification, vision-demotion gate *)",
+      "Bash(grep -n 'elif action ==\\\\|return jsonify\\({\"ok\": False, \"error\": \"unknown action' automation.py)",
+      "Bash(git commit -m 'feat\\(automation\\): deterministic open_app \\(Win-type-Enter + UIA window confirmation\\) *)",
+      "Bash(grep -n \"captureScreenCached\\(1024, 640\\)\\\\|const sys = AUTOMATION_FRAMING + ' Goal:\\\\|Look at the attached CURRENT screenshot and decide\\\\|automationState = { active: true\" main.js)",
+      "Bash(grep -n \"const cfgNow = config.get\\(\\);\\\\|const payload = {\\\\|const r = await sidecarCall\\('/act', payload\\);\\\\|r.did || \\(stepObj.action\" main.js)",
+      "Bash(node -e \"new \\(require\\('vm'\\).Script\\)\\(require\\('fs'\\).readFileSync\\('main.js','utf8'\\)\\); console.log\\('main.js: syntax OK'\\)\")",
+      "Bash(git commit -m 'feat\\(automation\\): grounded planner loop - element list in prompt, act-by-id, state-report history, confirmed open_app *)",
+      "Bash(git commit -m 'feat\\(automation\\): sanity gate \\(reject typing the target\\) + state-hash loop-breaker *)",
+      "Bash(git commit -m 'feat\\(automation\\): escalation ladder - wide re-scan then pause-&-ask element picker; stuck-run escalation *)",
+      "Bash(node -e \"const fs=require\\('fs'\\),vm=require\\('vm'\\);const html=fs.readFileSync\\('renderer/index.html','utf8'\\);[...html.matchAll\\(/<script>\\([\\\\s\\\\S]*?\\)<\\\\/script>/g\\)].forEach\\(\\(m,i\\)=>{try{new vm.Script\\(m[1]\\)}catch\\(e\\){console.log\\('block',i,e.message\\);process.exit\\(1\\)}}\\);console.log\\('index.html scripts OK'\\)\")",
+      "Bash(git commit -m 'feat\\(automation\\): run requested tasks immediately by default; plan-approval now an opt-in toggle *)",
+      "Bash(powershell -Command \"Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force\")",
+      "Bash(git commit -m 'docs\\(automation\\): acceptance suite + grounded-automation notes *)",
+      "Bash(git commit -m 'fix\\(automation\\): initialize COM in _uia_top_titles \\(bare Flask threads dumped CoInitialize errors\\) *)"
     ]
   }
 }

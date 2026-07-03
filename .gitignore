@@ -10,4 +10,5 @@ piper/
 
 # Runtime logs
 *.log
+@AutomationLog.txt
 __pycache__/
