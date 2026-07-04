@@ -518,6 +518,14 @@ html[data-os="win10"] .tile{background:rgba(16,20,28,.92);-webkit-backdrop-filte
     $('t-moon').innerHTML = '<div class="label">' + icon('moon', 'currentColor') + 'Moon</div>' +
       moonSphere(moon.phase, moon.illumination);
 
+    // A prior dismissal (e.g. the board blurring when you click back to type another query)
+    // left body.leaving on — opacity:0, and it beats body.show in the cascade. The window is
+    // reused, not recreated, so a re-render must CLEAR it, else the board renders correct
+    // content but stays invisible behind the acrylic material: the "blank gray on reopen" bug.
+    // fadedNotified=true suppresses any stale fade-ack still pending from that dismissal.
+    // (Mirrors overlay-card.html's render: add('show') + remove('leaving').)
+    document.body.classList.remove('leaving');
+    fadedNotified = true;
     requestAnimationFrame(function(){ document.body.classList.add('show'); });
   }
 
