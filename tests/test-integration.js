@@ -65,11 +65,23 @@ const actions = require('../lib/actions');
     main: { temp: 15.2, feels_like: 14.0, humidity: 70 },
     weather: [{ main: 'Rain', description: 'light rain' }], wind: { speed: 3.2 }
   };
+  const OWM_FORECAST = {
+    city: { timezone: 32400 },
+    list: Array.from({ length: 10 }, (_, i) => ({
+      dt: 1751600000 + i * 10800,
+      main: { temp: 22 + i },
+      weather: [{ description: i === 2 ? 'light rain' : 'scattered clouds', icon: i === 2 ? '10d' : '03d' }]
+    }))
+  };
   let weatherFetchCalls = 0;
   const wkernel = createKernel({
     registry: registryMod.createRegistry({ builtins: BUILTINS }),
     getConfig: () => ({ openWeatherApiKey: 'test-key', weatherUnits: 'metric' }),
-    fetchImpl: async (_url) => { weatherFetchCalls++; return { status: 200, json: async () => OWM }; }
+    fetchImpl: async (url) => {
+      weatherFetchCalls++;
+      if (url.indexOf('/forecast') >= 0) return { status: 200, json: async () => OWM_FORECAST };
+      return { status: 200, json: async () => OWM };
+    }
   });
 
   // the Router classifies a weather request as API_NATIVE and extracts the city
@@ -84,16 +96,32 @@ const actions = require('../lib/actions');
   assert.strictEqual(wdecision.handled, true);
   assert.strictEqual(wdecision.class, 'API_NATIVE');
   assert.strictEqual(wdecision.result.ok, true);
-  assert.strictEqual(weatherFetchCalls, 1, 'the injected fetch was used - no real network');
-
-  const ov = wdecision.result.overlay;
-  assert.ok(ov && /Tokyo/.test(ov.title), 'overlay title carries the city');
-  assert.ok(Array.isArray(ov.rows) && ov.rows.length > 0, 'overlay has rows');
-  assert.ok(ov.rows.every((r) => typeof r.label === 'string' && typeof r.value === 'string'), 'overlay rows are {label,value} strings');
-  assert.ok(ov.rows.some((r) => /15/.test(r.value)), 'temperature is present in the overlay');
+  assert.strictEqual(weatherFetchCalls, 2, 'current + forecast fetched, no real network');
+  assert.strictEqual(wdecision.result.overlay.kind, 'forecast', 'overlay is the forecast card');
+  assert.strictEqual(wdecision.result.overlay.forecast.length, 8, '8 three-hour tiles');
+  assert.ok(wdecision.result.overlay.narration.length >= 2, 'narration segments present');
+  assert.strictEqual(
+    wdecision.result.speak,
+    wdecision.result.overlay.narration.map((s) => s.text).join(' '),
+    'speak is exactly the joined narration'
+  );
 
   // the guard is released after an API_NATIVE turn (no leak into the next request)
   assert.strictEqual(guard.isBlocked(), null, 'guard cleared after the weather turn');
+
+  // ---- weather: forecast endpoint fails -> demote to the rows card, never a dead card ----
+  const wkernel2 = createKernel({
+    registry: registryMod.createRegistry({ builtins: BUILTINS }),
+    getConfig: () => ({ openWeatherApiKey: 'test-key', weatherUnits: 'metric' }),
+    fetchImpl: async (url) => {
+      if (url.indexOf('/forecast') >= 0) return { status: 500, json: async () => ({}) };
+      return { status: 200, json: async () => OWM };
+    }
+  });
+  const wd2 = await wkernel2.handle('weather in Tokyo');
+  assert.ok(wd2.handled && wd2.result.ok, 'demoted weather still succeeds');
+  assert.ok(!wd2.result.overlay.kind, 'demoted overlay is the plain rows payload');
+  assert.ok(Array.isArray(wd2.result.overlay.rows) && wd2.result.overlay.rows.length, 'rows present');
 
   console.log('test-integration: all assertions passed');
 })().catch((e) => { console.error(e); process.exit(1); });
