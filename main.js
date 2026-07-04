@@ -3347,6 +3347,7 @@ function caryKernel() {
   const kmod = require('./lib/kernel');
   _caryKernel = kmod.createKernel({
     userDataDir: app.getPath('userData'),
+    getConfig: () => config.get(), // API_NATIVE handlers (weather) read keys/units from here
     logger: (lvl, m) => { try { console.error('[kernel]', lvl, m); } catch (_e) {} }
   });
   return _caryKernel;

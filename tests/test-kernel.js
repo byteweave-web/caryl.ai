@@ -189,4 +189,32 @@ assert.ok(isMath('how much is 24/7'), 'an explicit cue makes even 24/7 a calcula
 const mMath = router.classify('what is 12.5% of 340', BUILTINS);
 assert.strictEqual(mMath.params.expression, '12.5% of 340');
 
+// --- Cycle F: weather matcher precision against the real BUILTINS ---
+// Must fire on genuine weather intent but NOT confuse "whether" with "weather".
+function isWeather(text) {
+  const m = router.classify(text, BUILTINS);
+  return !!(m && m.entry.id === 'weather.current');
+}
+
+// positives
+assert.ok(isWeather('weather in Tokyo'), 'explicit weather request');
+assert.ok(isWeather("what's the weather"), 'weather with no city');
+assert.ok(isWeather('weather'), 'bare weather');
+assert.ok(isWeather("what's the forecast for London"), 'forecast counts as weather');
+
+// negatives: "whether" is a different word and must never trigger weather
+assert.strictEqual(isWeather('wondering whether it is cold'), false, 'whether != weather');
+assert.strictEqual(isWeather('tell me whether I should eat'), false, 'whether != weather');
+assert.strictEqual(isWeather('whether or not to go'), false, 'whether != weather');
+
+// class, GUI-block, and location extraction
+let mW = router.classify('weather in Tokyo', BUILTINS);
+assert.strictEqual(mW.class, 'API_NATIVE');
+assert.strictEqual(mW.guiBlocked, true, 'API_NATIVE blocks the GUI');
+assert.strictEqual(mW.params.location, 'Tokyo');
+
+// no city named -> still weather, location null (the handler applies a default or asks)
+mW = router.classify("what's the weather", BUILTINS);
+assert.strictEqual(mW.params.location, null);
+
 console.log('test-kernel: all assertions passed');
