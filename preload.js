@@ -92,6 +92,12 @@ contextBridge.exposeInMainWorld('bridge', {
   overlayMoveBy: (dx, dy) => ipcRenderer.invoke('overlay:moveBy', dx, dy),
   onOverlayMode: (cb) => ipcRenderer.on('overlay:mode', (_e, mode) => cb(mode)),
 
+  // ----- Kernel overlay card (push-based; the card never polls) -----
+  onCardRender: (cb) => ipcRenderer.on('card:render', (_e, payload) => cb(payload)),
+  onCardScrollTo: (cb) => ipcRenderer.on('card:scrollTo', (_e, index) => cb(index)),
+  onCardDismiss: (cb) => ipcRenderer.on('card:dismiss', () => cb()),
+  cardClose: () => { try { ipcRenderer.send('card:close'); } catch (_e) {} },
+
   // ----- Document import -----
   importDoc: () => ipcRenderer.invoke('doc:import'),
   importDocPath: (filePath) => ipcRenderer.invoke('doc:importPath', filePath),
