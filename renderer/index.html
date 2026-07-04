@@ -1181,7 +1181,7 @@ function _reportStart(meta){
   if(meta && meta.cardId && window.bridge && window.bridge.ttsProgress) window.bridge.ttsProgress({ cardId: meta.cardId, seg: meta.seg });
 }
 function _reportEnd(meta){
-  if(meta && meta.cardId && meta.last && window.bridge && window.bridge.ttsIdle) window.bridge.ttsIdle({ cardId: meta.cardId });
+  if(meta && meta.cardId && meta.last && window.bridge && window.bridge.ttsIdle) { window.bridge.ttsIdle({ cardId: meta.cardId }); if(_lastCardId === meta.cardId) _lastCardId = 0; }
 }
 function _pump(){
   if(_speaking) return;
