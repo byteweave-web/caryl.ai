@@ -3338,6 +3338,20 @@ async function offlineWebAnswer(cfg, query) {
   }
 }
 
+// ---- Hybrid Automation Kernel: lazily built (needs app.getPath at call time) ----
+// The Kernel classifies each request and routes deterministic PURE_LOGIC / API_NATIVE
+// tasks (math, system stats, ...) to a handler instead of the LLM, hard-blocking the GUI.
+let _caryKernel = null;
+function caryKernel() {
+  if (_caryKernel) return _caryKernel;
+  const kmod = require('./lib/kernel');
+  _caryKernel = kmod.createKernel({
+    userDataDir: app.getPath('userData'),
+    logger: (lvl, m) => { try { console.error('[kernel]', lvl, m); } catch (_e) {} }
+  });
+  return _caryKernel;
+}
+
 // ---- IPC: send a message (prompt-based actions: open apps / urls / search, then reply) ----
 ipcMain.handle('ui:sendText', async (_event, text) => {
   const cfg = config.get();
@@ -3353,6 +3367,34 @@ ipcMain.handle('ui:sendText', async (_event, text) => {
   mem().add('user', msg);
   activity.push({ kind: 'heard', text: msg, time: clockTime() });
   maybeShowOverlay(); // if you asked from another app (e.g. voice hotkey), pop the overlay up
+
+  // ---- Kernel interception: logic/API tasks bypass the LLM and the GUI ----
+  // Deterministic PURE_LOGIC / API_NATIVE tasks are solved here before the model is ever
+  // consulted, with the GUI hard-blocked for the turn. A miss returns { handled:false }
+  // and the normal LLM flow below runs unchanged.
+  try {
+    const decision = await caryKernel().handle(msg);
+    if (decision && decision.handled) {
+      const r = decision.result || {};
+      if (r.ok) {
+        const say = String(r.speak || '').trim() || 'Done.';
+        activity.push({ kind: 'said', text: say, time: clockTime() });
+        mem().add('assistant', say);
+        speak(say);
+        // TODO(kernel-overlay): render r.overlay in the custom overlay card (next task).
+      } else {
+        const emsg = r.error || 'I couldn’t complete that.';
+        activity.push({ kind: 'action', text: '⚠ ' + emsg, time: clockTime() });
+        mem().add('assistant', emsg);
+        speak(emsg);
+      }
+      aiStatus = 'idle';
+      return { ok: true, handled: true, via: decision.class };
+    }
+  } catch (e) {
+    // The Kernel must never break normal chat - log and fall through to the LLM.
+    try { console.error('[kernel] handle failed:', (e && e.message) || e); } catch (_e) {}
+  }
 
   // REFINED: token-budgeted history. Instead of blindly sending the last N turns, drop the
   // oldest turns when their combined estimate exceeds cfg.tokenBudget (default 6000), with a
