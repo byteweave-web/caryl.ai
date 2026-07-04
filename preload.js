@@ -100,8 +100,10 @@ contextBridge.exposeInMainWorld('bridge', {
   // ----- Kernel overlay card (push-based; the card never polls) -----
   onCardRender: (cb) => ipcRenderer.on('card:render', (_e, payload) => cb(payload)),
   onCardScrollTo: (cb) => ipcRenderer.on('card:scrollTo', (_e, index) => cb(index)),
-  onCardDismiss: (cb) => ipcRenderer.on('card:dismiss', () => cb()),
+  onCardDismiss: (cb) => ipcRenderer.on('card:dismiss', (_e, reason) => cb(reason)),
   cardClose: () => { try { ipcRenderer.send('card:close'); } catch (_e) {} },
+  // fire-and-forget ack: the renderer's fade-out transition just finished
+  cardFaded: () => { try { ipcRenderer.send('card:faded'); } catch (_e) {} },
 
   // ----- Document import -----
   importDoc: () => ipcRenderer.invoke('doc:import'),

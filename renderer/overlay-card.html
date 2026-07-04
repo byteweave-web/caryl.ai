@@ -194,12 +194,31 @@ html[data-theme="fullLight"] .row{border-bottom-color:rgba(0,0,0,.06)}
     if (!engaged()) el.scrollIntoView({ behavior:'smooth', inline:'center', block:'nearest' });
   }
 
+  // Guards against double-firing cardFaded() if both transitionend and the setTimeout
+  // fallback would otherwise race (e.g. a dropped/retried transitionend).
+  let fadedNotified = false;
   function leave(){
-    $('card').classList.add('leaving');
-    // main hides the window after the fade (Task 4 waits 260ms) — nothing else to do here.
+    fadedNotified = false;
+    const card = $('card');
+    card.classList.add('leaving');
+    function notifyFaded(){
+      if (fadedNotified) return;
+      fadedNotified = true;
+      bridge.cardFaded && bridge.cardFaded();
+    }
+    function onTransitionEnd(e){
+      if (e.target !== card || e.propertyName !== 'opacity') return;
+      card.removeEventListener('transitionend', onTransitionEnd);
+      notifyFaded();
+    }
+    card.addEventListener('transitionend', onTransitionEnd);
+    setTimeout(notifyFaded, 300); // fallback in case transitionend never fires
   }
-  function dismissRequested(){
-    if (hovering) { pendingDismiss = true; return; } // wait for pointer to leave (+2s)
+  // reason 'manual' (x button / Esc) must close immediately regardless of hover — the
+  // pointer is necessarily over the card for those, so hover-deferring them means manual
+  // close visibly does nothing. Hover-defer still applies to other (auto) dismiss reasons.
+  function dismissRequested(reason){
+    if (reason !== 'manual' && hovering) { pendingDismiss = true; return; } // wait for pointer to leave (+2s)
     leave();
   }
   function close(){ bridge.cardClose && bridge.cardClose(); }
