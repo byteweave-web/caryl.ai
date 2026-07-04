@@ -3466,6 +3466,21 @@ function cardCtl() {
 }
 ipcMain.on('card:close', () => { cardCtl().dismiss('manual'); });
 
+// Kernel narration -> card sync. The renderer reports which summary segment it just
+// STARTED speaking (tts:progress {cardId, seg}) and when the whole summary is done or
+// stopped (tts:idle {cardId}); we translate those into scroll-to-tile / dismiss on the
+// matching card. overlay.js's card-id guards drop any event aimed at a replaced card.
+let _cardNarration = null; // [{text, tile}] for the card currently narrating
+let _cardNarrationId = 0;  // its card id
+ipcMain.on('tts:progress', (_e, info) => {
+  if (!info || info.cardId !== _cardNarrationId || !_cardNarration) return;
+  const seg = _cardNarration[info.seg | 0];
+  if (seg) cardCtl().scrollTo(seg.tile | 0, info.cardId);
+});
+ipcMain.on('tts:idle', (_e, info) => {
+  if (info && info.cardId) cardCtl().dismiss('speech-end', info.cardId);
+});
+
 // Dev-only card fixtures: perfect the card with ZERO kernel involvement.
 //   Ctrl+Alt+K -> cycle fixture payloads    Ctrl+Alt+J -> fake narration sweep
 // Gated like DevTools (--dev / CARYL_DEV=1). Voice-hotkey code calls
@@ -3543,8 +3558,28 @@ ipcMain.handle('ui:sendText', async (_event, text) => {
         const say = String(r.speak || '').trim() || 'Done.';
         activity.push({ kind: 'said', text: say, time: clockTime() });
         mem().add('assistant', say);
-        speak(say);
-        // TODO(kernel-overlay): render r.overlay in the custom overlay card (next task).
+        // Render the result in the dedicated overlay card. For a forecast payload, speak
+        // the narration as ordered segments so the card auto-scrolls tile-by-tile as Caryl
+        // talks (tts:progress -> scrollTo), then tts:idle dismisses it. A card without
+        // narration (systemStats, or a degraded weather result) speaks the summary as one
+        // card-tagged segment so it still auto-dismisses when speech ends.
+        if (r.overlay) {
+          const cardId = cardCtl().open(r.overlay);
+          const narration = Array.isArray(r.overlay.narration)
+            ? r.overlay.narration.filter((n) => n && String(n.text || '').trim())
+            : [];
+          if (cardId && narration.length) {
+            _cardNarration = narration;
+            _cardNarrationId = cardId;
+            narration.forEach((n, i) => speak(n.text, { cardId, seg: i, last: i === narration.length - 1 }));
+          } else {
+            _cardNarration = null;
+            _cardNarrationId = 0;
+            speak(say, cardId ? { cardId, seg: 0, last: true } : null);
+          }
+        } else {
+          speak(say);
+        }
       } else {
         const emsg = r.error || 'I couldn’t complete that.';
         activity.push({ kind: 'action', text: '⚠ ' + emsg, time: clockTime() });
