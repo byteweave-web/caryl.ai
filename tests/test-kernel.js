@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const router = require('../lib/kernel/router');
 const registry = require('../lib/kernel/registry');
+const { BUILTINS } = require('../lib/kernel');
 
 // Sample registry snapshot (plain entry objects, as registry.all() would return).
 const entries = [
@@ -161,5 +162,31 @@ assert.strictEqual(typeof reg.byId('wa.send').lastUsed, 'string');
 reg.touch('wa.send', { success: false });
 assert.strictEqual(reg.byId('wa.send').useCount, 2);
 assert.strictEqual(reg.byId('wa.send').successCount, 1, 'failed use does not bump successCount');
+
+// --- Cycle E: math matcher precision against the real BUILTINS ---
+// The math task must fire on genuine calculations but NOT on number ranges / ratios that
+// happen to look like arithmetic ("9-5 job", "3-5 business days", "24/7 support").
+function isMath(text) {
+  const m = router.classify(text, BUILTINS);
+  return !!(m && m.entry.id === 'math.eval');
+}
+
+// true negatives: ordinary phrases with number-dash / number-slash are NOT arithmetic
+assert.strictEqual(isMath('9-5 job'), false, 'a work schedule is not a calculation');
+assert.strictEqual(isMath('3-5 business days'), false, 'a range is not a calculation');
+assert.strictEqual(isMath('24/7 support'), false, 'a ratio phrase is not a calculation');
+assert.strictEqual(isMath('i have 2 cats and 3 dogs'), false, 'numbers in prose are not a calculation');
+
+// true positives: real calculations still classify
+assert.ok(isMath('2 + 3'), 'a bare expression is a calculation');
+assert.ok(isMath('12.5% of 340'), 'percent-of is a calculation');
+assert.ok(isMath('2 * 4'), 'a bare expression is a calculation');
+assert.ok(isMath('what is 2 + 3'), 'cue + expression is a calculation');
+assert.ok(isMath('calculate 15% of 200'), 'cue + percent-of is a calculation');
+assert.ok(isMath('how much is 24/7'), 'an explicit cue makes even 24/7 a calculation');
+
+// the expression is still extracted correctly after tightening
+const mMath = router.classify('what is 12.5% of 340', BUILTINS);
+assert.strictEqual(mMath.params.expression, '12.5% of 340');
 
 console.log('test-kernel: all assertions passed');
