@@ -3472,7 +3472,7 @@ const cardOverlay = require('./lib/kernel/overlay');
 let cardOverlayInited = false;
 function cardCtl() {
   if (!cardOverlayInited) {
-    cardOverlay.init({ preloadPath: path.join(__dirname, 'preload.js'), shellStyle });
+    cardOverlay.init({ preloadPath: path.join(__dirname, 'preload.js'), shellStyle, getConfig: () => config.get(), saveConfig: (patch) => config.set(patch) });
     cardOverlayInited = true;
   }
   return cardOverlay;
@@ -3502,17 +3502,54 @@ ipcMain.on('tts:idle', (_e, info) => {
 // Gated like DevTools (--dev / CARYL_DEV=1). Voice-hotkey code calls
 // globalShortcut.unregisterAll(), so registerDevCardShortcuts() must be re-run after it.
 const CARD_FIXTURES = [
-  { kind: 'forecast', title: 'Tokyo, JP', accent: 'sky',
-    current: { temp: 24, icon: '01d', condition: 'Clear sky' },
-    forecast: [
-      { time: '15:00', temp: 24, icon: '01d', condition: 'Clear' },
-      { time: '18:00', temp: 22, icon: '02d', condition: 'Few clouds' },
-      { time: '21:00', temp: 19, icon: '10n', condition: 'Light rain' },
-      { time: '00:00', temp: 17, icon: '10n', condition: 'Rain' },
-      { time: '03:00', temp: 16, icon: '11n', condition: 'Thunderstorm' },
-      { time: '06:00', temp: 16, icon: '13d', condition: 'Snow' },
-      { time: '09:00', temp: 18, icon: '50d', condition: 'Mist' },
-      { time: '12:00', temp: 21, icon: '03d', condition: 'Clouds' }
+  { kind: 'forecast', title: 'Beirut, LB', accent: 'sky', scene: 'clear-day',
+    current: {
+      temp: 28, hi: 31, lo: 23, icon: '01d', condition: 'Clear sky',
+      feelsLike: 29, humidity: 54, dewPoint: 18, pressure: 1012, visibility: 10000,
+      wind: { speed: 11, gust: 19, deg: 260 }, sunrise: '05:42', sunset: '19:48',
+      isNight: false, moon: { phase: 'waxing-crescent', illumination: 22 }
+    },
+    hourly: [
+      { time: '15:00', temp: 28, icon: '01d', condition: 'Clear', pop: 0 },
+      { time: '18:00', temp: 26, icon: '02d', condition: 'Few clouds', pop: 5 },
+      { time: '21:00', temp: 23, icon: '01n', condition: 'Clear', pop: 0 },
+      { time: '00:00', temp: 21, icon: '01n', condition: 'Clear', pop: 0 },
+      { time: '03:00', temp: 20, icon: '01n', condition: 'Clear', pop: 0 },
+      { time: '06:00', temp: 21, icon: '01d', condition: 'Clear', pop: 0 },
+      { time: '09:00', temp: 24, icon: '01d', condition: 'Clear', pop: 0 },
+      { time: '12:00', temp: 27, icon: '01d', condition: 'Clear', pop: 0 }
+    ],
+    daily: [
+      { day: 'Today', icon: '01d', lo: 23, hi: 31, pop: 0 },
+      { day: 'Sat', icon: '01d', lo: 22, hi: 30, pop: 0 },
+      { day: 'Sun', icon: '02d', lo: 22, hi: 29, pop: 10 },
+      { day: 'Mon', icon: '01d', lo: 23, hi: 31, pop: 0 },
+      { day: 'Tue', icon: '01d', lo: 24, hi: 32, pop: 0 }
+    ],
+    narration: [{ text: 'now', tile: 0 }, { text: 'tonight', tile: 3 }, { text: 'tomorrow', tile: 7 }] },
+  { kind: 'forecast', title: 'Tokyo, JP', accent: 'violet', scene: 'storm',
+    current: {
+      temp: 19, hi: 21, lo: 16, icon: '11d', condition: 'Thunderstorm',
+      feelsLike: 18, humidity: 82, dewPoint: 16, pressure: 998, visibility: 6000,
+      wind: { speed: 24, gust: 41, deg: 195 }, sunrise: '04:38', sunset: '18:53',
+      isNight: false, moon: { phase: 'full', illumination: 98 }
+    },
+    hourly: [
+      { time: '15:00', temp: 19, icon: '11d', condition: 'Thunderstorm', pop: 80 },
+      { time: '18:00', temp: 18, icon: '10d', condition: 'Rain', pop: 70 },
+      { time: '21:00', temp: 17, icon: '10n', condition: 'Rain', pop: 65 },
+      { time: '00:00', temp: 17, icon: '10n', condition: 'Light rain', pop: 55 },
+      { time: '03:00', temp: 16, icon: '09n', condition: 'Drizzle', pop: 40 },
+      { time: '06:00', temp: 16, icon: '04d', condition: 'Clouds', pop: 20 },
+      { time: '09:00', temp: 17, icon: '03d', condition: 'Clouds', pop: 10 },
+      { time: '12:00', temp: 18, icon: '02d', condition: 'Few clouds', pop: 5 }
+    ],
+    daily: [
+      { day: 'Today', icon: '11d', lo: 16, hi: 21, pop: 80 },
+      { day: 'Sat', icon: '10d', lo: 16, hi: 20, pop: 60 },
+      { day: 'Sun', icon: '04d', lo: 15, hi: 19, pop: 30 },
+      { day: 'Mon', icon: '03d', lo: 15, hi: 20, pop: 10 },
+      { day: 'Tue', icon: '02d', lo: 16, hi: 21, pop: 5 }
     ],
     narration: [{ text: 'now', tile: 0 }, { text: 'tonight', tile: 3 }, { text: 'tomorrow', tile: 7 }] },
   { kind: 'rows', title: 'System stats', accent: 'blue',
@@ -3525,7 +3562,7 @@ const CARD_FIXTURES = [
     ] },
   { kind: 'rows', title: 'Long values', accent: 'nonsense-accent',
     rows: [{ label: 'A very long label indeed', value: 'An extremely long value that should wrap or clip gracefully without breaking the layout of the card at all' }] },
-  { kind: 'forecast', title: 'Junk forecast (should demote to rows)', forecast: [] },
+  { kind: 'forecast', title: 'Junk (demotes)', hourly: [], daily: [] },
   null // junk payload: must still render an empty-ish rows card, never crash
 ];
 let cardFixtureIdx = 0;
@@ -3580,15 +3617,18 @@ ipcMain.handle('ui:sendText', async (_event, text) => {
         // narration (systemStats, or a degraded weather result) speaks the summary as one
         // card-tagged segment so it still auto-dismisses when speech ends.
         if (r.overlay) {
-          const cardId = cardCtl().open(r.overlay);
+          const opened = cardCtl().open(r.overlay);
+          const cardId = opened.cardId;
           const narration = Array.isArray(r.overlay.narration)
             ? r.overlay.narration.filter((n) => n && String(n.text || '').trim())
             : [];
           if (cfg.tts_enabled === false) {
             // No speech -> no tts:idle will ever come; give the card a readable lifetime.
+            // The board persists on its own (dismiss() ignores 'no-tts' while it's live), so
+            // only the rows card needs this fallback timer.
             _cardNarration = null;
             _cardNarrationId = 0;
-            if (cardId) setTimeout(() => cardCtl().dismiss('no-tts', cardId), 10000);
+            if (opened.kind === 'rows' && cardId) setTimeout(() => cardCtl().dismiss('no-tts', cardId), 10000);
           } else if (cardId && narration.length) {
             _cardNarration = narration;
             _cardNarrationId = cardId;
