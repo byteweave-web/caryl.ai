@@ -109,7 +109,21 @@
       "Bash(cmdkey /list)",
       "Bash(git remote *)",
       "Bash(git push *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(git commit -m 'Add Kernel Overlay Card design spec \\(iOS-style forecast card + rows card, narration-synced\\) *)",
+      "Bash(git commit -m 'Add Kernel Overlay Card implementation plan \\(7 tasks, TDD, two manual gates\\) *)",
+      "Bash(bash \"C:/Users/farou/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/task-brief\" docs/superpowers/plans/2026-07-04-kernel-overlay-card.md 1)",
+      "Bash(node tests/test-overlay-card.js)",
+      "Bash(git commit -m 'feat\\(overlay-card\\): pure payload normalization, accent palette, icon map *)",
+      "Bash(node -e \"const overlay = require\\('./lib/kernel/overlay'\\); console.log\\('Module loaded successfully'\\); console.log\\('Exports:', Object.keys\\(overlay\\)\\);\")",
+      "Bash(bash \"C:/Users/farou/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/review-package\" ec40890 HEAD)",
+      "Bash(git commit -m ' *)",
+      "Bash(bash \"C:/Users/farou/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/review-package\" 100dac2 HEAD)",
+      "Bash(cd /d \"D:\\\\brain-ai\\\\brain-ai\\\\.claude\\\\worktrees\\\\friendly-kilby-f7e2f4\")",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('renderer/overlay-card.html','utf8'\\); if\\(!/onCardRender/.test\\(s\\)||!/i-thunder/.test\\(s\\)\\) throw new Error\\('missing pieces'\\); console.log\\('overlay-card.html ok, bytes:', s.length\\)\")",
+      "Bash(bash \"C:/Users/farou/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/review-package\" cc15d00 HEAD)",
+      "Bash(node --check main.js)",
+      "Bash(bash \"C:/Users/farou/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/review-package\" ec9607a HEAD)"
     ]
   }
 }
