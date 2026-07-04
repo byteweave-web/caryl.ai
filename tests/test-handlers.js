@@ -207,15 +207,7 @@ function fetchReturning(status, body) {
   assert.strictEqual(weather.normalizeForecast({ list: [] }), null, 'empty list -> null');
   assert.strictEqual(weather.normalizeForecast(null), null);
 
-  // buildForecastPayload: spec shape
   const wnorm = { city: 'Tokyo', country: 'JP', temp: 24.4, feelsLike: 25, humidity: 40, description: 'clear sky', windSpeed: 3 };
-  let fp = weather.buildForecastPayload(wnorm, f.tiles, 'metric');
-  assert.strictEqual(fp.kind, 'forecast');
-  assert.strictEqual(fp.title, 'Tokyo, JP');
-  assert.strictEqual(fp.accent, 'sky');
-  assert.strictEqual(fp.current.temp, 24.4);
-  assert.strictEqual(fp.forecast.length, 8);
-  assert.ok(Array.isArray(fp.narration) && fp.narration.length >= 2, 'payload embeds narration');
 
   // buildNarration: ordered segments, tiles in range, first tile is 0, last is the strip end;
   // joined text == what run() will speak
@@ -264,6 +256,66 @@ function fetchReturning(status, body) {
   assert.ok(mp.illumination >= 95, 'full moon ~100% lit');
   mp = weather.moonPhase(Date.UTC(2000, 0, 14, 12, 0));
   assert.strictEqual(mp.phase, 'first-quarter');
+
+  // --- weather board: normalize v2 + aggregateDaily + board payload ---
+  const OWM_CUR = {
+    name: 'Beirut', sys: { country: 'LB', sunrise: 1000, sunset: 52000 }, dt: 30000, timezone: 10800,
+    main: { temp: 28.4, feels_like: 29.2, humidity: 67, pressure: 1007 }, visibility: 21000,
+    weather: [{ description: 'thunderstorm', icon: '11d' }], wind: { speed: 6.4, deg: 241, gust: 10.3 }
+  };
+  const wn2 = weather.normalize(OWM_CUR);
+  assert.strictEqual(wn2.pressure, 1007);
+  assert.strictEqual(wn2.visibilityM, 21000);
+  assert.strictEqual(wn2.windDeg, 241);
+  assert.ok(Math.abs(wn2.windGust - 10.3) < 1e-9);
+  assert.strictEqual(wn2.sunrise, 1000);
+  assert.strictEqual(wn2.sunset, 52000);
+  assert.strictEqual(wn2.tz, 10800);
+  assert.strictEqual(wn2.dt, 30000);
+  assert.strictEqual(weather.normalize({ main: { temp: 5 } }).pressure, null, 'absent fields -> null');
+
+  // forecast steps now carry pop (0..1 -> 0..100) and the FULL list rides along
+  function owmStep(dayIdx, hour, temp, icon, pop) {
+    return { dt: (dayIdx * 24 + hour) * 3600, main: { temp }, pop,
+             weather: [{ description: 'x', icon }] };
+  }
+  const OWM_F2 = { city: { timezone: 0 }, list: [] };
+  for (let d = 0; d < 5; d++) for (let h = 0; h < 24; h += 3)
+    OWM_F2.list.push(owmStep(d, h, 20 + d + (h === 12 ? 5 : 0), h === 12 ? '01d' : '03d', d === 1 && h === 12 ? 0.8 : 0.1));
+  const fn2 = weather.normalizeForecast(OWM_F2);
+  assert.strictEqual(fn2.tiles.length, 8, 'strip still 8');
+  assert.strictEqual(fn2.tiles[0].pop, 10, 'pop as 0..100');
+  assert.strictEqual(fn2.full.length, 40, 'full list rides along');
+  assert.strictEqual(typeof fn2.full[0].dt, 'number');
+
+  const daily = weather.aggregateDaily(fn2.full, fn2.tz);
+  assert.strictEqual(daily.length, 5);
+  assert.strictEqual(daily[0].day, 'Today');
+  assert.strictEqual(daily[1].icon, '01d', 'noon step icon wins');
+  assert.strictEqual(daily[1].hi, 26, 'hi = max of the day');
+  assert.strictEqual(daily[1].lo, 21, 'lo = min of the day');
+  assert.strictEqual(daily[1].pop, 80, 'max pop of the day');
+  assert.deepStrictEqual(weather.aggregateDaily([], 0), []);
+
+  // buildBoardPayload: full v2 shape
+  const bp = weather.buildBoardPayload(wn2, fn2, 'metric');
+  assert.strictEqual(bp.kind, 'forecast');
+  assert.strictEqual(bp.scene, 'storm');
+  assert.strictEqual(bp.current.hi, daily[0].hi);
+  assert.strictEqual(bp.current.lo, daily[0].lo);
+  assert.strictEqual(bp.current.dewPoint, weather.dewPoint(28.4, 67));
+  assert.strictEqual(bp.current.wind.speed, 23, 'm/s*3.6 rounded');
+  assert.strictEqual(bp.current.wind.gust, 37);
+  assert.strictEqual(bp.current.wind.deg, 241);
+  assert.strictEqual(bp.current.visibility, 21, 'km');
+  assert.strictEqual(bp.current.sunrise, weather.fmtClock(1000, 10800));
+  assert.strictEqual(bp.current.sunset, weather.fmtClock(52000, 10800));
+  assert.strictEqual(bp.current.isNight, false, 'dt 30000 between sunrise/sunset');
+  assert.ok(bp.current.moon && typeof bp.current.moon.illumination === 'number');
+  assert.strictEqual(bp.hourly.length, 8);
+  assert.strictEqual(bp.daily.length, 5);
+  assert.ok(Array.isArray(bp.narration) && bp.narration.length >= 2);
+  assert.strictEqual(bp.narration.map((s) => s.text).join(' ').length > 0, true);
 
   console.log('test-handlers: all assertions passed');
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -61,15 +61,16 @@ const actions = require('../lib/actions');
 
   // ---- weather (API_NATIVE) end-to-end through the kernel with a MOCKED fetch ----
   const OWM = {
-    name: 'Tokyo', sys: { country: 'JP' },
-    main: { temp: 15.2, feels_like: 14.0, humidity: 70 },
-    weather: [{ main: 'Rain', description: 'light rain' }], wind: { speed: 3.2 }
+    name: 'Tokyo', sys: { country: 'JP', sunrise: 1751595000, sunset: 1751645000 }, dt: 1751600000, timezone: 32400,
+    main: { temp: 15.2, feels_like: 14.0, humidity: 70, pressure: 1012 }, visibility: 10000,
+    weather: [{ main: 'Rain', description: 'light rain' }], wind: { speed: 3.2, deg: 180 }
   };
   const OWM_FORECAST = {
     city: { timezone: 32400 },
-    list: Array.from({ length: 10 }, (_, i) => ({
+    list: Array.from({ length: 16 }, (_, i) => ({
       dt: 1751600000 + i * 10800,
       main: { temp: 22 + i },
+      pop: i === 2 ? 0.8 : 0.1,
       weather: [{ description: i === 2 ? 'light rain' : 'scattered clouds', icon: i === 2 ? '10d' : '03d' }]
     }))
   };
@@ -98,7 +99,10 @@ const actions = require('../lib/actions');
   assert.strictEqual(wdecision.result.ok, true);
   assert.strictEqual(weatherFetchCalls, 2, 'current + forecast fetched, no real network');
   assert.strictEqual(wdecision.result.overlay.kind, 'forecast', 'overlay is the forecast card');
-  assert.strictEqual(wdecision.result.overlay.forecast.length, 8, '8 three-hour tiles');
+  assert.ok(typeof wdecision.result.overlay.scene === 'string' && wdecision.result.overlay.scene.length, 'scene is a non-empty string');
+  assert.strictEqual(wdecision.result.overlay.hourly.length, 8, '8 three-hour tiles');
+  assert.ok(wdecision.result.overlay.daily.length >= 2, 'at least 2 daily rows');
+  assert.ok(wdecision.result.overlay.current.moon, 'moon phase present');
   assert.ok(wdecision.result.overlay.narration.length >= 2, 'narration segments present');
   assert.strictEqual(
     wdecision.result.speak,
