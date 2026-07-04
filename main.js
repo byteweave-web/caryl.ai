@@ -3478,7 +3478,9 @@ ipcMain.on('tts:progress', (_e, info) => {
   if (seg) cardCtl().scrollTo(seg.tile | 0, info.cardId);
 });
 ipcMain.on('tts:idle', (_e, info) => {
-  if (info && info.cardId) cardCtl().dismiss('speech-end', info.cardId);
+  if (!info || !info.cardId) return;
+  cardCtl().dismiss('speech-end', info.cardId);
+  if (info.cardId === _cardNarrationId) { _cardNarration = null; _cardNarrationId = 0; }
 });
 
 // Dev-only card fixtures: perfect the card with ZERO kernel involvement.
@@ -3568,7 +3570,12 @@ ipcMain.handle('ui:sendText', async (_event, text) => {
           const narration = Array.isArray(r.overlay.narration)
             ? r.overlay.narration.filter((n) => n && String(n.text || '').trim())
             : [];
-          if (cardId && narration.length) {
+          if (cfg.tts_enabled === false) {
+            // No speech -> no tts:idle will ever come; give the card a readable lifetime.
+            _cardNarration = null;
+            _cardNarrationId = 0;
+            if (cardId) setTimeout(() => cardCtl().dismiss('no-tts', cardId), 10000);
+          } else if (cardId && narration.length) {
             _cardNarration = narration;
             _cardNarrationId = cardId;
             narration.forEach((n, i) => speak(n.text, { cardId, seg: i, last: i === narration.length - 1 }));
