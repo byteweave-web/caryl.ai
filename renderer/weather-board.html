@@ -401,7 +401,7 @@ html[data-os="win10"] .tile{background:rgba(16,20,28,.92);-webkit-backdrop-filte
   // Wind compass (SVG): circle + N/E/S/W ticks + needle rotated to deg.
   // ------------------------------------------------------------------
   const COMPASS_POINTS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-  function windCompass(speed, gust, deg){
+  function windCompass(speed, gust, deg, unit){
     const d = (deg == null) ? 0 : deg;
     const point = (deg == null) ? '—' : COMPASS_POINTS[Math.round(d / 22.5) % 16];
     const svg = '<svg class="compass" viewBox="0 0 100 100">' +
@@ -417,8 +417,8 @@ html[data-os="win10"] .tile{background:rgba(16,20,28,.92);-webkit-backdrop-filte
       '<circle cx="50" cy="50" r="4" fill="var(--txt)"/>' +
       '</svg>';
     return '<div class="compass-wrap">' + svg +
-      '<div class="compass-text"><b>' + dash(speed) + '</b>' + point + (speed != null ? ' · km/h' : '') +
-      '<div>' + (gust != null ? 'Gusts: ' + gust + ' km/h' : 'No gust data') + '</div></div></div>';
+      '<div class="compass-text"><b>' + dash(speed) + '</b>' + point + (speed != null ? ' · ' + unit : '') +
+      '<div>' + (gust != null ? 'Gusts: ' + gust + ' ' + unit : 'No gust data') + '</div></div></div>';
   }
 
   // ------------------------------------------------------------------
@@ -462,6 +462,8 @@ html[data-os="win10"] .tile{background:rgba(16,20,28,.92);-webkit-backdrop-filte
 
     $('loc').textContent = p.title || '';
     const cur = p.current || {};
+    const windUnit = cur.units === 'imperial' ? 'mph' : 'km/h';
+    const visUnit = cur.units === 'imperial' ? 'mi' : 'km';
     $('cond').textContent = cur.condition || '';
     $('cur-icon').innerHTML = icon(cur.icon || 'cloud', 'var(--txt)');
     $('temp').textContent = dash(cur.temp) + (cur.temp != null ? '°' : '');
@@ -492,7 +494,7 @@ html[data-os="win10"] .tile{background:rgba(16,20,28,.92);-webkit-backdrop-filte
       '<div class="sub">' + feelsHint + '</div>';
 
     $('t-wind').innerHTML = '<div class="label">' + icon('wind', 'currentColor') + 'Wind</div>' +
-      windCompass(wind.speed, wind.gust, wind.deg);
+      windCompass(wind.speed, wind.gust, wind.deg, windUnit);
 
     const dewLine = cur.dewPoint != null ? 'Dew point ' + cur.dewPoint + '°' : 'Dew point —';
     $('t-humidity').innerHTML = '<div class="label">' + icon('drop', 'currentColor') + 'Humidity</div>' +
@@ -508,7 +510,7 @@ html[data-os="win10"] .tile{background:rgba(16,20,28,.92);-webkit-backdrop-filte
       '<div class="sub">' + (todayPop != null && todayPop >= 20 ? 'Chance of precipitation today.' : 'None expected today.') + '</div>';
 
     $('t-visibility').innerHTML = '<div class="label">' + icon('eye', 'currentColor') + 'Visibility</div>' +
-      '<div class="big">' + dash(cur.visibility) + (cur.visibility != null ? ' km' : '') + '</div>';
+      '<div class="big">' + dash(cur.visibility) + (cur.visibility != null ? ' ' + visUnit : '') + '</div>';
 
     $('t-pressure').innerHTML = '<div class="label">' + icon('gauge', 'currentColor') + 'Pressure</div>' +
       '<div class="big">' + dash(cur.pressure) + (cur.pressure != null ? ' hPa' : '') + '</div>';

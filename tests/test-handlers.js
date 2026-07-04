@@ -304,10 +304,12 @@ function fetchReturning(status, body) {
   assert.strictEqual(bp.current.hi, daily[0].hi);
   assert.strictEqual(bp.current.lo, daily[0].lo);
   assert.strictEqual(bp.current.dewPoint, weather.dewPoint(28.4, 67));
+  assert.strictEqual(bp.current.units, 'metric', 'units tag drives the board wind/visibility labels');
   assert.strictEqual(bp.current.wind.speed, 23, 'm/s*3.6 rounded');
   assert.strictEqual(bp.current.wind.gust, 37);
   assert.strictEqual(bp.current.wind.deg, 241);
   assert.strictEqual(bp.current.visibility, 21, 'km');
+  assert.strictEqual(weather.buildBoardPayload(wn2, fn2, 'imperial').current.units, 'imperial');
   assert.strictEqual(bp.current.sunrise, weather.fmtClock(1000, 10800));
   assert.strictEqual(bp.current.sunset, weather.fmtClock(52000, 10800));
   assert.strictEqual(bp.current.isNight, false, 'dt 30000 between sunrise/sunset');

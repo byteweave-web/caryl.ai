@@ -73,7 +73,14 @@ assert.strictEqual(bm.hourly[0].icon, 'rain');
 assert.strictEqual(bm.daily[0].icon, 'sun');
 assert.strictEqual(bm.current.wind.deg, 241);
 assert.strictEqual(bm.current.moon.phase, 'waning-gibbous');
+assert.strictEqual(bm.current.units, 'metric', 'units defaults to metric when absent');
 assert.strictEqual(bm.daily.length, 5);
+
+// units passes through when the payload marks imperial
+const bmi = overlay.normalizePayload(Object.assign(boardFixture(), {
+  current: Object.assign(boardFixture().current, { units: 'imperial' })
+}));
+assert.strictEqual(bmi.current.units, 'imperial');
 
 bm = overlay.normalizePayload(Object.assign(boardFixture(), { scene: 'volcano' }));
 assert.strictEqual(bm.scene, 'clouds', 'unknown scene -> clouds');
