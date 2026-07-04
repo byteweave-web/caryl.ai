@@ -3478,7 +3478,7 @@ function cardCtl() {
   return cardOverlay;
 }
 ipcMain.on('card:close', () => { cardCtl().dismiss('manual'); });
-ipcMain.on('card:faded', () => { cardCtl().notifyFaded(); });
+ipcMain.on('card:faded', (e) => { cardCtl().notifyFaded(e.sender); });
 
 // Kernel narration -> card sync. The renderer reports which summary segment it just
 // STARTED speaking (tts:progress {cardId, seg}) and when the whole summary is done or
