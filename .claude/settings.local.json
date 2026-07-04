@@ -95,7 +95,21 @@
       "mcp__visualize__read_me",
       "mcp__visualize__show_widget",
       "Bash(git commit -m 'Add Settings redesign + theming design spec *)",
-      "Bash(git commit -m 'Add Settings redesign + theming implementation plan \\(4 tasks\\) *)"
+      "Bash(git commit -m 'Add Settings redesign + theming implementation plan \\(4 tasks\\) *)",
+      "Bash(cd \"D:/brain-ai/brain-ai/.claude/worktrees/modest-merkle-8a0873\" && cat package.json)",
+      "Bash(git rebase *)",
+      "Bash(node tests/test-kernel.js)",
+      "Bash(node tests/test-handlers.js)",
+      "Bash(node tests/test-integration.js)",
+      "Bash(node tests/test-downloads.js)",
+      "Bash(git fetch *)",
+      "Bash(git ls-remote *)",
+      "Bash(gh auth *)",
+      "Bash(env)",
+      "Bash(cmdkey /list)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(git stash *)"
     ]
   }
 }
