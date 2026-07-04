@@ -229,5 +229,41 @@ function fetchReturning(status, body) {
   });
   assert.ok(/rain/i.test(segs.map((s) => s.text).join(' ')), 'precipitation in the strip is mentioned');
 
+  // --- weather board: pure helpers (clock, night, scene, dew point, moon) ---
+  assert.strictEqual(weather.fmtClock(0, 0), '00:00');
+  assert.strictEqual(weather.fmtClock(19 * 3600 + 52 * 60, 0), '19:52');
+  assert.strictEqual(weather.fmtClock(23 * 3600, 2 * 3600), '01:00', 'tz wraps past midnight');
+
+  assert.strictEqual(weather.isNightAt(100, 200, 300), true, 'before sunrise = night');
+  assert.strictEqual(weather.isNightAt(250, 200, 300), false, 'between = day');
+  assert.strictEqual(weather.isNightAt(300, 200, 300), true, 'at/after sunset = night');
+
+  assert.strictEqual(weather.sceneFor('11d', false), 'storm');
+  assert.strictEqual(weather.sceneFor('09n', true), 'rain');
+  assert.strictEqual(weather.sceneFor('10d', false), 'rain');
+  assert.strictEqual(weather.sceneFor('13d', false), 'snow');
+  assert.strictEqual(weather.sceneFor('50d', false), 'mist');
+  assert.strictEqual(weather.sceneFor('03d', false), 'clouds');
+  assert.strictEqual(weather.sceneFor('04n', true), 'clouds');
+  assert.strictEqual(weather.sceneFor('01d', false), 'clear-day');
+  assert.strictEqual(weather.sceneFor('02n', true), 'clear-night');
+  assert.strictEqual(weather.sceneFor('01n', true), 'clear-night');
+  assert.strictEqual(weather.sceneFor('', false), 'clouds', 'unknown -> clouds');
+
+  assert.strictEqual(weather.dewPoint(28, 67), 21, 'Magnus: 28C/67% ~ 21C');
+  assert.strictEqual(weather.dewPoint(0, 100), 0, 'saturated at 0C');
+  assert.strictEqual(weather.dewPoint(NaN, 50), null);
+  assert.strictEqual(weather.dewPoint(20, 0), null, 'rh<=0 -> null');
+
+  // Documented ephemeris: 2000-01-06 ~18:14 UTC new moon; 2000-01-21 full moon.
+  let mp = weather.moonPhase(Date.UTC(2000, 0, 6, 19, 0));
+  assert.strictEqual(mp.phase, 'new-moon');
+  assert.ok(mp.illumination <= 5, 'new moon ~0% lit');
+  mp = weather.moonPhase(Date.UTC(2000, 0, 21, 12, 0));
+  assert.strictEqual(mp.phase, 'full-moon');
+  assert.ok(mp.illumination >= 95, 'full moon ~100% lit');
+  mp = weather.moonPhase(Date.UTC(2000, 0, 14, 12, 0));
+  assert.strictEqual(mp.phase, 'first-quarter');
+
   console.log('test-handlers: all assertions passed');
 })().catch((e) => { console.error(e); process.exit(1); });
