@@ -4,7 +4,7 @@
 **Sub-project:** Kernel layer, Phase 2c — the weather card grows into a full board.
 Phase 2a/2b (small overlay card + kernel wiring + narration sync) shipped in PR #1;
 the Settings Weather section in PR #2; the app-quit aux-window fix in PR #3.
-**Status:** Approved design, pre-implementation.
+**Status:** Implemented (see docs/superpowers/plans/2026-07-04-weather-board.md).
 
 ## Context
 
