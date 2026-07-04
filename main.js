@@ -3027,6 +3027,7 @@ function registerVoiceHotkey() {
     } catch (_e) { /* try next */ }
   }
   console.log(activeVoiceHotkey ? '[voice hotkey] registered: ' + activeVoiceHotkey : '[voice hotkey] FAILED to register any hotkey');
+  registerDevCardShortcuts();
   return activeVoiceHotkey;
 }
 
@@ -3045,6 +3046,7 @@ function applyVoiceHotkeyMode() {
     if (started) {
       activeVoiceHotkey = combo;
       console.log('[ptt] system-wide hold-to-talk active on: ' + combo);
+      registerDevCardShortcuts();
       return;
     }
     console.warn('[ptt] falling back to toggle mode: ' + pttUnavailableReason);
@@ -3450,6 +3452,67 @@ function caryKernel() {
     logger: (lvl, m) => { try { console.error('[kernel]', lvl, m); } catch (_e) {} }
   });
   return _caryKernel;
+}
+
+// ---- Kernel overlay card: the window that renders handler results ----
+const cardOverlay = require('./lib/kernel/overlay');
+let cardOverlayInited = false;
+function cardCtl() {
+  if (!cardOverlayInited) {
+    cardOverlay.init({ preloadPath: path.join(__dirname, 'preload.js'), shellStyle });
+    cardOverlayInited = true;
+  }
+  return cardOverlay;
+}
+ipcMain.on('card:close', () => { cardCtl().dismiss('manual'); });
+
+// Dev-only card fixtures: perfect the card with ZERO kernel involvement.
+//   Ctrl+Alt+K -> cycle fixture payloads    Ctrl+Alt+J -> fake narration sweep
+// Gated like DevTools (--dev / CARYL_DEV=1). Voice-hotkey code calls
+// globalShortcut.unregisterAll(), so registerDevCardShortcuts() must be re-run after it.
+const CARD_FIXTURES = [
+  { kind: 'forecast', title: 'Tokyo, JP', accent: 'sky',
+    current: { temp: 24, icon: '01d', condition: 'Clear sky' },
+    forecast: [
+      { time: '15:00', temp: 24, icon: '01d', condition: 'Clear' },
+      { time: '18:00', temp: 22, icon: '02d', condition: 'Few clouds' },
+      { time: '21:00', temp: 19, icon: '10n', condition: 'Light rain' },
+      { time: '00:00', temp: 17, icon: '10n', condition: 'Rain' },
+      { time: '03:00', temp: 16, icon: '11n', condition: 'Thunderstorm' },
+      { time: '06:00', temp: 16, icon: '13d', condition: 'Snow' },
+      { time: '09:00', temp: 18, icon: '50d', condition: 'Mist' },
+      { time: '12:00', temp: 21, icon: '03d', condition: 'Clouds' }
+    ],
+    narration: [{ text: 'now', tile: 0 }, { text: 'tonight', tile: 3 }, { text: 'tomorrow', tile: 7 }] },
+  { kind: 'rows', title: 'System stats', accent: 'blue',
+    rows: [
+      { label: 'CPU', value: '8 × Intel Core Test' },
+      { label: 'Memory', value: '7.9 GB / 16.0 GB (49%)' },
+      { label: 'Disk', value: '412.3 GB / 931.5 GB (44%)' },
+      { label: 'Uptime', value: '1d 7h' },
+      { label: 'System', value: 'win32 10.0.26200' }
+    ] },
+  { kind: 'rows', title: 'Long values', accent: 'nonsense-accent',
+    rows: [{ label: 'A very long label indeed', value: 'An extremely long value that should wrap or clip gracefully without breaking the layout of the card at all' }] },
+  { kind: 'forecast', title: 'Junk forecast (should demote to rows)', forecast: [] },
+  null // junk payload: must still render an empty-ish rows card, never crash
+];
+let cardFixtureIdx = 0;
+function registerDevCardShortcuts() {
+  if (!(process.argv.includes('--dev') || process.env.CARYL_DEV === '1')) return;
+  try {
+    globalShortcut.register('Control+Alt+K', () => {
+      cardCtl().open(CARD_FIXTURES[cardFixtureIdx++ % CARD_FIXTURES.length]);
+    });
+    globalShortcut.register('Control+Alt+J', () => {
+      let i = 0;
+      const t = setInterval(() => {
+        if (i >= 8 || !cardCtl().isOpen()) { clearInterval(t); return; }
+        cardCtl().scrollTo(i++);
+      }, 1200);
+    });
+    console.log('[card-dev] Ctrl+Alt+K = cycle fixtures, Ctrl+Alt+J = fake narration');
+  } catch (_e) {}
 }
 
 // ---- IPC: send a message (prompt-based actions: open apps / urls / search, then reply) ----
