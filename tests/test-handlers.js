@@ -317,5 +317,24 @@ function fetchReturning(status, body) {
   assert.ok(Array.isArray(bp.narration) && bp.narration.length >= 2);
   assert.strictEqual(bp.narration.map((s) => s.text).join(' ').length > 0, true);
 
+  // --- imperial dewPoint: single rounding, not double rounding ---
+  // Regression for: dewPoint() rounds to whole C internally; buildBoardPayload's imperial
+  // branch used to convert that ALREADY-ROUNDED C to F and round again, which can differ
+  // by 1F from the correct compute-raw-then-round-once-in-F result.
+  // Differing case found by grid search (temp=86F/30C, rh=67%): raw Magnus dew point is
+  // ~23.200000374757668C. Old (double-round): Math.round(Math.round(23.2)*9/5+32) = 73F.
+  // New (single-round): Math.round(23.200000374757668*9/5+32) = 74F.
+  const OWM_CUR_IMPERIAL = {
+    name: 'Phoenix', sys: { country: 'US', sunrise: 1000, sunset: 52000 }, dt: 30000, timezone: -25200,
+    main: { temp: 86, feels_like: 88, humidity: 67, pressure: 1007 }, visibility: 21000,
+    weather: [{ description: 'clear sky', icon: '01d' }], wind: { speed: 5, deg: 180, gust: 8 }
+  };
+  const wnImp = weather.normalize(OWM_CUR_IMPERIAL);
+  const bpImp = weather.buildBoardPayload(wnImp, fn2, 'imperial');
+  assert.strictEqual(bpImp.current.dewPoint, 74, 'single-rounded F dew point, not the old double-rounded 73');
+
+  // Contract consistency: dewPoint()'s rounded-C result still equals rounding dewPointRaw().
+  assert.strictEqual(weather.dewPoint(28.4, 67), Math.round(weather.dewPointRaw(28.4, 67)));
+
   console.log('test-handlers: all assertions passed');
 })().catch((e) => { console.error(e); process.exit(1); });
