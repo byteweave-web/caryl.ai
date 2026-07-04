@@ -358,6 +358,12 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
         <input id="weather-location" type="text" placeholder="e.g. Beirut &mdash; used when you don&rsquo;t name a city" spellcheck="false"
                style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none">
       </div>
+      <div class="row" style="display:block">
+        <div class="l" style="margin-bottom:7px">Card size <span class="d" style="display:inline" id="weather-scale-label">65% of screen</span></div>
+        <input id="weather-scale" type="range" min="65" max="100" step="5" style="width:100%"
+               oninput="document.getElementById('weather-scale-label').textContent=this.value+'% of screen'">
+        <div class="statusline">Dragging or resizing the weather board also remembers its exact spot.</div>
+      </div>
       <div class="field" style="margin-top:10px">
         <button class="minibtn" onclick="saveWeather()">Save</button>
         <span class="statusline" id="weather-status" style="margin:0">&mdash;</span>
@@ -882,6 +888,9 @@ async function populateWeather(){
   document.getElementById('weather-key').value=c.openWeatherApiKey||'';
   document.getElementById('weather-units').value=c.weatherUnits||'metric';
   document.getElementById('weather-location').value=c.weatherDefaultLocation||'';
+  const sliderVal=Math.round((c.weatherCardScale||0.65)*100);
+  document.getElementById('weather-scale').value=sliderVal;
+  document.getElementById('weather-scale-label').textContent=sliderVal+'% of screen';
   const b=document.getElementById('weather-badge');
   const has=!!(c.openWeatherApiKey||'').trim();
   b.textContent=has?'CONNECTED':'NO KEY'; b.className='badge '+(has?'ok':'bad');
@@ -892,7 +901,8 @@ async function saveWeather(){
   await window.bridge.setConfig({
     openWeatherApiKey:key,
     weatherUnits:document.getElementById('weather-units').value,
-    weatherDefaultLocation:document.getElementById('weather-location').value.trim()
+    weatherDefaultLocation:document.getElementById('weather-location').value.trim(),
+    weatherCardScale:Number(document.getElementById('weather-scale').value)/100
   });
   const b=document.getElementById('weather-badge');
   b.textContent=key?'CONNECTED':'NO KEY'; b.className='badge '+(key?'ok':'bad');
