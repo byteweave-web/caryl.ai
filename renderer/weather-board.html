@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;">
+<title>Caryl weather board</title>
+<style>
+/* ============================================================
+   KERNEL WEATHER BOARD — iOS-Weather-style full board: a
+   full-bleed animated sky scene behind a scrollable glass
+   column of tiles. Visual centerpiece of the weather feature;
+   the small overlay-card.html keeps the rows-only lifecycle.
+   Animations are transform/opacity ONLY (GPU-composited); see
+   the prefers-reduced-motion freeze at the bottom of this block.
+   ============================================================ */
+:root{
+  --card-accent:var(--accent,#7fd1ff);
+  --card-soft:var(--accent-soft,rgba(127,209,255,.14));
+  --txt:#f2f6fa; --mut:#c3cbd4; --faint:#88919c;
+  --glass:rgba(12,18,28,.38);
+  --mono:ui-monospace,'SF Mono','Cascadia Code',Consolas,monospace;
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:transparent;overflow:hidden;
+  font-family:var(--sans);-webkit-font-smoothing:antialiased;color:var(--txt)}
+
+/* ---------------------------------------------------------------
+   #sky — fixed full-bleed scene layer. data-scene lives on <html>
+   so both #sky's own background and any scoped selectors below key
+   off the same attribute without duplicating it.
+   --------------------------------------------------------------- */
+#sky{position:fixed;inset:0;overflow:hidden;z-index:0}
+#sky .layer{position:absolute;inset:0}
+#sky::after{ /* universal readability scrim: text always sits on some darkening */
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(0,0,0,.08),rgba(0,0,0,.22) 60%,rgba(0,0,0,.4));
+  pointer-events:none;
+}
+
+/* ============================== SCENES ============================== */
+html[data-scene="clear-day"] #sky{background:linear-gradient(180deg,#2f7bd9,#5da4ec 55%,#8ec7f2)}
+.sun{position:absolute;top:6%;right:10%;width:220px;height:220px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,236,170,.95) 0 28%,rgba(255,220,120,.35) 45%,transparent 70%);
+  animation:sunpulse 6s ease-in-out infinite}
+@keyframes sunpulse{50%{transform:scale(1.06)}}
+.rays{position:absolute;top:6%;right:10%;width:220px;height:220px;
+  background:conic-gradient(from 0deg,transparent 0 8deg,rgba(255,240,180,.12) 8deg 14deg,transparent 14deg 24deg,
+    rgba(255,240,180,.12) 24deg 30deg,transparent 30deg 45deg);border-radius:50%;
+  animation:rayspin 40s linear infinite}
+@keyframes rayspin{to{transform:rotate(360deg)}}
+.wisp{position:absolute;height:60px;border-radius:60px;background:rgba(255,255,255,.35);filter:blur(18px);
+  animation:drift linear infinite}
+@keyframes drift{from{transform:translateX(-30vw)}to{transform:translateX(130vw)}}
+
+html[data-scene="clear-night"] #sky{background:linear-gradient(180deg,#050914,#0c1630)}
+.moonglow{position:absolute;top:8%;left:10%;width:180px;height:180px;border-radius:50%;
+  background:radial-gradient(circle,rgba(230,238,255,.5) 0 22%,rgba(200,215,255,.16) 45%,transparent 70%);
+  animation:sunpulse 7s ease-in-out infinite}
+.stars{position:absolute;inset:0;width:2px;height:2px;background:transparent;border-radius:50%}
+.stars.a{animation:twinkle 3s ease-in-out infinite}
+.stars.b{animation:twinkle 4.7s ease-in-out infinite .8s}
+@keyframes twinkle{50%{opacity:.3}}
+
+html[data-scene="clouds"] #sky{background:linear-gradient(180deg,#3a4250,#5a6474)}
+html[data-scene="clouds"] .wisp{background:rgba(255,255,255,.22);filter:blur(28px)}
+
+html[data-scene="rain"] #sky{background:linear-gradient(180deg,#232a38,#3a4556)}
+html[data-scene="rain"] .rain-layer{opacity:.18}
+html[data-scene="rain"] .rain-layer.back{opacity:.3}
+html[data-scene="rain"] .wisp{background:rgba(255,255,255,.16);filter:blur(26px);animation-duration:70s}
+
+html[data-scene="storm"] #sky{background:linear-gradient(180deg,#0b0f1a,#1a2030 55%,#232a3a)}
+.rain-layer{background-image:repeating-linear-gradient(115deg,transparent 0 7px,rgba(180,200,230,.28) 7px 8px,transparent 8px 14px);
+  background-size:200% 200%;animation:rainfall .5s linear infinite}
+.rain-layer.back{opacity:.4;animation-duration:.8s;filter:blur(1px)}
+@keyframes rainfall{to{background-position:-40% 100%}}
+.flash{background:radial-gradient(ellipse at 30% 0%,rgba(220,230,255,.9),transparent 60%);opacity:0;
+  animation:lightning 9s infinite}
+.flash.two{animation:lightning 13s infinite 4.6s}
+@keyframes lightning{0%,96.5%,100%{opacity:0}97%{opacity:.85}97.6%{opacity:.1}98.2%{opacity:.6}98.8%{opacity:0}}
+.bolt{position:absolute;top:4%;left:26%;width:120px;opacity:0;animation:boltflash 9s infinite;
+  filter:drop-shadow(0 0 10px rgba(210,225,255,.9))}
+@keyframes boltflash{0%,96.8%,98.4%,100%{opacity:0}97.2%{opacity:1}97.8%{opacity:.3}}
+
+html[data-scene="snow"] #sky{background:linear-gradient(180deg,#2e3644,#4a5568)}
+.flakes{position:absolute;inset:-20px 0 0 0}
+.flakes .sway{position:absolute;inset:0}
+.flakes.a .sway{animation:sway 6s ease-in-out infinite}
+.flakes.b .sway{animation:sway 8s ease-in-out infinite 1.4s}
+.flakes .particles{position:absolute;inset:0;width:3px;height:3px;border-radius:50%;background:transparent}
+.flakes.a .particles{animation:snowfall 11s linear infinite}
+.flakes.b .particles{animation:snowfall 17s linear infinite}
+@keyframes sway{0%,100%{transform:translateX(-14px)}50%{transform:translateX(14px)}}
+@keyframes snowfall{from{transform:translateY(-10vh)}to{transform:translateY(110vh)}}
+
+html[data-scene="mist"] #sky{background:linear-gradient(180deg,#4a5260,#6a7280)}
+.fog{position:absolute;left:-20vw;width:140vw;height:30%;filter:blur(30px);
+  background:rgba(220,228,238,.16);border-radius:50%}
+.fog.f1{top:8%;animation:fogslide 30s ease-in-out infinite}
+.fog.f2{top:38%;animation:fogslide 40s ease-in-out infinite reverse}
+.fog.f3{top:64%;animation:fogslide 26s ease-in-out infinite}
+@keyframes fogslide{0%,100%{transform:translateX(-20vw)}50%{transform:translateX(20vw)}}
+
+@media (prefers-reduced-motion: reduce){ #sky *{animation:none !important} }
+
+/* ============================== LAYOUT ============================== */
+#board{position:relative;z-index:1;height:100vh;overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:none;padding-bottom:24px}
+#board::-webkit-scrollbar{display:none}
+
+.head{-webkit-app-region:drag;display:flex;align-items:flex-start;gap:10px;padding:22px 24px 4px}
+.head .grow{flex:1;-webkit-app-region:drag}
+#loc{font-size:16px;font-weight:600;letter-spacing:.02em;text-shadow:0 1px 8px rgba(0,0,0,.4)}
+#btn-x{-webkit-app-region:no-drag;border:none;background:rgba(255,255,255,.1);color:var(--txt);
+  width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:13px;
+  line-height:1;cursor:pointer;flex:none}
+#btn-x:hover{background:rgba(255,255,255,.2)}
+
+.now{padding:0 24px 6px;display:flex;align-items:flex-start;gap:16px}
+.now .icon svg{width:56px;height:56px;display:block;margin-top:14px}
+#temp{font-size:96px;font-weight:200;letter-spacing:-.03em;line-height:1;
+  text-shadow:0 2px 16px rgba(0,0,0,.35)}
+#cond{font-size:15px;color:var(--mut);margin-top:2px}
+#hilo{font-size:13px;color:var(--mut);margin-top:4px;font-family:var(--mono);letter-spacing:.02em}
+
+/* ---------- hourly strip ---------- */
+.strip-wrap{position:relative;padding:14px 0}
+#strip{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;padding:4px 24px;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
+#strip::-webkit-scrollbar{display:none}
+.strip-wrap::before,.strip-wrap::after{content:'';position:absolute;top:0;bottom:0;width:24px;z-index:1;pointer-events:none}
+.strip-wrap::before{left:0;background:linear-gradient(90deg,rgba(10,14,20,.3),transparent)}
+.strip-wrap::after{right:0;background:linear-gradient(270deg,rgba(10,14,20,.3),transparent)}
+.h-tile{flex:none;scroll-snap-align:center;width:66px;padding:12px 6px;border-radius:16px;text-align:center;
+  background:var(--glass);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.08);
+  transition:background .25s ease,border-color .25s ease,transform .25s ease}
+.h-tile .t{font-family:var(--mono);font-size:10px;color:var(--mut);letter-spacing:.04em}
+.h-tile .icon svg{width:26px;height:26px;margin:6px auto 2px;display:block}
+.h-tile .pop{font-size:9.5px;color:var(--card-accent);font-family:var(--mono)}
+.h-tile .deg{font-size:14px;font-weight:600;margin-top:2px}
+.h-tile.hot{background:var(--card-soft);border-color:var(--card-accent);transform:translateY(-2px)}
+.h-tile.hot .t{color:var(--card-accent)}
+@keyframes pulse{0%{box-shadow:0 0 0 0 var(--card-soft)}100%{box-shadow:0 0 0 12px rgba(0,0,0,0)}}
+.h-tile.pulse{animation:pulse .7s ease-out 1}
+html[data-os="win10"] .h-tile{background:rgba(16,20,28,.92);-webkit-backdrop-filter:none;backdrop-filter:none}
+
+/* ---------- 5-day list ---------- */
+#days{margin:6px 24px 18px;padding:6px 16px;border-radius:18px;
+  background:var(--glass);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.08)}
+html[data-os="win10"] #days{background:rgba(16,20,28,.92);-webkit-backdrop-filter:none;backdrop-filter:none}
+.d-row{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid rgba(255,255,255,.07)}
+.d-row:last-child{border-bottom:none}
+.d-row .day{width:64px;font-size:13.5px;font-weight:500;flex:none}
+.d-row .icon svg{width:22px;height:22px;display:block;flex:none}
+.d-row .pop{font-size:10.5px;color:var(--card-accent);font-family:var(--mono);width:30px;flex:none;text-align:center}
+.d-row .lo{font-size:13px;color:var(--mut);width:26px;text-align:right;flex:none;font-family:var(--mono)}
+.d-row .hi{font-size:13px;width:26px;flex:none;font-family:var(--mono)}
+.d-row .range{position:relative;flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.14);margin:0 8px}
+.d-row .range .fill{position:absolute;top:0;bottom:0;border-radius:2px;
+  background:linear-gradient(90deg,#5ad19a,#f5b53d,#e9637b);
+  background-size:400% 100%}
+.d-row .range .fill .dot{position:absolute;top:50%;right:0;width:9px;height:9px;border-radius:50%;
+  background:#fff;transform:translate(50%,-50%);box-shadow:0 0 0 2px rgba(0,0,0,.25)}
+
+/* ---------- tile grid ---------- */
+#tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0 24px 24px}
+.tile{padding:16px;border-radius:18px;background:var(--glass);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.08);min-height:118px}
+html[data-os="win10"] .tile{background:rgba(16,20,28,.92);-webkit-backdrop-filter:none;backdrop-filter:none}
+.tile .label{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);
+  font-family:var(--mono);display:flex;align-items:center;gap:6px}
+.tile .label svg{width:13px;height:13px}
+.tile .big{font-size:26px;font-weight:600;margin-top:8px}
+.tile .sub{font-size:12px;color:var(--mut);margin-top:4px}
+.tile .row2{display:flex;align-items:center;gap:12px;margin-top:6px}
+
+/* wind compass */
+.compass-wrap{display:flex;align-items:center;gap:12px;margin-top:4px}
+.compass svg{width:76px;height:76px;display:block;flex:none}
+.compass .needle{transform-origin:50px 50px;transition:transform .3s ease}
+.compass-text{font-size:11px;color:var(--mut)}
+.compass-text b{font-size:18px;color:var(--txt);display:block;font-weight:600}
+
+/* sun arc */
+.sunarc svg{width:100%;height:64px;display:block}
+.sunarc .times{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);margin-top:2px;font-family:var(--mono)}
+
+/* moon sphere */
+.moon-wrap{display:flex;align-items:center;gap:14px;margin-top:4px}
+.moon-sphere{position:relative;width:52px;height:52px;border-radius:50%;flex:none;overflow:hidden;
+  background:radial-gradient(circle at 35% 30%,#e8ecf4,#aab2c0 70%,#8a93a4)}
+.moon-sphere .shadow{position:absolute;inset:-2px;border-radius:50%;background:#141822}
+
+@media (prefers-reduced-motion: reduce){ .h-tile,.compass .needle{transition:none} }
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<!-- Sky scene layer. Populated per-scene by JS (only the active scene's markup is built). -->
+<div id="sky"></div>
+
+<!-- Inline SVG sprite: weather glyphs mapIcon() targets. Stroke-based, accent-tinted.
+     Copied verbatim from overlay-card.html conventions (icon() takes a sprite id directly -
+     the model's icon fields are ALREADY sprite ids; overlay.js's mapIcon ran main-side). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-sun"><circle cx="12" cy="12" r="4.2"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6"/></g>
+    <g id="i-moon"><path d="M20 13.2A8 8 0 1 1 10.8 4 6.5 6.5 0 0 0 20 13.2z"/></g>
+    <g id="i-partly"><circle cx="8.5" cy="9" r="3.4"/><path d="M8.5 3.4v1.4M3 9h1.4M4.6 5.1l1 1"/><path d="M9 17.5h8.3a3.2 3.2 0 0 0 .4-6.4 4.6 4.6 0 0 0-8.9 1.1A2.7 2.7 0 0 0 9 17.5z"/></g>
+    <g id="i-cloud"><path d="M7 18h9.8a3.7 3.7 0 0 0 .5-7.4 5.3 5.3 0 0 0-10.3 1.3A3.1 3.1 0 0 0 7 18z"/></g>
+    <g id="i-rain"><path d="M7 14h9.8a3.7 3.7 0 0 0 .5-7.4A5.3 5.3 0 0 0 7 7.9 3.1 3.1 0 0 0 7 14z"/><path d="M8.5 17l-1 2.4M12.5 17l-1 2.4M16.5 17l-1 2.4"/></g>
+    <g id="i-drizzle"><path d="M7 14h9.8a3.7 3.7 0 0 0 .5-7.4A5.3 5.3 0 0 0 7 7.9 3.1 3.1 0 0 0 7 14z"/><path d="M9 17.2v1M13 17.2v1M17 17.2v1"/></g>
+    <g id="i-thunder"><path d="M7 13h9.8a3.7 3.7 0 0 0 .5-7.4A5.3 5.3 0 0 0 7 6.9 3.1 3.1 0 0 0 7 13z"/><path d="M12.6 14.5l-2.4 3.4h3l-1.8 3.1"/></g>
+    <g id="i-snow"><path d="M7 14h9.8a3.7 3.7 0 0 0 .5-7.4A5.3 5.3 0 0 0 7 7.9 3.1 3.1 0 0 0 7 14z"/><path d="M9 17.5h.01M13 19h.01M17 17.5h.01M11 20.5h.01M15 20.5h.01" stroke-linecap="round" stroke-width="2.4"/></g>
+    <g id="i-mist"><path d="M4 9h13M6 12.5h13M4 16h11" stroke-linecap="round"/></g>
+    <!-- board-only small glyphs for tile labels -->
+    <g id="i-wind"><path d="M3 8h11a2.5 2.5 0 1 0-2.2-3.6M3 12h15a2.7 2.7 0 1 1-2.4 4M3 16h8a2 2 0 1 1-1.8 2.9" stroke-linecap="round"/></g>
+    <g id="i-drop"><path d="M12 3s6.5 7.6 6.5 12A6.5 6.5 0 0 1 5.5 15C5.5 10.6 12 3 12 3z"/></g>
+    <g id="i-eye"><path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></g>
+    <g id="i-gauge"><path d="M4 15a8 8 0 1 1 16 0" stroke-linecap="round"/><path d="M12 15l4-4.6" stroke-linecap="round"/></g>
+  </defs>
+</svg>
+
+<div id="board">
+  <div class="head">
+    <div>
+      <div id="loc"></div>
+      <div id="cond"></div>
+    </div>
+    <span class="grow"></span>
+    <button id="btn-x" title="Dismiss">&#10005;</button>
+  </div>
+  <div class="now">
+    <div class="icon" id="cur-icon"></div>
+    <div>
+      <div id="temp"></div>
+      <div id="hilo"></div>
+    </div>
+  </div>
+
+  <div class="strip-wrap"><div id="strip"></div></div>
+
+  <div id="days"></div>
+
+  <div id="tiles">
+    <div class="tile" id="t-feels"></div>
+    <div class="tile" id="t-wind"></div>
+    <div class="tile" id="t-humidity"></div>
+    <div class="tile" id="t-sun"></div>
+    <div class="tile" id="t-precip"></div>
+    <div class="tile" id="t-visibility"></div>
+    <div class="tile" id="t-pressure"></div>
+    <div class="tile" id="t-moon"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $ = (id) => document.getElementById(id);
+  const bridge = window.bridge || {};
+
+  // OS + theme, fetched ONCE at load (no polling; the board lives for as long as the user
+  // wants it open, but nothing here is time-sensitive enough to warrant a refresh loop).
+  bridge.getShellStyle && bridge.getShellStyle().then(function(s){
+    document.documentElement.dataset.os = (s && s.osVariant) || 'win10';
+  }).catch(function(){ document.documentElement.dataset.os = 'win10'; });
+  bridge.status && bridge.status().then(function(s){
+    if (s && s.theme) document.documentElement.dataset.theme = s.theme;
+    if (s && s.accent) document.documentElement.dataset.accent = s.accent;
+  }).catch(function(){});
+
+  function esc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function icon(id, stroke){
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="'+(stroke||'currentColor')+'" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#i-'+esc(id)+'"/></svg>';
+  }
+  function dash(v){ return (v === null || v === undefined || v === '') ? '—' : v; }
+
+  function applyAccent(p){
+    if (p.accentColors && p.accentColors.accent) {
+      document.documentElement.style.setProperty('--card-accent', p.accentColors.accent);
+      document.documentElement.style.setProperty('--card-soft', p.accentColors.soft);
+    } else {
+      document.documentElement.style.removeProperty('--card-accent');
+      document.documentElement.style.removeProperty('--card-soft');
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Sky scene builder. Only the active scene's DOM is constructed (cheap;
+  // re-render is not on any hot path). Pure transform/opacity animation,
+  // no images - see the reduced-motion freeze in CSS.
+  // ------------------------------------------------------------------
+  function starBoxShadow(n, seedOffset){
+    // 40 points per layer, spread across the viewport in vw/vh so the field
+    // stays full-bleed regardless of the board's resized dimensions.
+    const parts = [];
+    let seed = seedOffset;
+    function rnd(){ seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+    for (let i = 0; i < n; i++){
+      const x = (rnd() * 100).toFixed(2), y = (rnd() * 100).toFixed(2);
+      parts.push(x+'vw '+y+'vh 0 rgba(255,255,255,'+(0.5+rnd()*0.5).toFixed(2)+')');
+    }
+    return parts.join(',');
+  }
+  function snowBoxShadow(n, seedOffset){
+    const parts = [];
+    let seed = seedOffset;
+    function rnd(){ seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+    for (let i = 0; i < n; i++){
+      const x = (rnd() * 100).toFixed(2), y = (rnd() * 120 - 20).toFixed(2);
+      parts.push(x+'vw '+y+'vh 0 rgba(255,255,255,.85)');
+    }
+    return parts.join(',');
+  }
+
+  function buildScene(scene){
+    const sky = $('sky');
+    sky.innerHTML = '';
+    const add = function(cls, styleText){
+      const d = document.createElement('div');
+      d.className = 'layer ' + cls;
+      if (styleText) d.setAttribute('style', styleText);
+      sky.appendChild(d);
+      return d;
+    };
+    if (scene === 'clear-day') {
+      add('sun'); add('rays');
+      add('wisp', 'top:22%;width:220px;animation-duration:60s;animation-delay:0s');
+      add('wisp', 'top:40%;width:160px;animation-duration:80s;animation-delay:-20s');
+      add('wisp', 'top:65%;width:190px;animation-duration:70s;animation-delay:-40s');
+    } else if (scene === 'clear-night') {
+      add('moonglow');
+      add('stars a', 'box-shadow:' + starBoxShadow(40, 17));
+      add('stars b', 'box-shadow:' + starBoxShadow(40, 53));
+    } else if (scene === 'clouds') {
+      add('wisp', 'top:10%;width:260px;animation-duration:60s');
+      add('wisp', 'top:26%;width:200px;animation-duration:90s;animation-delay:-15s');
+      add('wisp', 'top:44%;width:300px;animation-duration:110s;animation-delay:-40s');
+      add('wisp', 'top:60%;width:220px;animation-duration:55s;animation-delay:-8s');
+      add('wisp', 'top:76%;width:180px;animation-duration:95s;animation-delay:-60s');
+    } else if (scene === 'rain') {
+      add('rain-layer');
+      add('rain-layer back');
+      add('wisp', 'top:14%;width:240px;animation-duration:70s');
+      add('wisp', 'top:50%;width:200px;animation-duration:90s;animation-delay:-30s');
+    } else if (scene === 'storm') {
+      add('rain-layer');
+      add('rain-layer back');
+      add('flash');
+      add('flash two');
+      const bolt = add('bolt');
+      bolt.innerHTML = '<svg viewBox="0 0 40 90" width="120" height="270"><polyline points="18,0 4,42 18,42 0,90 36,34 20,34 34,0" fill="none" stroke="#dfe8ff" stroke-width="2.4" stroke-linejoin="round"/></svg>';
+    } else if (scene === 'snow') {
+      const a = add('flakes a');
+      a.innerHTML = '<div class="sway"><div class="particles" style="box-shadow:' + snowBoxShadow(50, 11) + '"></div></div>';
+      const b = add('flakes b');
+      b.innerHTML = '<div class="sway"><div class="particles" style="box-shadow:' + snowBoxShadow(35, 71) + '"></div></div>';
+    } else if (scene === 'mist') {
+      add('fog f1'); add('fog f2'); add('fog f3');
+    } else {
+      // unknown -> clouds fallback (overlay.js already coerces this, but stay defensive)
+      add('wisp', 'top:20%;width:240px;animation-duration:70s');
+      add('wisp', 'top:50%;width:200px;animation-duration:95s;animation-delay:-25s');
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Daily range bar math (iOS-style): bar left/width positioned within
+  // the WEEK's min..max, not each row's own lo/hi.
+  // ------------------------------------------------------------------
+  function renderDays(daily){
+    if (!daily.length) { $('days').innerHTML = ''; return; }
+    const wkLo = Math.min.apply(null, daily.map(function(d){ return d.lo; }));
+    const wkHi = Math.max.apply(null, daily.map(function(d){ return d.hi; }));
+    const span = Math.max(1, wkHi - wkLo);
+    $('days').innerHTML = daily.map(function(d){
+      const left = ((d.lo - wkLo) / span) * 100;
+      const width = ((d.hi - d.lo) / span) * 100;
+      // background-size/position trick: the fill's gradient spans the FULL bar's
+      // conceptual range (0..100 of the track), so a segment sampled at [left,left+width]
+      // shows the right slice of cold->warm->hot rather than always starting green.
+      const bgSize = (100 / Math.max(width, 0.0001)) * 100;
+      const bgPos = (left / Math.max(100 - width, 0.0001)) * 100;
+      const popChip = d.pop >= 20 ? '<span class="pop">' + d.pop + '%</span>' : '<span class="pop"></span>';
+      return '<div class="d-row">' +
+        '<span class="day">' + esc(d.day) + '</span>' +
+        popChip +
+        '<span class="icon">' + icon(d.icon, 'var(--card-accent)') + '</span>' +
+        '<span class="lo">' + esc(d.lo) + '°</span>' +
+        '<span class="range"><span class="fill" style="left:' + left.toFixed(2) + '%;width:' + width.toFixed(2) + '%;background-size:' + bgSize.toFixed(1) + '% 100%;background-position:' + bgPos.toFixed(1) + '% 0"><span class="dot"></span></span></span>' +
+        '<span class="hi">' + esc(d.hi) + '°</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  // ------------------------------------------------------------------
+  // Wind compass (SVG): circle + N/E/S/W ticks + needle rotated to deg.
+  // ------------------------------------------------------------------
+  const COMPASS_POINTS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  function windCompass(speed, gust, deg){
+    const d = (deg == null) ? 0 : deg;
+    const point = (deg == null) ? '—' : COMPASS_POINTS[Math.round(d / 22.5) % 16];
+    const svg = '<svg class="compass" viewBox="0 0 100 100">' +
+      '<circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="1.5"/>' +
+      '<text x="50" y="12" text-anchor="middle" font-size="9" fill="var(--mut)">N</text>' +
+      '<text x="91" y="53" text-anchor="middle" font-size="9" fill="var(--mut)">E</text>' +
+      '<text x="50" y="94" text-anchor="middle" font-size="9" fill="var(--mut)">S</text>' +
+      '<text x="9" y="53" text-anchor="middle" font-size="9" fill="var(--mut)">W</text>' +
+      '<g class="needle" transform="rotate(' + d + ' 50 50)">' +
+        '<polygon points="50,14 44,52 56,52" fill="var(--card-accent)"/>' +
+        '<polygon points="50,86 44,52 56,52" fill="rgba(255,255,255,.35)"/>' +
+      '</g>' +
+      '<circle cx="50" cy="50" r="4" fill="var(--txt)"/>' +
+      '</svg>';
+    return '<div class="compass-wrap">' + svg +
+      '<div class="compass-text"><b>' + dash(speed) + '</b>' + point + (speed != null ? ' · km/h' : '') +
+      '<div>' + (gust != null ? 'Gusts: ' + gust + ' km/h' : 'No gust data') + '</div></div></div>';
+  }
+
+  // ------------------------------------------------------------------
+  // Sun arc (SVG): semicircle path; sun-dot position from current time
+  // between sunrise/sunset. No setInterval - computed once at render.
+  // ------------------------------------------------------------------
+  function mins(hhmm){ const m = /^(\d+):(\d+)$/.exec(hhmm || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+  function sunArc(sunrise, sunset, isNight){
+    const sr = mins(sunrise), ss = mins(sunset);
+    const now = (new Date()).getHours() * 60 + (new Date()).getMinutes();
+    let f = (sr != null && ss != null && ss > sr) ? (now - sr) / (ss - sr) : 0.5;
+    f = Math.max(0, Math.min(1, f));
+    const ang = Math.PI * (1 - f), cx = 60 + 50 * Math.cos(ang), cy = 60 - 50 * Math.sin(ang);
+    const dotColor = isNight ? '#c9d4e8' : '#ffd873';
+    const svg = '<svg viewBox="0 0 120 66">' +
+      '<path d="M 10 60 A 50 50 0 0 1 110 60" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="2" stroke-linecap="round"/>' +
+      (isNight ? '' : '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="6" fill="' + dotColor + '"/>') +
+      '</svg>';
+    return '<div class="sunarc">' + svg +
+      '<div class="times"><span>' + esc(dash(sunrise)) + '</span><span>' + esc(dash(sunset)) + '</span></div></div>';
+  }
+
+  // ------------------------------------------------------------------
+  // Moon tile: CSS sphere with an inner shadow layer whose translateX
+  // maps illumination % and waxing/waning direction.
+  // ------------------------------------------------------------------
+  function moonSphere(phase, illumination){
+    const dir = /waxing|first/.test(phase || '') ? 1 : -1;
+    // illumination 100 -> shadow fully off-disc; illumination 0 -> shadow covers disc.
+    const offset = dir * ((illumination - 50) / 50) * 34; // px, sphere is 52px wide
+    const shadowStyle = 'transform:translateX(' + offset.toFixed(1) + 'px) scale(1.02)';
+    return '<div class="moon-wrap"><div class="moon-sphere"><div class="shadow" style="' + shadowStyle + '"></div></div>' +
+      '<div><div class="big" style="font-size:15px;font-weight:600;text-transform:capitalize">' + esc((phase || '').replace(/-/g, ' ') || '—') + '</div>' +
+      '<div class="sub">' + (illumination != null ? illumination + '% illuminated' : '—') + '</div></div></div>';
+  }
+
+  function render(p){
+    applyAccent(p);
+    document.documentElement.dataset.scene = p.scene || 'clouds';
+    buildScene(p.scene || 'clouds');
+
+    $('loc').textContent = p.title || '';
+    const cur = p.current || {};
+    $('cond').textContent = cur.condition || '';
+    $('cur-icon').innerHTML = icon(cur.icon || 'cloud', 'var(--txt)');
+    $('temp').textContent = dash(cur.temp) + (cur.temp != null ? '°' : '');
+    $('hilo').textContent = 'H:' + dash(cur.hi) + (cur.hi != null ? '°' : '') + '  L:' + dash(cur.lo) + (cur.lo != null ? '°' : '');
+
+    // hourly strip
+    const hourly = Array.isArray(p.hourly) ? p.hourly : [];
+    $('strip').innerHTML = hourly.map(function(t, i){
+      const popChip = t.pop >= 20 ? '<div class="pop">' + t.pop + '%</div>' : '';
+      return '<div class="h-tile" data-i="' + i + '">' +
+        '<div class="t">' + esc(t.time) + '</div>' +
+        '<div class="icon">' + icon(t.icon, 'var(--txt)') + '</div>' +
+        popChip +
+        '<div class="deg">' + esc(t.temp) + '°</div></div>';
+    }).join('');
+
+    // 5-day list
+    renderDays(Array.isArray(p.daily) ? p.daily : []);
+
+    // info tiles
+    const wind = cur.wind || {};
+    const moon = cur.moon || {};
+    const feelsHint = (cur.feelsLike == null || cur.temp == null) ? '' :
+      (Math.abs(cur.feelsLike - cur.temp) < 2 ? 'Similar to the actual temperature.'
+        : (cur.feelsLike > cur.temp ? 'Feels warmer than actual.' : 'Feels cooler than actual.'));
+    $('t-feels').innerHTML = '<div class="label">' + icon('sun', 'currentColor') + 'Feels Like</div>' +
+      '<div class="big">' + dash(cur.feelsLike) + (cur.feelsLike != null ? '°' : '') + '</div>' +
+      '<div class="sub">' + feelsHint + '</div>';
+
+    $('t-wind').innerHTML = '<div class="label">' + icon('wind', 'currentColor') + 'Wind</div>' +
+      windCompass(wind.speed, wind.gust, wind.deg);
+
+    const dewLine = cur.dewPoint != null ? 'Dew point ' + cur.dewPoint + '°' : 'Dew point —';
+    $('t-humidity').innerHTML = '<div class="label">' + icon('drop', 'currentColor') + 'Humidity</div>' +
+      '<div class="big">' + dash(cur.humidity) + (cur.humidity != null ? '%' : '') + '</div>' +
+      '<div class="sub">' + dewLine + '</div>';
+
+    $('t-sun').innerHTML = '<div class="label">' + icon('sun', 'currentColor') + 'Sunrise/Sunset</div>' +
+      sunArc(cur.sunrise, cur.sunset, cur.isNight);
+
+    const todayPop = (Array.isArray(p.daily) && p.daily.length) ? p.daily[0].pop : null;
+    $('t-precip').innerHTML = '<div class="label">' + icon('drop', 'currentColor') + 'Precipitation</div>' +
+      '<div class="big">' + (todayPop != null ? todayPop + '%' : '—') + '</div>' +
+      '<div class="sub">' + (todayPop != null && todayPop >= 20 ? 'Chance of precipitation today.' : 'None expected today.') + '</div>';
+
+    $('t-visibility').innerHTML = '<div class="label">' + icon('eye', 'currentColor') + 'Visibility</div>' +
+      '<div class="big">' + dash(cur.visibility) + (cur.visibility != null ? ' km' : '') + '</div>';
+
+    $('t-pressure').innerHTML = '<div class="label">' + icon('gauge', 'currentColor') + 'Pressure</div>' +
+      '<div class="big">' + dash(cur.pressure) + (cur.pressure != null ? ' hPa' : '') + '</div>';
+
+    $('t-moon').innerHTML = '<div class="label">' + icon('moon', 'currentColor') + 'Moon</div>' +
+      moonSphere(moon.phase, moon.illumination);
+
+    requestAnimationFrame(function(){ document.body.classList.add('show'); });
+  }
+
+  // Manual-drag independence: while the user is touching the strip (and for 4s after),
+  // scrollTo() moves ONLY the highlight, never the scroll position.
+  let engagedUntil = 0;
+  function engaged(){ return Date.now() < engagedUntil; }
+
+  function scrollTo(i){
+    const tiles = $('strip').children;
+    if (!tiles.length) return;
+    i = Math.min(tiles.length - 1, Math.max(0, i | 0));
+    for (let k = 0; k < tiles.length; k++) tiles[k].classList.remove('hot', 'pulse');
+    const el = tiles[i];
+    el.classList.add('hot', 'pulse');
+    setTimeout(function(){ el.classList.remove('pulse'); }, 750);
+    if (!engaged()) el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }
+
+  // The board has no auto-dismiss, so every card:dismiss reason fades immediately
+  // (no hover-defer to implement, unlike the small rows card).
+  let fadedNotified = false;
+  function leave(){
+    fadedNotified = false;
+    const b = document.body;
+    b.classList.add('leaving');
+    b.classList.remove('show');
+    function notifyFaded(){
+      if (fadedNotified) return;
+      fadedNotified = true;
+      bridge.cardFaded && bridge.cardFaded();
+    }
+    function onTransitionEnd(e){
+      if (e.target !== b || e.propertyName !== 'opacity') return;
+      b.removeEventListener('transitionend', onTransitionEnd);
+      notifyFaded();
+    }
+    b.addEventListener('transitionend', onTransitionEnd);
+    setTimeout(notifyFaded, 300); // fallback in case transitionend never fires
+  }
+  function dismissRequested(_reason){ leave(); }
+  function close(){ bridge.cardClose && bridge.cardClose(); }
+
+  // --- user interaction wiring ---
+  $('btn-x').onclick = close;
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') close(); });
+  window.addEventListener('blur', close); // click-outside
+  const strip = $('strip');
+  ['pointerdown', 'wheel', 'touchstart'].forEach(function(ev){
+    strip.addEventListener(ev, function(){ engagedUntil = Date.now() + 4000; }, { passive: true });
+  });
+  strip.addEventListener('scroll', function(){ if (engaged()) engagedUntil = Date.now() + 4000; }, { passive: true });
+
+  // --- push IPC in ---
+  bridge.onCardRender && bridge.onCardRender(render);
+  bridge.onCardScrollTo && bridge.onCardScrollTo(scrollTo);
+  bridge.onCardDismiss && bridge.onCardDismiss(dismissRequested);
+})();
+</script>
+<style>
+/* Fade-in/out for the whole board (mirrors #card's show/leaving in overlay-card.html,
+   scoped to body since the board has no single wrapping "card" element - #sky is fixed
+   full-bleed and #board scrolls independently). */
+body{opacity:0;transition:opacity .22s ease}
+body.show{opacity:1}
+body.leaving{opacity:0;transition:opacity .2s ease}
+</style>
+</body>
+</html>
