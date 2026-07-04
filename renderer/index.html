@@ -335,6 +335,34 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
         <div class="statusline" id="model-status">&mdash;</div>
       </div>
     </div>
+    <div class="sec">
+      <h3>Weather</h3>
+      <div class="sub">Powers the &ldquo;what&rsquo;s the weather&rdquo; forecast card. <span id="weather-badge" class="badge">&mdash;</span></div>
+      <div class="row" style="display:block">
+        <div class="l" style="margin-bottom:7px">OpenWeather API Key</div>
+        <input id="weather-key" type="password" placeholder="paste your OpenWeather key" autocomplete="off" spellcheck="false"
+               style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:13px;outline:none">
+        <div class="statusline">Free key from openweathermap.org &rarr; My API keys. Brand-new keys can take a few minutes to activate.</div>
+      </div>
+      <div class="row" style="display:block">
+        <div class="l" style="margin-bottom:7px">Units</div>
+        <div class="field">
+          <select id="weather-units">
+            <option value="metric">Metric (&deg;C, m/s)</option>
+            <option value="imperial">Imperial (&deg;F, mph)</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="display:block">
+        <div class="l" style="margin-bottom:7px">Default location</div>
+        <input id="weather-location" type="text" placeholder="e.g. Beirut &mdash; used when you don&rsquo;t name a city" spellcheck="false"
+               style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none">
+      </div>
+      <div class="field" style="margin-top:10px">
+        <button class="minibtn" onclick="saveWeather()">Save</button>
+        <span class="statusline" id="weather-status" style="margin:0">&mdash;</span>
+      </div>
+    </div>
     </section>
     <section class="page" data-page="voice">
     <div class="sec">
@@ -568,7 +596,7 @@ function setView(v){
   document.getElementById('view-'+v).classList.add('active');
   _curView=v; _bgApply();   // animated background runs in Chat view only
 }
-function openSettings(){ document.getElementById('settings').classList.add('open'); document.getElementById('scrim').classList.add('open'); populateEngine(); populateAiMode(); populateVoiceInputCard(); syncSettings(); loadModels(); loadMics(); populateExtras(); renderAppearance(); showSettingsPage('engines'); }
+function openSettings(){ document.getElementById('settings').classList.add('open'); document.getElementById('scrim').classList.add('open'); populateEngine(); populateWeather(); populateAiMode(); populateVoiceInputCard(); syncSettings(); loadModels(); loadMics(); populateExtras(); renderAppearance(); showSettingsPage('engines'); }
 function showSettingsPage(id){
   document.querySelectorAll('#settings .page').forEach(function(p){ p.classList.toggle('active', p.dataset.page===id); });
   document.querySelectorAll('#settings .nav button[data-nav]').forEach(function(b){ b.classList.toggle('active', b.dataset.nav===id); });
@@ -846,6 +874,29 @@ async function saveEngine(){
   eb.textContent=key?'CONNECTED':'NO KEY'; eb.className='badge '+(key?'ok':'bad');
   st.textContent=key?'Saved.':'Saved \u2014 but no key yet.'; st.className='statusline '+(key?'ok':'bad');
   loadModels(true);
+}
+
+// ---- Weather (OpenWeather) - the key/units/location behind the Kernel's forecast card ----
+async function populateWeather(){
+  const c=await window.bridge.getConfig(); if(!c) return;
+  document.getElementById('weather-key').value=c.openWeatherApiKey||'';
+  document.getElementById('weather-units').value=c.weatherUnits||'metric';
+  document.getElementById('weather-location').value=c.weatherDefaultLocation||'';
+  const b=document.getElementById('weather-badge');
+  const has=!!(c.openWeatherApiKey||'').trim();
+  b.textContent=has?'CONNECTED':'NO KEY'; b.className='badge '+(has?'ok':'bad');
+}
+async function saveWeather(){
+  const st=document.getElementById('weather-status'); st.textContent='Saving\u2026'; st.className='statusline';
+  const key=document.getElementById('weather-key').value.trim();
+  await window.bridge.setConfig({
+    openWeatherApiKey:key,
+    weatherUnits:document.getElementById('weather-units').value,
+    weatherDefaultLocation:document.getElementById('weather-location').value.trim()
+  });
+  const b=document.getElementById('weather-badge');
+  b.textContent=key?'CONNECTED':'NO KEY'; b.className='badge '+(key?'ok':'bad');
+  st.textContent=key?'Saved.':'Saved \u2014 no key yet.'; st.className='statusline '+(key?'ok':'bad');
 }
 
 // ---- Engines & Models (per-capability hybrid routing, local model pickers, downloads) ----
