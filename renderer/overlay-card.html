@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;">
+<title>Caryl card</title>
+<style>
+/* ============================================================
+   KERNEL OVERLAY CARD — iOS-Weather glassmorphism. Rounded on
+   purpose (unlike the sharp HUD panel): this is a result
+   artifact, not the instrument panel. Zero polling, zero
+   frameworks; everything below is vanilla CSS transitions.
+   ============================================================ */
+:root{
+  --card-accent:var(--accent,#7fd1ff);
+  --card-soft:var(--accent-soft,rgba(127,209,255,.14));
+  --txt:#f2f6fa; --mut:#9fabb8; --faint:#66727e;
+  --glass:rgba(10,14,20,.34);
+  --mono:ui-monospace,'SF Mono','Cascadia Code',Consolas,monospace;
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:transparent;overflow:hidden;
+  font-family:var(--sans);-webkit-font-smoothing:antialiased;color:var(--txt)}
+html[data-theme="fullLight"]{--txt:#1a1d24;--mut:#5f6672;--faint:#9098a4;--glass:rgba(255,255,255,.55)}
+
+#card{
+  position:fixed;inset:8px;display:flex;flex-direction:column;
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(28px) saturate(160%);backdrop-filter:blur(28px) saturate(160%);
+  border-radius:22px;overflow:hidden;
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 24px 80px -20px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.04) inset;
+  opacity:0;transform:scale(.94) translateY(8px);
+  transition:opacity .22s ease,transform .26s cubic-bezier(.2,.9,.3,1.2);
+}
+#card.show{opacity:1;transform:scale(1) translateY(0)}
+#card.leaving{opacity:0;transform:scale(.96) translateY(6px);transition:opacity .2s ease,transform .2s ease}
+/* Win10: no DWM acrylic behind us -> fail SOLID, never see-through-tint. */
+html[data-os="win10"] #card{background:#10141c;-webkit-backdrop-filter:none;backdrop-filter:none}
+html[data-os="win10"][data-theme="fullLight"] #card{background:#f2f4f8}
+
+.head{display:flex;align-items:flex-start;gap:10px;padding:16px 16px 4px}
+.head .loc{font-size:14px;font-weight:600;letter-spacing:.02em}
+.head .cond{font-size:12px;color:var(--mut);margin-top:2px}
+.head .grow{flex:1}
+.head .x{border:none;background:rgba(255,255,255,.08);color:var(--mut);width:24px;height:24px;
+  border-radius:50%;display:grid;place-items:center;font-size:12px;line-height:1;cursor:pointer;flex:none}
+.head .x:hover{background:rgba(255,255,255,.16);color:var(--txt)}
+html[data-theme="fullLight"] .head .x{background:rgba(0,0,0,.07)}
+
+.now{display:flex;align-items:center;gap:14px;padding:2px 18px 10px}
+.now .temp{font-size:44px;font-weight:250;letter-spacing:-.02em;line-height:1}
+.now .icon svg{width:44px;height:44px;display:block}
+
+/* ---------- forecast strip: scroll-snap + momentum, edge fades ---------- */
+.strip-wrap{position:relative;padding:2px 0 14px}
+.strip{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;padding:4px 16px;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
+.strip::-webkit-scrollbar{display:none}
+.strip-wrap::before,.strip-wrap::after{content:'';position:absolute;top:0;bottom:0;width:18px;z-index:1;pointer-events:none}
+.strip-wrap::before{left:0;background:linear-gradient(90deg,rgba(10,14,20,.5),transparent)}
+.strip-wrap::after{right:0;background:linear-gradient(270deg,rgba(10,14,20,.5),transparent)}
+html[data-os="win10"] .strip-wrap::before,html[data-os="win10"] .strip-wrap::after{display:none}
+.tile{flex:none;scroll-snap-align:center;width:64px;padding:10px 6px;border-radius:16px;text-align:center;
+  background:rgba(255,255,255,.05);border:1px solid transparent;
+  transition:background .25s ease,border-color .25s ease,transform .25s ease}
+html[data-theme="fullLight"] .tile{background:rgba(0,0,0,.05)}
+.tile .t{font-family:var(--mono);font-size:10px;color:var(--mut);letter-spacing:.04em}
+.tile .icon svg{width:26px;height:26px;margin:6px auto 4px;display:block}
+.tile .deg{font-size:14px;font-weight:600}
+.tile.hot{background:var(--card-soft);border-color:var(--card-accent);transform:translateY(-2px)}
+.tile.hot .t{color:var(--card-accent)}
+@keyframes pulse{0%{box-shadow:0 0 0 0 var(--card-soft)}100%{box-shadow:0 0 0 12px rgba(0,0,0,0)}}
+.tile.pulse{animation:pulse .7s ease-out 1}
+
+/* ---------- rows mode ---------- */
+.rows{padding:2px 16px 16px;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
+.row{display:flex;align-items:baseline;gap:12px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.06)}
+.row:last-child{border-bottom:none}
+html[data-theme="fullLight"] .row{border-bottom-color:rgba(0,0,0,.06)}
+.row .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);flex:none;width:88px}
+.row .v{font-size:13.5px;flex:1;text-align:right;word-break:break-word}
+.hidden{display:none !important}
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<!-- Inline SVG sprite: the 9 weather glyphs mapIcon() targets. Stroke-based, accent-tinted. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-sun"><circle cx="12" cy="12" r="4.2"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6"/></g>
+    <g id="i-moon"><path d="M20 13.2A8 8 0 1 1 10.8 4 6.5 6.5 0 0 0 20 13.2z"/></g>
+    <g id="i-partly"><circle cx="8.5" cy="9" r="3.4"/><path d="M8.5 3.4v1.4M3 9h1.4M4.6 5.1l1 1"/><path d="M9 17.5h8.3a3.2 3.2 0 0 0 .4-6.4 4.6 4.6 0 0 0-8.9 1.1A2.7 2.7 0 0 0 9 17.5z"/></g>
+    <g id="i-cloud"><path d="M7 18h9.8a3.7 3.7 0 0 0 .5-7.4 5.3 5.3 0 0 0-10.3 1.3A3.1 3.1 0 0 0 7 18z"/></g>
+    <g id="i-rain"><path d="M7 14h9.8a3.7 3.7 0 0 0 .5-7.4A5.3 5.3 0 0 0 7 7.9 3.1 3.1 0 0 0 7 14z"/><path d="M8.5 17l-1 2.4M12.5 17l-1 2.4M16.5 17l-1 2.4"/></g>
+    <g id="i-drizzle"><path d="M7 14h9.8a3.7 3.7 0 0 0 .5-7.4A5.3 5.3 0 0 0 7 7.9 3.1 3.1 0 0 0 7 14z"/><path d="M9 17.2v1M13 17.2v1M17 17.2v1"/></g>
+    <g id="i-thunder"><path d="M7 13h9.8a3.7 3.7 0 0 0 .5-7.4A5.3 5.3 0 0 0 7 6.9 3.1 3.1 0 0 0 7 13z"/><path d="M12.6 14.5l-2.4 3.4h3l-1.8 3.1"/></g>
+    <g id="i-snow"><path d="M7 14h9.8a3.7 3.7 0 0 0 .5-7.4A5.3 5.3 0 0 0 7 7.9 3.1 3.1 0 0 0 7 14z"/><path d="M9 17.5h.01M13 19h.01M17 17.5h.01M11 20.5h.01M15 20.5h.01" stroke-linecap="round" stroke-width="2.4"/></g>
+    <g id="i-mist"><path d="M4 9h13M6 12.5h13M4 16h11" stroke-linecap="round"/></g>
+  </defs>
+</svg>
+
+<div id="card">
+  <div class="head">
+    <div><div class="loc" id="loc"></div><div class="cond" id="cond"></div></div>
+    <span class="grow"></span>
+    <button class="x" id="btn-x" title="Dismiss">&#10005;</button>
+  </div>
+  <div class="now" id="now">
+    <div class="temp" id="temp"></div>
+    <div class="icon" id="cur-icon"></div>
+  </div>
+  <div class="strip-wrap" id="strip-wrap"><div class="strip" id="strip"></div></div>
+  <div class="rows hidden" id="rows"></div>
+</div>
+
+<script>
+(function(){
+  const $ = (id) => document.getElementById(id);
+  const bridge = window.bridge || {};
+
+  // OS + theme, fetched ONCE at load (no polling; the card lives for seconds).
+  bridge.getShellStyle && bridge.getShellStyle().then(function(s){
+    document.documentElement.dataset.os = (s && s.osVariant) || 'win10';
+  }).catch(function(){ document.documentElement.dataset.os = 'win10'; });
+  bridge.status && bridge.status().then(function(s){
+    if (s && s.theme) document.documentElement.dataset.theme = s.theme;
+    if (s && s.accent) document.documentElement.dataset.accent = s.accent;
+  }).catch(function(){});
+
+  function esc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function icon(id, stroke){
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="'+(stroke||'currentColor')+'" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#i-'+esc(id)+'"/></svg>';
+  }
+
+  // Manual-drag independence: while the user is touching the strip (and for 4s after),
+  // scrollTo() moves ONLY the highlight, never the scroll position.
+  let engagedUntil = 0;
+  function engaged(){ return Date.now() < engagedUntil; }
+  // Hover defers auto-dismissal: main asks us to leave, we wait until the pointer leaves +2s.
+  let hovering = false, pendingDismiss = false;
+
+  function applyAccent(p){
+    // Payload accent (resolved main-side into concrete colors) wins; unknown -> theme --accent.
+    if (p.accentColors && p.accentColors.accent) {
+      document.documentElement.style.setProperty('--card-accent', p.accentColors.accent);
+      document.documentElement.style.setProperty('--card-soft', p.accentColors.soft);
+    } else {
+      document.documentElement.style.removeProperty('--card-accent');
+      document.documentElement.style.removeProperty('--card-soft');
+    }
+  }
+
+  function render(p){
+    applyAccent(p);
+    $('loc').textContent = p.title || '';
+    pendingDismiss = false;
+    if (p.kind === 'forecast') {
+      $('cond').textContent = (p.current && p.current.condition) || '';
+      $('temp').textContent = (p.current ? p.current.temp : '--') + '°';
+      $('cur-icon').innerHTML = icon(p.current ? p.current.icon : 'cloud', 'var(--card-accent)');
+      $('now').classList.remove('hidden');
+      $('strip-wrap').classList.remove('hidden');
+      $('rows').classList.add('hidden');
+      $('strip').innerHTML = (p.forecast || []).map(function(t, i){
+        return '<div class="tile" data-i="'+i+'">' +
+          '<div class="t">'+esc(t.time)+'</div>' +
+          '<div class="icon">'+icon(t.icon)+'</div>' +
+          '<div class="deg">'+esc(t.temp)+'°</div></div>';
+      }).join('');
+    } else {
+      $('cond').textContent = '';
+      $('now').classList.add('hidden');
+      $('strip-wrap').classList.add('hidden');
+      $('rows').classList.remove('hidden');
+      $('rows').innerHTML = (p.rows || []).map(function(r){
+        return '<div class="row"><span class="l">'+esc(r.label)+'</span><span class="v">'+esc(r.value)+'</span></div>';
+      }).join('');
+    }
+    requestAnimationFrame(function(){ $('card').classList.add('show'); $('card').classList.remove('leaving'); });
+  }
+
+  // api.scrollTo(index): highlight-pulse the tile; scroll it into view unless the user
+  // is (recently) driving the strip themselves.
+  function scrollTo(i){
+    const tiles = $('strip').children;
+    if (!tiles.length) return;
+    i = Math.min(tiles.length - 1, Math.max(0, i|0));
+    for (let k = 0; k < tiles.length; k++) tiles[k].classList.remove('hot','pulse');
+    const el = tiles[i];
+    el.classList.add('hot','pulse');
+    setTimeout(function(){ el.classList.remove('pulse'); }, 750);
+    if (!engaged()) el.scrollIntoView({ behavior:'smooth', inline:'center', block:'nearest' });
+  }
+
+  // Guards against double-firing cardFaded() if both transitionend and the setTimeout
+  // fallback would otherwise race (e.g. a dropped/retried transitionend).
+  let fadedNotified = false;
+  function leave(){
+    fadedNotified = false;
+    const card = $('card');
+    card.classList.add('leaving');
+    function notifyFaded(){
+      if (fadedNotified) return;
+      fadedNotified = true;
+      bridge.cardFaded && bridge.cardFaded();
+    }
+    function onTransitionEnd(e){
+      if (e.target !== card || e.propertyName !== 'opacity') return;
+      card.removeEventListener('transitionend', onTransitionEnd);
+      notifyFaded();
+    }
+    card.addEventListener('transitionend', onTransitionEnd);
+    setTimeout(notifyFaded, 300); // fallback in case transitionend never fires
+  }
+  // reason 'manual' (x button / Esc) must close immediately regardless of hover — the
+  // pointer is necessarily over the card for those, so hover-deferring them means manual
+  // close visibly does nothing. Hover-defer still applies to other (auto) dismiss reasons.
+  function dismissRequested(reason){
+    if (reason !== 'manual' && hovering) { pendingDismiss = true; return; } // wait for pointer to leave (+2s)
+    leave();
+  }
+  function close(){ bridge.cardClose && bridge.cardClose(); }
+
+  // --- user interaction wiring ---
+  $('btn-x').onclick = close;
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') close(); });
+  window.addEventListener('blur', close); // click-outside
+  const strip = $('strip');
+  ['pointerdown','wheel','touchstart'].forEach(function(ev){
+    strip.addEventListener(ev, function(){ engagedUntil = Date.now() + 4000; }, { passive:true });
+  });
+  strip.addEventListener('scroll', function(){ if (engaged()) engagedUntil = Date.now() + 4000; }, { passive:true });
+  document.addEventListener('pointerenter', function(){ hovering = true; });
+  document.addEventListener('pointerleave', function(){
+    hovering = false;
+    if (pendingDismiss) setTimeout(function(){ if (!hovering && pendingDismiss) { pendingDismiss = false; leave(); } }, 2000);
+  });
+
+  // --- push IPC in ---
+  bridge.onCardRender && bridge.onCardRender(render);
+  bridge.onCardScrollTo && bridge.onCardScrollTo(scrollTo);
+  bridge.onCardDismiss && bridge.onCardDismiss(dismissRequested);
+})();
+</script>
+</body>
+</html>

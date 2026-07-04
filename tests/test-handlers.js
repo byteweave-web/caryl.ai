@@ -181,5 +181,53 @@ function fetchReturning(status, body) {
   assert.ok(Array.isArray(r.needs) && r.needs.includes('location'), 'asks for the location');
   assert.strictEqual(hit, false, 'no network call without a location');
 
+  // --- weather: forecast normalization + narration (pure) ---
+  assert.strictEqual(weather.fmtHour(0, 0), '00:00');
+  assert.strictEqual(weather.fmtHour(15 * 3600, 0), '15:00');
+  assert.strictEqual(weather.fmtHour(23 * 3600, 2 * 3600), '01:00', 'tz offset wraps past midnight');
+
+  // OpenWeather /forecast shape: { city:{timezone}, list:[{dt, main:{temp}, weather:[{description,icon}]}] }
+  function owmForecast(n) {
+    return {
+      city: { timezone: 0 },
+      list: Array.from({ length: n }, (_, i) => ({
+        dt: (9 + i * 3) * 3600,
+        main: { temp: 20 + i },
+        weather: [{ description: i === 4 ? 'light rain' : 'few clouds', icon: i === 4 ? '10d' : '02d' }]
+      }))
+    };
+  }
+  let f = weather.normalizeForecast(owmForecast(12));
+  assert.ok(f && Array.isArray(f.tiles), 'normalizeForecast returns tiles');
+  assert.strictEqual(f.tiles.length, 8, 'takes the first 8 three-hour steps (~24h)');
+  assert.strictEqual(f.tiles[0].time, '09:00');
+  assert.strictEqual(f.tiles[0].temp, 20);
+  assert.strictEqual(f.tiles[4].icon, '10d', 'raw icon code preserved (mapping happens card-side)');
+  assert.strictEqual(weather.normalizeForecast({}), null, 'missing list -> null');
+  assert.strictEqual(weather.normalizeForecast({ list: [] }), null, 'empty list -> null');
+  assert.strictEqual(weather.normalizeForecast(null), null);
+
+  // buildForecastPayload: spec shape
+  const wnorm = { city: 'Tokyo', country: 'JP', temp: 24.4, feelsLike: 25, humidity: 40, description: 'clear sky', windSpeed: 3 };
+  let fp = weather.buildForecastPayload(wnorm, f.tiles, 'metric');
+  assert.strictEqual(fp.kind, 'forecast');
+  assert.strictEqual(fp.title, 'Tokyo, JP');
+  assert.strictEqual(fp.accent, 'sky');
+  assert.strictEqual(fp.current.temp, 24.4);
+  assert.strictEqual(fp.forecast.length, 8);
+  assert.ok(Array.isArray(fp.narration) && fp.narration.length >= 2, 'payload embeds narration');
+
+  // buildNarration: ordered segments, tiles in range, first tile is 0, last is the strip end;
+  // joined text == what run() will speak
+  const segs = weather.buildNarration(wnorm, f.tiles, 'metric');
+  assert.ok(segs.length >= 2 && segs.length <= 4, '2-4 segments');
+  assert.strictEqual(segs[0].tile, 0, 'first segment anchors the current tile');
+  assert.strictEqual(segs[segs.length - 1].tile, f.tiles.length - 1, 'last segment anchors the strip end');
+  segs.forEach((s) => {
+    assert.ok(s.text && typeof s.text === 'string');
+    assert.ok(s.tile >= 0 && s.tile < f.tiles.length, 'tile index in range');
+  });
+  assert.ok(/rain/i.test(segs.map((s) => s.text).join(' ')), 'precipitation in the strip is mentioned');
+
   console.log('test-handlers: all assertions passed');
 })().catch((e) => { console.error(e); process.exit(1); });
