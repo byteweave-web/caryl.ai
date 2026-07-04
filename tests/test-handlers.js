@@ -4,6 +4,7 @@
 const assert = require('assert');
 const math = require('../lib/kernel/handlers/math');
 const sys = require('../lib/kernel/handlers/systemStats');
+const weather = require('../lib/kernel/handlers/weather');
 
 // --- math: arithmetic, precedence, parens ---
 assert.strictEqual(math.evaluate('2 + 3').value, 5);
@@ -96,4 +97,89 @@ assert.strictEqual(rr.ok, true);
 assert.ok(typeof rr.speak === 'string' && rr.speak.length > 0);
 assert.ok(rr.overlay && Array.isArray(rr.overlay.rows), 'run() carries the overlay payload');
 
-console.log('test-handlers: all assertions passed');
+// --- weather: mocked network, error mapping, exact overlay schema ---
+// The overlay card schema is shared with systemStats; both must satisfy it identically.
+function assertOverlaySchema(payload, label) {
+  assert.ok(payload && typeof payload === 'object', label + ': payload is an object');
+  assert.strictEqual(typeof payload.title, 'string', label + ': title is a string');
+  assert.ok(payload.title.length > 0, label + ': title non-empty');
+  assert.strictEqual(typeof payload.accent, 'string', label + ': accent is a string');
+  assert.ok(payload.accent.length > 0, label + ': accent non-empty');
+  assert.ok(Array.isArray(payload.rows) && payload.rows.length > 0, label + ': rows non-empty array');
+  for (const row of payload.rows) {
+    assert.strictEqual(typeof row.label, 'string', label + ': row.label is a string');
+    assert.strictEqual(typeof row.value, 'string', label + ': row.value is a string');
+    assert.deepStrictEqual(Object.keys(row).sort(), ['label', 'value'], label + ': row has exactly {label,value}');
+  }
+}
+
+// systemStats and weather payloads must match the SAME overlay schema.
+assertOverlaySchema(sys.buildPayload(raw), 'systemStats');
+
+const OWM_OK = {
+  name: 'Paris', sys: { country: 'FR' },
+  main: { temp: 18.3, feels_like: 17.1, humidity: 62 },
+  weather: [{ main: 'Clouds', description: 'broken clouds' }],
+  wind: { speed: 4.1 }
+};
+// A fetch stub returning a Response-like object with a given status + JSON body.
+function fetchReturning(status, body) {
+  return async (_url) => ({ status, json: async () => body });
+}
+
+(async () => {
+  // buildPayload is pure and schema-exact
+  let wp = weather.buildPayload(weather.normalize(OWM_OK), 'metric');
+  assertOverlaySchema(wp, 'weather');
+  assert.ok(/Paris/.test(wp.title), 'title carries the city');
+  assert.ok(wp.rows.some((r) => /18/.test(r.value)), 'temperature is present');
+  assert.ok(wp.rows.some((r) => /°C/.test(r.value)), 'metric shows °C');
+
+  // imperial units -> °F
+  wp = weather.buildPayload(weather.normalize(OWM_OK), 'imperial');
+  assert.ok(wp.rows.some((r) => /°F/.test(r.value)), 'imperial shows °F');
+
+  // run() happy path with mocked network + injected config
+  let r = await weather.run({ location: 'Paris' }, { config: { openWeatherApiKey: 'k', weatherUnits: 'metric' }, fetch: fetchReturning(200, OWM_OK) });
+  assert.strictEqual(r.ok, true);
+  assertOverlaySchema(r.overlay, 'weather.run overlay');
+  assert.ok(typeof r.speak === 'string' && /Paris/.test(r.speak), 'spoken line names the place');
+
+  // 404 -> safe user-facing message, raw API text not leaked
+  r = await weather.run({ location: 'Nowherecity' }, { config: { openWeatherApiKey: 'k' }, fetch: fetchReturning(404, { cod: '404', message: 'city not found' }) });
+  assert.strictEqual(r.ok, false);
+  assert.ok(/couldn.?t find|not find|find weather/i.test(r.error), 'friendly 404 message');
+  assert.ok(!/city not found/i.test(r.error), 'raw API message is not leaked to the user');
+
+  // 401 -> invalid key message
+  r = await weather.run({ location: 'Paris' }, { config: { openWeatherApiKey: 'bad' }, fetch: fetchReturning(401, { cod: 401, message: 'Invalid API key' }) });
+  assert.strictEqual(r.ok, false);
+  assert.ok(/key/i.test(r.error), 'invalid-key message mentions the key');
+
+  // network throw -> safe connection error, raw error not leaked
+  r = await weather.run({ location: 'Paris' }, { config: { openWeatherApiKey: 'k' }, fetch: async () => { throw new Error('ENOTFOUND boom'); } });
+  assert.strictEqual(r.ok, false);
+  assert.ok(/connect|reach|network|unavailable/i.test(r.error), 'friendly network error');
+  assert.ok(!/ENOTFOUND/.test(r.error), 'raw network error is not leaked');
+
+  // 200 but incomplete body -> safe error, not a crash
+  r = await weather.run({ location: 'Paris' }, { config: { openWeatherApiKey: 'k' }, fetch: fetchReturning(200, { name: 'X' }) });
+  assert.strictEqual(r.ok, false);
+  assert.ok(/weather/i.test(r.error), 'incomplete data yields a safe error');
+
+  // missing API key -> friendly settings prompt, and NEVER hits the network
+  let hit = false;
+  r = await weather.run({ location: 'Paris' }, { config: {}, fetch: async () => { hit = true; return { status: 200, json: async () => OWM_OK }; } });
+  assert.strictEqual(r.ok, false);
+  assert.ok(/api key|settings/i.test(r.error), 'missing key points the user to Settings');
+  assert.strictEqual(hit, false, 'no network call without an API key');
+
+  // missing location and no default -> asks for it, and NEVER hits the network
+  hit = false;
+  r = await weather.run({}, { config: { openWeatherApiKey: 'k' }, fetch: async () => { hit = true; return { status: 200, json: async () => OWM_OK }; } });
+  assert.strictEqual(r.ok, false);
+  assert.ok(Array.isArray(r.needs) && r.needs.includes('location'), 'asks for the location');
+  assert.strictEqual(hit, false, 'no network call without a location');
+
+  console.log('test-handlers: all assertions passed');
+})().catch((e) => { console.error(e); process.exit(1); });
