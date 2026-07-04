@@ -5,7 +5,7 @@
 Phase 1 (router/registry/guard + math/systemStats/weather handlers + weather wiring) is
 committed and green; `main.js` carries the integration TODO this spec resolves
 (`TODO(kernel-overlay): render r.overlay in the custom overlay card`).
-**Status:** Approved design, pre-implementation.
+**Status:** Implemented (see docs/superpowers/plans/2026-07-04-kernel-overlay-card.md).
 
 ## Context
 
