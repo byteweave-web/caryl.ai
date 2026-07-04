@@ -421,7 +421,7 @@ function cleanForSpeech(text) {
 
 // Speak a line aloud. Uses Piper (local neural voice) when configured, otherwise the
 // browser's built-in speechSynthesis. Any Piper failure silently falls back to browser.
-function speak(text) {
+function speak(text, meta) {
   if (!text || !mainWindow || mainWindow.isDestroyed()) return;
   const cfg = config.get();
   if (cfg.tts_enabled === false) return;
@@ -434,13 +434,13 @@ function speak(text) {
     piperChain = piperChain
       .then(() => piperSynth(spoken, cfg))
       .then((wav) => {
-        if (wav && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('tts:audio', wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength));
-        else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('tts:speak', spoken);
+        if (wav && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('tts:audio', wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength), meta || null);
+        else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('tts:speak', spoken, meta || null);
       })
-      .catch(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('tts:speak', spoken); });
+      .catch(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('tts:speak', spoken, meta || null); });
     return;
   }
-  mainWindow.webContents.send('tts:speak', spoken);
+  mainWindow.webContents.send('tts:speak', spoken, meta || null);
 }
 
 // Streaming speaker: feed it the cumulative answer text as it streams in; it emits each

@@ -1160,25 +1160,33 @@ function setMic(){ try{ localStorage.setItem('micDeviceId', document.getElementB
 let ttsEnabled = true;
 let _ttsAudio = null;
 
-let _q = [];            // pending chunk texts, in order
+let _q = [];            // pending chunk {text, meta} objects, in order
 let _speaking = false;  // is a chunk currently handed to the engine?
 let _cur = null;        // strong ref to the current utterance (anti-GC)
 let _curAdvance = null; // idempotent "this chunk finished" fn (shared by onend + watchdog)
 let _gen = 0;           // bumped by stopSpeaking() to cancel in-flight callbacks
 let _idle = 0;          // watchdog idle-tick counter
 const _breathMs = 160;  // pause between chunks (the breath)
+let _lastCardId = 0;    // newest kernel-card id whose narration entered the queues
 
-function speak(text){
+function speak(text, meta){
   if(!ttsEnabled) return;
   const s = String(text||'').trim();
   if(!s) return;
-  _q.push(s);
+  _q.push({ text: s, meta: meta || null });
+  if(meta && meta.cardId) _lastCardId = meta.cardId;
   _pump();
+}
+function _reportStart(meta){
+  if(meta && meta.cardId && window.bridge && window.bridge.ttsProgress) window.bridge.ttsProgress({ cardId: meta.cardId, seg: meta.seg });
+}
+function _reportEnd(meta){
+  if(meta && meta.cardId && meta.last && window.bridge && window.bridge.ttsIdle) window.bridge.ttsIdle({ cardId: meta.cardId });
 }
 function _pump(){
   if(_speaking) return;
   if(!_q.length) return;
-  const text = _q.shift();
+  const item = _q.shift();
   _speaking = true;
   _idle = 0;
   const gen = _gen;
@@ -1187,15 +1195,17 @@ function _pump(){
     if(advanced || gen !== _gen) return;  // already moved on, or we were stopped
     advanced = true;
     _cur = null; _curAdvance = null; _speaking = false;
+    _reportEnd(item.meta);
     setTimeout(function(){ if(gen === _gen) _pump(); }, _breathMs); // breath, then next chunk
   };
   _curAdvance = advance;
   try{
-    const u = new SpeechSynthesisUtterance(text);
+    const u = new SpeechSynthesisUtterance(item.text);
     u.rate = 1.03; u.pitch = 1.0;
     u.onend = advance;
     u.onerror = advance;
     _cur = u;                              // keep alive until it ends
+    _reportStart(item.meta);
     window.speechSynthesis.speak(u);
     try{ window.speechSynthesis.resume(); }catch(e){} // unstick a paused engine (no-op otherwise)
   }catch(e){ advance(); }
@@ -1214,30 +1224,33 @@ setInterval(function(){
 
 // --- Piper WAV queue (strictly sequential, keep a ref to the playing clip) ---
 let _audioQueue = [];
-function _enqueueAudio(buf){
-  _audioQueue.push(buf);
+function _enqueueAudio(buf, meta){
+  _audioQueue.push({ buf: buf, meta: meta || null });
+  if(meta && meta.cardId) _lastCardId = meta.cardId;
   _drainAudioQueue();
 }
 function _drainAudioQueue(){
   if(_ttsAudio && !_ttsAudio.ended && !_ttsAudio.paused) return; // still playing one
-  const buf = _audioQueue.shift();
-  if(!buf) return;
+  const item = _audioQueue.shift();
+  if(!item) return;
   try{
-    const blob = new Blob([buf], { type:'audio/wav' });
+    const blob = new Blob([item.buf], { type:'audio/wav' });
     const url = URL.createObjectURL(blob);
     const a = new Audio(url);
     _ttsAudio = a;             // strong ref
-    const next = function(){ try{ URL.revokeObjectURL(url); }catch(e){} if(_ttsAudio===a) _ttsAudio = null; _drainAudioQueue(); };
+    const next = function(){ try{ URL.revokeObjectURL(url); }catch(e){} if(_ttsAudio===a) _ttsAudio = null; _reportEnd(item.meta); _drainAudioQueue(); };
     a.onended = next;
     a.onerror = next;
+    _reportStart(item.meta);
     a.play().catch(next);
-  }catch(e){ _ttsAudio = null; _drainAudioQueue(); }
+  }catch(e){ _ttsAudio = null; _reportEnd(item.meta); _drainAudioQueue(); }
 }
 
 function stopSpeaking(){
   _gen++;                       // invalidate any pending advance/breath callbacks
   _q = []; _speaking = false; _cur = null; _curAdvance = null; _idle = 0;
   _audioQueue = [];
+  if(_lastCardId && window.bridge && window.bridge.ttsIdle){ window.bridge.ttsIdle({ cardId: _lastCardId }); _lastCardId = 0; }
   try{ window.speechSynthesis.cancel(); }catch(e){}
   try{ if(_ttsAudio){ _ttsAudio.pause(); _ttsAudio=null; } }catch(e){}
 }
@@ -1248,11 +1261,11 @@ function ttsActive(){
   if(_ttsAudio && !_ttsAudio.paused && !_ttsAudio.ended) return true;
   return false;
 }
-if(window.bridge && window.bridge.onSpeak){ window.bridge.onSpeak(function(text){ speak(text); }); }
+if(window.bridge && window.bridge.onSpeak){ window.bridge.onSpeak(function(text, meta){ speak(text, meta); }); }
 // Piper voice: queue the WAV that main synthesized so clips play in order.
-if(window.bridge && window.bridge.onTtsAudio){ window.bridge.onTtsAudio(function(buf){
+if(window.bridge && window.bridge.onTtsAudio){ window.bridge.onTtsAudio(function(buf, meta){
   if(!ttsEnabled) return;
-  _enqueueAudio(buf);
+  _enqueueAudio(buf, meta);
 }); }
 
 // Warm up the browser speech engine at launch (load the voice list). We deliberately do NOT

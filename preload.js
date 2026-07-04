@@ -49,15 +49,20 @@ contextBridge.exposeInMainWorld('bridge', {
   setModel: (model) => ipcRenderer.invoke('ui:setModel', model),
   setFlag: (path, body) => ipcRenderer.invoke('ui:setFlag', { path, body }),
 
-  // text-to-speech: main asks the renderer to speak a finished reply
+  // text-to-speech: main asks the renderer to speak a finished reply.
+  // meta ({cardId, seg, last}) tags kernel-card narration segments; null for normal speech.
   onSpeak: (cb) => {
-    const handler = (_e, text) => cb(text);
+    const handler = (_e, text, meta) => cb(text, meta || null);
     ipcRenderer.on('tts:speak', handler);
     return () => ipcRenderer.removeListener('tts:speak', handler);
   },
 
   // Piper TTS: main sends finished WAV audio (ArrayBuffer) for the renderer to play
-  onTtsAudio: (cb) => ipcRenderer.on('tts:audio', (_e, buf) => cb(buf)),
+  onTtsAudio: (cb) => ipcRenderer.on('tts:audio', (_e, buf, meta) => cb(buf, meta || null)),
+
+  // narration progress back to main (fire-and-forget)
+  ttsProgress: (info) => { try { ipcRenderer.send('tts:progress', info); } catch (_e) {} },
+  ttsIdle: (info) => { try { ipcRenderer.send('tts:idle', info); } catch (_e) {} },
 
   // test the configured voice (returns {ok, error?})
   testVoice: () => ipcRenderer.invoke('tts:test'),
