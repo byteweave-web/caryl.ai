@@ -181,6 +181,27 @@ function fetchReturning(status, body) {
   assert.ok(Array.isArray(r.needs) && r.needs.includes('location'), 'asks for the location');
   assert.strictEqual(hit, false, 'no network call without a location');
 
+  // --- weather: cleanLocation strips the trailing filler the "after:in" extractor drags in ---
+  // ("How is the weather in Lebanon today?" -> extractor yields "Lebanon today?" -> 404)
+  assert.strictEqual(weather.cleanLocation('Lebanon today?'), 'Lebanon');
+  assert.strictEqual(weather.cleanLocation('New York today?'), 'New York');
+  assert.strictEqual(weather.cleanLocation('Tokyo right now'), 'Tokyo');
+  assert.strictEqual(weather.cleanLocation('Paris this evening'), 'Paris');
+  assert.strictEqual(weather.cleanLocation('London tomorrow.'), 'London');
+  assert.strictEqual(weather.cleanLocation('San Francisco'), 'San Francisco', 'clean input unchanged');
+  assert.strictEqual(weather.cleanLocation('Rome please'), 'Rome');
+  assert.strictEqual(weather.cleanLocation('  Berlin  '), 'Berlin');
+  assert.strictEqual(weather.cleanLocation('today'), 'today', 'a lone word is never stripped away');
+  assert.strictEqual(weather.cleanLocation(''), '');
+
+  // run() actually queries the CLEANED location (no "today"/"?" reaching the API)
+  let seenUrl = '';
+  r = await weather.run({ location: 'Lebanon today?' }, {
+    config: { openWeatherApiKey: 'k', weatherUnits: 'metric' },
+    fetch: async (url) => { seenUrl = seenUrl || url; return { status: 200, json: async () => OWM_OK }; }
+  });
+  assert.ok(/q=Lebanon(&|$)/.test(seenUrl), 'the API is queried for "Lebanon", not "Lebanon today?": ' + seenUrl);
+
   // --- weather: forecast normalization + narration (pure) ---
   assert.strictEqual(weather.fmtHour(0, 0), '00:00');
   assert.strictEqual(weather.fmtHour(15 * 3600, 0), '15:00');
