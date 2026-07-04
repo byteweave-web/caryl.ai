@@ -2880,6 +2880,19 @@ function createWindow() {
     if (input.type === 'keyDown' && input.key === 'F12') mainWindow.webContents.toggleDevTools();
   });
 
+  // Closing the main window must quit the app (non-macOS). The auxiliary always-on-top
+  // windows - HUD panel, bubble, kernel overlay card - are hidden, NOT closed, when
+  // dismissed (so they can be reused), and a hidden BrowserWindow still counts as open:
+  // left alive they keep 'window-all-closed' from ever firing, so the app lingered in the
+  // background after the main window was closed. Destroy them with the main window.
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    [overlayWindow, miniOverlayWindow].forEach((w) => {
+      try { if (w && !w.isDestroyed()) w.destroy(); } catch (_e) {}
+    });
+    try { cardOverlay.destroy(); } catch (_e) {}
+  });
+
   // External links open in the user's browser, never inside the app shell.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) shell.openExternal(url);
