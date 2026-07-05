@@ -4,8 +4,13 @@
 // that exposes the refined config keys so the renderer's Settings panel can show them.
 
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const cameraUi = require('./lib/cameraUi'); // pure camera-shell helpers, single-sourced
 
 contextBridge.exposeInMainWorld('bridge', {
+  // ----- Camera shell (D1): pure UI helpers from lib/cameraUi.js -----
+  cameraGreeting: (name) => cameraUi.greetingLine(name),
+  cameraStatus: (state) => cameraUi.statusLabel(state),
+
   // settings (AI Engine section)
   getConfig: () => ipcRenderer.invoke('config:get'),
   // OS-aware shell: { osVariant: 'win10'|'win11'|'other', blur: boolean }
