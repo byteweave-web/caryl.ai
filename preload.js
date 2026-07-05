@@ -5,11 +5,15 @@
 
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const cameraUi = require('./lib/cameraUi'); // pure camera-shell helpers, single-sourced
+const grounding = require('./lib/grounding'); // pure object-focus box helpers (D2)
 
 contextBridge.exposeInMainWorld('bridge', {
   // ----- Camera shell (D1): pure UI helpers from lib/cameraUi.js -----
   cameraGreeting: (name) => cameraUi.greetingLine(name),
   cameraStatus: (state) => cameraUi.statusLabel(state),
+  // ----- Camera object focus (D2): letterbox box mapping + focus event -----
+  mapBoxToCanvas: (box, video, canvas) => grounding.mapBoxToCanvas(box, video, canvas),
+  onCameraFocus: (cb) => ipcRenderer.on('camera:focus', (_e, payload) => cb(payload)),
 
   // settings (AI Engine section)
   getConfig: () => ipcRenderer.invoke('config:get'),
