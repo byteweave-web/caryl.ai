@@ -1452,6 +1452,42 @@ async function switchCamera(){
     const v=document.getElementById('cam-live'); if(v){ v.srcObject=_liveStream; try{ await v.play(); }catch(e){} }
   }catch(e){ setHint('Could not switch camera',3000); } // keep the current stream on failure
 }
+
+// ---- Greeting + auto-listen on open (D1) ----
+let _camGreetTimer=null, _camAutoListen=false;
+async function camGreetAndListen(){
+  _camAutoListen=true;
+  let name='Caryl';
+  try{ const s=await window.bridge.status(); if(s&&s.assistant_name) name=s.assistant_name; }catch(e){}
+  const nm=document.getElementById('cam-name'); if(nm) nm.textContent=name;
+  const line=(window.bridge&&window.bridge.cameraGreeting)?window.bridge.cameraGreeting(name):'What are we looking at?';
+  const cap=document.getElementById('cam-caption'); if(cap){ cap.textContent=line; cap.style.display='block'; }
+  setCamStatus('speaking');
+  try{ speak(line); }catch(e){}
+  // Start listening once TTS goes idle (immediately if TTS is off), with a max wait so a
+  // missed end-signal can't leave the mic un-started.
+  const started=Date.now();
+  (function waitTts(){
+    if(!_camAutoListen) return;                 // camera closed meanwhile
+    let speaking=false; try{ speaking=ttsActive(); }catch(e){ speaking=false; }
+    if(speaking && Date.now()-started<6000){ _camGreetTimer=setTimeout(waitTts,180); return; }
+    _camGreetTimer=null;
+    if(_camAutoListen) beginCamListen();
+  })();
+}
+function beginCamListen(){
+  setCamStatus('listening');
+  try{ if(!recording) startRecording(); }
+  catch(e){
+    setCamStatus('idle');
+    const cap=document.getElementById('cam-caption'); if(cap){ cap.textContent='Tap the mic to talk.'; cap.style.display='block'; }
+  }
+}
+function camStopGreetListen(){
+  _camAutoListen=false;
+  if(_camGreetTimer){ clearTimeout(_camGreetTimer); _camGreetTimer=null; }
+  try{ if(recording) stopRecording(); }catch(e){}
+}
 // Grab one still frame. Uses the live camera if open; otherwise opens it briefly.
 async function grabCameraFrame(){
   let canvas=document.getElementById('cam-canvas');
@@ -1476,8 +1512,9 @@ async function grabCameraFrame(){
 // "What is this?" button -> instant describe of the current frame.
 async function askAboutCamera(){
   if(!_liveStream){ toggleCamera(); return; }
+  setCamStatus('looking');
   try{ const dataUrl=await grabCameraFrame(); await window.bridge.lookCamera(dataUrl,''); }
-  catch(e){ setHint('Camera error',3000); }
+  catch(e){ setCamStatus('idle'); setHint('Camera error',3000); }
 }
 // Fullscreen text box -> route through the normal brain (can describe, close camera, etc).
 function camSendInput(){
@@ -1487,6 +1524,7 @@ function camSendInput(){
 // Voice path: main asks the renderer for a frame when the user says "look at me" / "what is this".
 if(window.bridge && window.bridge.onCameraCapture){
   window.bridge.onCameraCapture(async function(){
+    if(document.getElementById('cam-full') && document.getElementById('cam-full').style.display!=='none') setCamStatus('looking');
     try{ const dataUrl=await grabCameraFrame(); window.bridge.cameraFrame(dataUrl); }
     catch(e){ window.bridge.cameraFrame(''); }
   });
@@ -2059,7 +2097,7 @@ function renderActs(acts){
   const oc=document.getElementById('orb-caption');
   if(oc){ if(orbCapOn()){ const lastSaid=acts.slice().reverse().find(function(a){return a.kind==='said';}); oc.textContent=lastSaid?lastSaid.text:''; } else { oc.textContent=''; } }
   const cf=document.getElementById('cam-full');
-  if(cf && cf.style.display!=='none'){ const cap=document.getElementById('cam-caption'); if(cap){ const ls=acts.slice().reverse().find(function(a){return a.kind==='said';}); if(ls&&ls.text){ cap.textContent=ls.text; cap.style.display='block'; } } }
+  if(cf && cf.style.display!=='none'){ const cap=document.getElementById('cam-caption'); if(cap){ const ls=acts.slice().reverse().find(function(a){return a.kind==='said';}); if(ls&&ls.text&&ls.text!==cap.textContent){ cap.textContent=ls.text; cap.style.display='block'; setCamStatus('idle'); } } }
 }
 async function pollActivity(){
   const d=await getJSON('/activity'); if(!d||!d.activity) return;
