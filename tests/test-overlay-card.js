@@ -12,20 +12,14 @@ assert.strictEqual(overlay.resolveAccent('hotpink'), null, 'unknown accent -> nu
 assert.strictEqual(overlay.resolveAccent(''), null, 'empty accent -> null');
 assert.strictEqual(overlay.resolveAccent(undefined), null, 'missing accent -> null');
 
-// --- mapIcon: OpenWeather codes -> sprite ids ---
-assert.strictEqual(overlay.mapIcon('01d'), 'sun');
-assert.strictEqual(overlay.mapIcon('01n'), 'moon');
-assert.strictEqual(overlay.mapIcon('02d'), 'partly');
-assert.strictEqual(overlay.mapIcon('02n'), 'partly');
-assert.strictEqual(overlay.mapIcon('03d'), 'cloud');
-assert.strictEqual(overlay.mapIcon('04n'), 'cloud');
-assert.strictEqual(overlay.mapIcon('09d'), 'drizzle');
-assert.strictEqual(overlay.mapIcon('10n'), 'rain');
-assert.strictEqual(overlay.mapIcon('11d'), 'thunder');
-assert.strictEqual(overlay.mapIcon('13d'), 'snow');
-assert.strictEqual(overlay.mapIcon('50d'), 'mist');
-assert.strictEqual(overlay.mapIcon('99x'), 'cloud', 'unknown code -> cloud default');
-assert.strictEqual(overlay.mapIcon(''), 'cloud', 'empty code -> cloud default');
+// --- mapIcon: now a sprite-id validator (the handler emits final sprite ids) ---
+['sun', 'moon', 'partly', 'cloud', 'drizzle', 'rain', 'thunder', 'snow', 'mist'].forEach((id) => {
+  assert.strictEqual(overlay.mapIcon(id), id, id + ' is a valid sprite id, passes through');
+});
+assert.strictEqual(overlay.mapIcon('01d'), 'cloud', 'a stale OpenWeather code is not a sprite -> cloud');
+assert.strictEqual(overlay.mapIcon('nonsense'), 'cloud', 'unknown -> cloud default');
+assert.strictEqual(overlay.mapIcon(''), 'cloud', 'empty -> cloud default');
+assert.strictEqual(overlay.mapIcon(undefined), 'cloud', 'missing -> cloud default');
 
 // --- normalizePayload: rows kind ---
 let p = overlay.normalizePayload({ title: 'System stats', accent: 'blue', rows: [{ label: 'CPU', value: '8 x Test' }] });
@@ -51,33 +45,53 @@ assert.strictEqual(overlay.normalizePayload(undefined).kind, 'rows');
 assert.strictEqual(overlay.normalizePayload('weather').kind, 'rows');
 assert.ok(Array.isArray(overlay.normalizePayload(null).rows));
 
-// --- normalizePayload: forecast kind ---
-const fc = {
-  kind: 'forecast', title: 'Tokyo, JP', accent: 'sky',
-  current: { temp: 24.4, icon: '01d', condition: 'Clear sky' },
-  forecast: Array.from({ length: 8 }, (_, i) => ({ time: (9 + i * 3) % 24 + ':00', temp: 20 + i, icon: '02d', condition: 'Clouds' })),
-  narration: [{ text: 'Right now 24.', tile: 0 }, { text: 'Later 27.', tile: 7 }]
-};
-p = overlay.normalizePayload(fc);
-assert.strictEqual(p.kind, 'forecast');
-assert.strictEqual(p.forecast.length, 8);
-assert.strictEqual(p.current.temp, 24, 'temps rounded to integers');
-assert.strictEqual(p.narration.length, 2);
-assert.strictEqual(p.narration[1].tile, 7);
+// --- board model: normalizePayload v2 ---
+function boardFixture() {
+  return {
+    kind: 'forecast', title: 'Beirut, LB', accent: 'sky', scene: 'storm',
+    current: { temp: 28.4, hi: 30, lo: 22, icon: 'thunder', condition: 'Thunderstorm',
+      feelsLike: 29, humidity: 67, dewPoint: 21, pressure: 1007, visibility: 21,
+      wind: { speed: 23, gust: 37, deg: 241 }, sunrise: '05:30', sunset: '19:52',
+      isNight: false, moon: { phase: 'waning-gibbous', illumination: 82 } },
+    hourly: Array.from({ length: 8 }, (_, i) => ({ time: i + ':00', temp: 20 + i, icon: 'rain', condition: 'Rain', pop: 40 })),
+    daily: Array.from({ length: 5 }, (_, i) => ({ day: i ? 'Sun' : 'Today', icon: 'sun', lo: 20, hi: 30, pop: 10 })),
+    narration: [{ text: 'a', tile: 0 }, { text: 'b', tile: 7 }]
+  };
+}
+let bm = overlay.normalizePayload(boardFixture());
+assert.strictEqual(bm.kind, 'forecast');
+assert.strictEqual(bm.scene, 'storm');
+assert.strictEqual(bm.current.temp, 28, 'temps rounded');
+assert.strictEqual(bm.current.icon, 'thunder', 'icons mapped to sprite ids');
+assert.strictEqual(bm.hourly[0].icon, 'rain');
+assert.strictEqual(bm.daily[0].icon, 'sun');
+assert.strictEqual(bm.current.wind.deg, 241);
+assert.strictEqual(bm.current.moon.phase, 'waning-gibbous');
+assert.strictEqual(bm.current.units, 'metric', 'units defaults to metric when absent');
+assert.strictEqual(bm.daily.length, 5);
 
-// forecast tiles capped at 8
-p = overlay.normalizePayload(Object.assign({}, fc, { forecast: Array.from({ length: 12 }, () => ({ time: '09:00', temp: 20, icon: '01d', condition: 'Clear' })) }));
-assert.strictEqual(p.forecast.length, 8, 'tiles capped at 8');
+// units passes through when the payload marks imperial
+const bmi = overlay.normalizePayload(Object.assign(boardFixture(), {
+  current: Object.assign(boardFixture().current, { units: 'imperial' })
+}));
+assert.strictEqual(bmi.current.units, 'imperial');
 
-// narration tile indices out of range are clamped into [0, tiles-1]
-p = overlay.normalizePayload(Object.assign({}, fc, { narration: [{ text: 'x', tile: 99 }, { text: 'y', tile: -3 }] }));
-assert.strictEqual(p.narration[0].tile, 7);
-assert.strictEqual(p.narration[1].tile, 0);
+bm = overlay.normalizePayload(Object.assign(boardFixture(), { scene: 'volcano' }));
+assert.strictEqual(bm.scene, 'clouds', 'unknown scene -> clouds');
 
-// forecast kind with an empty/missing forecast[] demotes to rows (never a dead card)
-p = overlay.normalizePayload({ kind: 'forecast', title: 'Tokyo', forecast: [] });
-assert.strictEqual(p.kind, 'rows', 'empty forecast demotes to rows');
-p = overlay.normalizePayload({ kind: 'forecast', title: 'Tokyo' });
-assert.strictEqual(p.kind, 'rows', 'missing forecast demotes to rows');
+bm = overlay.normalizePayload(Object.assign(boardFixture(), { daily: [{ day: 'Today', icon: '01d', lo: 1, hi: 2, pop: 0 }] }));
+assert.strictEqual(bm.kind, 'rows', '<2 daily rows demotes');
+
+bm = overlay.normalizePayload(Object.assign(boardFixture(), { hourly: [] }));
+assert.strictEqual(bm.kind, 'rows', 'empty hourly demotes');
+
+bm = overlay.normalizePayload(Object.assign(boardFixture(), { current: null }));
+assert.strictEqual(bm.kind, 'forecast', 'missing current tolerated (renderer shows dashes)');
+assert.ok(bm.current && typeof bm.current === 'object');
+
+bm = overlay.normalizePayload(Object.assign(boardFixture(), {
+  daily: Array.from({ length: 9 }, () => ({ day: 'X', icon: '01d', lo: 1, hi: 2, pop: 0 }))
+}));
+assert.strictEqual(bm.daily.length, 6, 'daily capped at 6');
 
 console.log('test-overlay-card: all assertions passed');

@@ -59,28 +59,32 @@ const actions = require('../lib/actions');
   const passthrough = await kernel.handle('tell me a joke about cats');
   assert.strictEqual(passthrough.handled, false, 'non-logic requests fall through to the LLM');
 
-  // ---- weather (API_NATIVE) end-to-end through the kernel with a MOCKED fetch ----
-  const OWM = {
-    name: 'Tokyo', sys: { country: 'JP' },
-    main: { temp: 15.2, feels_like: 14.0, humidity: 70 },
-    weather: [{ main: 'Rain', description: 'light rain' }], wind: { speed: 3.2 }
-  };
-  const OWM_FORECAST = {
-    city: { timezone: 32400 },
-    list: Array.from({ length: 10 }, (_, i) => ({
-      dt: 1751600000 + i * 10800,
-      main: { temp: 22 + i },
-      weather: [{ description: i === 2 ? 'light rain' : 'scattered clouds', icon: i === 2 ? '10d' : '03d' }]
-    }))
-  };
+  // ---- weather (API_NATIVE) end-to-end through the kernel with a MOCKED Open-Meteo fetch ----
+  // No API key anywhere: the kernel geocodes the place then fetches its forecast.
+  const OM_GEO = { results: [{ name: 'Tokyo', country: 'Japan', latitude: 35.69, longitude: 139.69, timezone: 'Asia/Tokyo', population: 9733276 }] };
+  const OM_FC = (function () {
+    const time = [], temp = [], code = [], pop = [], isday = [];
+    for (let h = 0; h < 24; h++) {
+      time.push('2026-07-05T' + String(h).padStart(2, '0') + ':00');
+      temp.push(20 + (h % 5)); code.push(h === 15 ? 61 : 2); pop.push(h === 15 ? 70 : 10);
+      isday.push(h >= 6 && h < 18 ? 1 : 0);
+    }
+    return {
+      utc_offset_seconds: 32400, timezone: 'Asia/Tokyo',
+      current: { time: '2026-07-05T09:00', temperature_2m: 15.2, relative_humidity_2m: 70, apparent_temperature: 14, is_day: 1, weather_code: 61, surface_pressure: 1012, wind_speed_10m: 12, wind_direction_10m: 180, wind_gusts_10m: 20, dew_point_2m: 10, visibility: 10000 },
+      hourly: { time, temperature_2m: temp, weather_code: code, precipitation_probability: pop, is_day: isday },
+      daily: { time: ['2026-07-05', '2026-07-06', '2026-07-07'], weather_code: [61, 2, 1], temperature_2m_max: [22, 24, 25], temperature_2m_min: [15, 16, 17], precipitation_probability_max: [70, 20, 10], sunrise: ['2026-07-05T04:30', '2026-07-06T04:30', '2026-07-07T04:31'], sunset: ['2026-07-05T19:00', '2026-07-06T19:00', '2026-07-07T19:00'] }
+    };
+  })();
   let weatherFetchCalls = 0;
   const wkernel = createKernel({
     registry: registryMod.createRegistry({ builtins: BUILTINS }),
-    getConfig: () => ({ openWeatherApiKey: 'test-key', weatherUnits: 'metric' }),
+    getConfig: () => ({ weatherUnits: 'metric' }),
     fetchImpl: async (url) => {
       weatherFetchCalls++;
-      if (url.indexOf('/forecast') >= 0) return { status: 200, json: async () => OWM_FORECAST };
-      return { status: 200, json: async () => OWM };
+      return String(url).indexOf('geocoding-api') >= 0
+        ? { status: 200, json: async () => OM_GEO }
+        : { status: 200, json: async () => OM_FC };
     }
   });
 
@@ -91,14 +95,18 @@ const actions = require('../lib/actions');
   assert.strictEqual(wmatch.guiBlocked, true, 'API_NATIVE blocks the GUI');
   assert.strictEqual(wmatch.params.location, 'Tokyo');
 
-  // the registry -> handler runs against the mocked API and returns the overlay payload
+  // the registry -> handler geocodes + forecasts against the mocked API, returns the board
   const wdecision = await wkernel.handle('weather in Tokyo');
   assert.strictEqual(wdecision.handled, true);
   assert.strictEqual(wdecision.class, 'API_NATIVE');
   assert.strictEqual(wdecision.result.ok, true);
-  assert.strictEqual(weatherFetchCalls, 2, 'current + forecast fetched, no real network');
-  assert.strictEqual(wdecision.result.overlay.kind, 'forecast', 'overlay is the forecast card');
-  assert.strictEqual(wdecision.result.overlay.forecast.length, 8, '8 three-hour tiles');
+  assert.strictEqual(weatherFetchCalls, 2, 'geocoding + forecast fetched, no real network');
+  assert.strictEqual(wdecision.result.overlay.kind, 'forecast', 'overlay is the forecast board');
+  assert.strictEqual(wdecision.result.overlay.title, 'Tokyo, Japan');
+  assert.ok(typeof wdecision.result.overlay.scene === 'string' && wdecision.result.overlay.scene.length, 'scene is a non-empty string');
+  assert.strictEqual(wdecision.result.overlay.hourly.length, 8, '8 hourly tiles');
+  assert.ok(wdecision.result.overlay.daily.length >= 2, 'at least 2 daily rows');
+  assert.ok(wdecision.result.overlay.current.moon, 'moon phase present');
   assert.ok(wdecision.result.overlay.narration.length >= 2, 'narration segments present');
   assert.strictEqual(
     wdecision.result.speak,
@@ -109,19 +117,17 @@ const actions = require('../lib/actions');
   // the guard is released after an API_NATIVE turn (no leak into the next request)
   assert.strictEqual(guard.isBlocked(), null, 'guard cleared after the weather turn');
 
-  // ---- weather: forecast endpoint fails -> demote to the rows card, never a dead card ----
+  // ---- weather: geocoding finds nothing -> handled, friendly error, never a browser ----
   const wkernel2 = createKernel({
     registry: registryMod.createRegistry({ builtins: BUILTINS }),
-    getConfig: () => ({ openWeatherApiKey: 'test-key', weatherUnits: 'metric' }),
-    fetchImpl: async (url) => {
-      if (url.indexOf('/forecast') >= 0) return { status: 500, json: async () => ({}) };
-      return { status: 200, json: async () => OWM };
-    }
+    getConfig: () => ({ weatherUnits: 'metric' }),
+    fetchImpl: async (_url) => ({ status: 200, json: async () => ({ results: [] }) })
   });
-  const wd2 = await wkernel2.handle('weather in Tokyo');
-  assert.ok(wd2.handled && wd2.result.ok, 'demoted weather still succeeds');
-  assert.ok(!wd2.result.overlay.kind, 'demoted overlay is the plain rows payload');
-  assert.ok(Array.isArray(wd2.result.overlay.rows) && wd2.result.overlay.rows.length, 'rows present');
+  const wd2 = await wkernel2.handle('weather in Zzzznowhere');
+  assert.ok(wd2.handled, 'still handled by the kernel (not passed to the LLM)');
+  assert.strictEqual(wd2.result.ok, false, 'no geocoding match -> ok:false');
+  assert.ok(/find weather/i.test(wd2.result.error), 'friendly not-found message');
+  assert.strictEqual(guard.isBlocked(), null, 'guard cleared even on the error path');
 
   console.log('test-integration: all assertions passed');
 })().catch((e) => { console.error(e); process.exit(1); });

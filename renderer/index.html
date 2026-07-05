@@ -337,13 +337,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
     </div>
     <div class="sec">
       <h3>Weather</h3>
-      <div class="sub">Powers the &ldquo;what&rsquo;s the weather&rdquo; forecast card. <span id="weather-badge" class="badge">&mdash;</span></div>
-      <div class="row" style="display:block">
-        <div class="l" style="margin-bottom:7px">OpenWeather API Key</div>
-        <input id="weather-key" type="password" placeholder="paste your OpenWeather key" autocomplete="off" spellcheck="false"
-               style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:13px;outline:none">
-        <div class="statusline">Free key from openweathermap.org &rarr; My API keys. Brand-new keys can take a few minutes to activate.</div>
-      </div>
+      <div class="sub">Powers the &ldquo;what&rsquo;s the weather&rdquo; forecast board. <b>No API key needed</b> &mdash; powered by Open-Meteo (free, global).</div>
       <div class="row" style="display:block">
         <div class="l" style="margin-bottom:7px">Units</div>
         <div class="field">
@@ -357,6 +351,12 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
         <div class="l" style="margin-bottom:7px">Default location</div>
         <input id="weather-location" type="text" placeholder="e.g. Beirut &mdash; used when you don&rsquo;t name a city" spellcheck="false"
                style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:none">
+      </div>
+      <div class="row" style="display:block">
+        <div class="l" style="margin-bottom:7px">Card size <span class="d" style="display:inline" id="weather-scale-label">65% of screen</span></div>
+        <input id="weather-scale" type="range" min="65" max="100" step="5" style="width:100%"
+               oninput="document.getElementById('weather-scale-label').textContent=this.value+'% of screen'">
+        <div class="statusline">Dragging or resizing the weather board also remembers its exact spot.</div>
       </div>
       <div class="field" style="margin-top:10px">
         <button class="minibtn" onclick="saveWeather()">Save</button>
@@ -876,27 +876,23 @@ async function saveEngine(){
   loadModels(true);
 }
 
-// ---- Weather (OpenWeather) - the key/units/location behind the Kernel's forecast card ----
+// ---- Weather (Open-Meteo, no key) - units/default-location/size behind the forecast board ----
 async function populateWeather(){
   const c=await window.bridge.getConfig(); if(!c) return;
-  document.getElementById('weather-key').value=c.openWeatherApiKey||'';
   document.getElementById('weather-units').value=c.weatherUnits||'metric';
   document.getElementById('weather-location').value=c.weatherDefaultLocation||'';
-  const b=document.getElementById('weather-badge');
-  const has=!!(c.openWeatherApiKey||'').trim();
-  b.textContent=has?'CONNECTED':'NO KEY'; b.className='badge '+(has?'ok':'bad');
+  const sliderVal=Math.round((c.weatherCardScale||0.65)*100);
+  document.getElementById('weather-scale').value=sliderVal;
+  document.getElementById('weather-scale-label').textContent=sliderVal+'% of screen';
 }
 async function saveWeather(){
   const st=document.getElementById('weather-status'); st.textContent='Saving\u2026'; st.className='statusline';
-  const key=document.getElementById('weather-key').value.trim();
   await window.bridge.setConfig({
-    openWeatherApiKey:key,
     weatherUnits:document.getElementById('weather-units').value,
-    weatherDefaultLocation:document.getElementById('weather-location').value.trim()
+    weatherDefaultLocation:document.getElementById('weather-location').value.trim(),
+    weatherCardScale:Number(document.getElementById('weather-scale').value)/100
   });
-  const b=document.getElementById('weather-badge');
-  b.textContent=key?'CONNECTED':'NO KEY'; b.className='badge '+(key?'ok':'bad');
-  st.textContent=key?'Saved.':'Saved \u2014 no key yet.'; st.className='statusline '+(key?'ok':'bad');
+  st.textContent='Saved.'; st.className='statusline ok';
 }
 
 // ---- Engines & Models (per-capability hybrid routing, local model pickers, downloads) ----

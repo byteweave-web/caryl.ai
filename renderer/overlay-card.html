@@ -49,31 +49,6 @@ html[data-os="win10"][data-theme="fullLight"] #card{background:#f2f4f8}
 .head .x:hover{background:rgba(255,255,255,.16);color:var(--txt)}
 html[data-theme="fullLight"] .head .x{background:rgba(0,0,0,.07)}
 
-.now{display:flex;align-items:center;gap:14px;padding:2px 18px 10px}
-.now .temp{font-size:44px;font-weight:250;letter-spacing:-.02em;line-height:1}
-.now .icon svg{width:44px;height:44px;display:block}
-
-/* ---------- forecast strip: scroll-snap + momentum, edge fades ---------- */
-.strip-wrap{position:relative;padding:2px 0 14px}
-.strip{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;padding:4px 16px;
-  scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
-.strip::-webkit-scrollbar{display:none}
-.strip-wrap::before,.strip-wrap::after{content:'';position:absolute;top:0;bottom:0;width:18px;z-index:1;pointer-events:none}
-.strip-wrap::before{left:0;background:linear-gradient(90deg,rgba(10,14,20,.5),transparent)}
-.strip-wrap::after{right:0;background:linear-gradient(270deg,rgba(10,14,20,.5),transparent)}
-html[data-os="win10"] .strip-wrap::before,html[data-os="win10"] .strip-wrap::after{display:none}
-.tile{flex:none;scroll-snap-align:center;width:64px;padding:10px 6px;border-radius:16px;text-align:center;
-  background:rgba(255,255,255,.05);border:1px solid transparent;
-  transition:background .25s ease,border-color .25s ease,transform .25s ease}
-html[data-theme="fullLight"] .tile{background:rgba(0,0,0,.05)}
-.tile .t{font-family:var(--mono);font-size:10px;color:var(--mut);letter-spacing:.04em}
-.tile .icon svg{width:26px;height:26px;margin:6px auto 4px;display:block}
-.tile .deg{font-size:14px;font-weight:600}
-.tile.hot{background:var(--card-soft);border-color:var(--card-accent);transform:translateY(-2px)}
-.tile.hot .t{color:var(--card-accent)}
-@keyframes pulse{0%{box-shadow:0 0 0 0 var(--card-soft)}100%{box-shadow:0 0 0 12px rgba(0,0,0,0)}}
-.tile.pulse{animation:pulse .7s ease-out 1}
-
 /* ---------- rows mode ---------- */
 .rows{padding:2px 16px 16px;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
 .row{display:flex;align-items:baseline;gap:12px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.06)}
@@ -86,33 +61,13 @@ html[data-theme="fullLight"] .row{border-bottom-color:rgba(0,0,0,.06)}
 <link rel="stylesheet" href="theme.css">
 </head>
 <body>
-<!-- Inline SVG sprite: the 9 weather glyphs mapIcon() targets. Stroke-based, accent-tinted. -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <g id="i-sun"><circle cx="12" cy="12" r="4.2"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6"/></g>
-    <g id="i-moon"><path d="M20 13.2A8 8 0 1 1 10.8 4 6.5 6.5 0 0 0 20 13.2z"/></g>
-    <g id="i-partly"><circle cx="8.5" cy="9" r="3.4"/><path d="M8.5 3.4v1.4M3 9h1.4M4.6 5.1l1 1"/><path d="M9 17.5h8.3a3.2 3.2 0 0 0 .4-6.4 4.6 4.6 0 0 0-8.9 1.1A2.7 2.7 0 0 0 9 17.5z"/></g>
-    <g id="i-cloud"><path d="M7 18h9.8a3.7 3.7 0 0 0 .5-7.4 5.3 5.3 0 0 0-10.3 1.3A3.1 3.1 0 0 0 7 18z"/></g>
-    <g id="i-rain"><path d="M7 14h9.8a3.7 3.7 0 0 0 .5-7.4A5.3 5.3 0 0 0 7 7.9 3.1 3.1 0 0 0 7 14z"/><path d="M8.5 17l-1 2.4M12.5 17l-1 2.4M16.5 17l-1 2.4"/></g>
-    <g id="i-drizzle"><path d="M7 14h9.8a3.7 3.7 0 0 0 .5-7.4A5.3 5.3 0 0 0 7 7.9 3.1 3.1 0 0 0 7 14z"/><path d="M9 17.2v1M13 17.2v1M17 17.2v1"/></g>
-    <g id="i-thunder"><path d="M7 13h9.8a3.7 3.7 0 0 0 .5-7.4A5.3 5.3 0 0 0 7 6.9 3.1 3.1 0 0 0 7 13z"/><path d="M12.6 14.5l-2.4 3.4h3l-1.8 3.1"/></g>
-    <g id="i-snow"><path d="M7 14h9.8a3.7 3.7 0 0 0 .5-7.4A5.3 5.3 0 0 0 7 7.9 3.1 3.1 0 0 0 7 14z"/><path d="M9 17.5h.01M13 19h.01M17 17.5h.01M11 20.5h.01M15 20.5h.01" stroke-linecap="round" stroke-width="2.4"/></g>
-    <g id="i-mist"><path d="M4 9h13M6 12.5h13M4 16h11" stroke-linecap="round"/></g>
-  </defs>
-</svg>
-
 <div id="card">
   <div class="head">
     <div><div class="loc" id="loc"></div><div class="cond" id="cond"></div></div>
     <span class="grow"></span>
     <button class="x" id="btn-x" title="Dismiss">&#10005;</button>
   </div>
-  <div class="now" id="now">
-    <div class="temp" id="temp"></div>
-    <div class="icon" id="cur-icon"></div>
-  </div>
-  <div class="strip-wrap" id="strip-wrap"><div class="strip" id="strip"></div></div>
-  <div class="rows hidden" id="rows"></div>
+  <div class="rows" id="rows"></div>
 </div>
 
 <script>
@@ -130,14 +85,7 @@ html[data-theme="fullLight"] .row{border-bottom-color:rgba(0,0,0,.06)}
   }).catch(function(){});
 
   function esc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function icon(id, stroke){
-    return '<svg viewBox="0 0 24 24" fill="none" stroke="'+(stroke||'currentColor')+'" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#i-'+esc(id)+'"/></svg>';
-  }
 
-  // Manual-drag independence: while the user is touching the strip (and for 4s after),
-  // scrollTo() moves ONLY the highlight, never the scroll position.
-  let engagedUntil = 0;
-  function engaged(){ return Date.now() < engagedUntil; }
   // Hover defers auto-dismissal: main asks us to leave, we wait until the pointer leaves +2s.
   let hovering = false, pendingDismiss = false;
 
@@ -156,43 +104,17 @@ html[data-theme="fullLight"] .row{border-bottom-color:rgba(0,0,0,.06)}
     applyAccent(p);
     $('loc').textContent = p.title || '';
     pendingDismiss = false;
-    if (p.kind === 'forecast') {
-      $('cond').textContent = (p.current && p.current.condition) || '';
-      $('temp').textContent = (p.current ? p.current.temp : '--') + '°';
-      $('cur-icon').innerHTML = icon(p.current ? p.current.icon : 'cloud', 'var(--card-accent)');
-      $('now').classList.remove('hidden');
-      $('strip-wrap').classList.remove('hidden');
-      $('rows').classList.add('hidden');
-      $('strip').innerHTML = (p.forecast || []).map(function(t, i){
-        return '<div class="tile" data-i="'+i+'">' +
-          '<div class="t">'+esc(t.time)+'</div>' +
-          '<div class="icon">'+icon(t.icon)+'</div>' +
-          '<div class="deg">'+esc(t.temp)+'°</div></div>';
-      }).join('');
-    } else {
-      $('cond').textContent = '';
-      $('now').classList.add('hidden');
-      $('strip-wrap').classList.add('hidden');
-      $('rows').classList.remove('hidden');
-      $('rows').innerHTML = (p.rows || []).map(function(r){
-        return '<div class="row"><span class="l">'+esc(r.label)+'</span><span class="v">'+esc(r.value)+'</span></div>';
-      }).join('');
-    }
+    $('cond').textContent = '';
+    $('rows').innerHTML = (p.rows || []).map(function(r){
+      return '<div class="row"><span class="l">'+esc(r.label)+'</span><span class="v">'+esc(r.value)+'</span></div>';
+    }).join('');
     requestAnimationFrame(function(){ $('card').classList.add('show'); $('card').classList.remove('leaving'); });
   }
 
-  // api.scrollTo(index): highlight-pulse the tile; scroll it into view unless the user
-  // is (recently) driving the strip themselves.
-  function scrollTo(i){
-    const tiles = $('strip').children;
-    if (!tiles.length) return;
-    i = Math.min(tiles.length - 1, Math.max(0, i|0));
-    for (let k = 0; k < tiles.length; k++) tiles[k].classList.remove('hot','pulse');
-    const el = tiles[i];
-    el.classList.add('hot','pulse');
-    setTimeout(function(){ el.classList.remove('pulse'); }, 750);
-    if (!engaged()) el.scrollIntoView({ behavior:'smooth', inline:'center', block:'nearest' });
-  }
+  // This window only ever receives kind:'rows' payloads (forecast lives on the weather
+  // board), so there is nothing to scroll to here. Kept as a no-op so a stray
+  // card:scrollTo IPC message (e.g. racing a kind switch) is harmless.
+  function scrollTo(i){}
 
   // Guards against double-firing cardFaded() if both transitionend and the setTimeout
   // fallback would otherwise race (e.g. a dropped/retried transitionend).
@@ -227,11 +149,6 @@ html[data-theme="fullLight"] .row{border-bottom-color:rgba(0,0,0,.06)}
   $('btn-x').onclick = close;
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape') close(); });
   window.addEventListener('blur', close); // click-outside
-  const strip = $('strip');
-  ['pointerdown','wheel','touchstart'].forEach(function(ev){
-    strip.addEventListener(ev, function(){ engagedUntil = Date.now() + 4000; }, { passive:true });
-  });
-  strip.addEventListener('scroll', function(){ if (engaged()) engagedUntil = Date.now() + 4000; }, { passive:true });
   document.addEventListener('pointerenter', function(){ hovering = true; });
   document.addEventListener('pointerleave', function(){
     hovering = false;
