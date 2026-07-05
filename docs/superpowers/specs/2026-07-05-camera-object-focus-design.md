@@ -23,8 +23,14 @@ from the renderer. D2 reuses all of this.
 
 Decisions locked with the user (2026-07-05):
 
-- **Box behavior:** a **one-shot lock** — a single grounding call, box drawn at that spot
-  with a lock animation, **held ~5 s then fades** (a still lock, not live tracking).
+- **Box behavior:** **UPDATED 2026-07-05 to live tracking** (was one-shot). The grounding
+  call still picks WHICH object + label once; then a fast on-device detector (COCO-SSD,
+  reintroduced but single-object only) follows THAT object frame-to-frame by box overlap, so
+  the box tracks live movement. When the on-device tracker loses it (object isn't a COCO
+  class, or moved off), the renderer asks main to re-locate with a **throttled** AI vision
+  call (`camera:reground`, ~every 2 s). Pure `iou`/`pickBestBox` in `lib/grounding.js` do the
+  frame-to-frame matching. Stops on camera close / new focus. (Not the old ambient
+  "box everything" — single object, voice-driven.)
 - **Confirmation:** **spoken + labeled box** — the grounding call returns a short `label`; the
   box shows a caption and the assistant says "Locked on the &lt;label&gt;."
 - **On failure:** **say it honestly, no box** — one retry on a fresh frame; if still not
