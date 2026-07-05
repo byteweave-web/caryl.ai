@@ -4,7 +4,7 @@
 **Sub-project:** D (Advanced Camera Mode), piece **D2** of 5. D1 (glass viewfinder shell +
 greeting) shipped (PR #5). Remaining: D3 real 3D (meshy/tripo), D4 health/diet, D5 research
 overlay.
-**Status:** Approved design, pre-implementation.
+**Status:** Implemented (D2). See docs/superpowers/plans/2026-07-05-camera-object-focus.md.
 
 ## Context
 
