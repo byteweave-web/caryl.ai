@@ -4,7 +4,7 @@
 **Sub-project:** D (Advanced Camera Mode), piece **D1** of 5. Later pieces (own specs):
 D2 voice-driven object focus/highlight, D3 real 3D via meshy.ai/tripo.ai, D4 health/diet
 analysis, D5 keep-camera-open research overlay.
-**Status:** Approved design, pre-implementation.
+**Status:** Implemented (D1). See docs/superpowers/plans/2026-07-05-camera-shell-redesign.md.
 
 ## Context
 
