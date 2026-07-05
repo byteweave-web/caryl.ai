@@ -61,6 +61,7 @@ const OfflineMemory = require('./lib/offline-memory');
 const localSearch = require('./lib/local-search');
 const enginesLib = require('./lib/engines');
 const downloads = require('./lib/downloads');
+const { parseGroundingBox } = require('./lib/grounding'); // D2: normalize the vision model's focus box
 
 // Ensure cfg.engines exists (one-time derivation from the pre-Caryl flags).
 {
@@ -1857,6 +1858,30 @@ async function describeObjectForModel(cfg, dataUrl) {
     onToken: (d) => { raw += d; }
   });
   return (splitThinking(raw).answer || raw || '').trim();
+}
+
+// D2: ask the vision model to LOCATE a described object and return a normalized bounding box.
+// Returns { found, label?, box? } via parseGroundingBox. One call; the caller may retry.
+async function groundObject(cfg, dataUrl, target) {
+  const want = String(target || 'the main object').trim();
+  const q =
+    'Find this object in the image: "' + want + '".\n' +
+    'Reply with ONLY a compact JSON object and nothing else:\n' +
+    '{"found":true,"label":"<2-3 word name of the object>","box":[x1,y1,x2,y2]}\n' +
+    'The box is the tight bounding box around that object, as fractions of the image from 0 ' +
+    'to 1: x1,y1 = top-left corner, x2,y2 = bottom-right corner (x is left->right, y is ' +
+    'top->bottom). If the object is not visible, reply exactly {"found":false}. No prose, no code fence.';
+  const v = visionCfg(cfg);
+  let raw = '';
+  try {
+    await streamChat({
+      baseUrl: v.baseUrl, apiKey: v.apiKey, model: v.model, temperature: 0,
+      messages: [{ role: 'user', content: [{ type: 'text', text: q }, { type: 'image_url', image_url: { url: dataUrl } }] }],
+      signal: activeController ? activeController.signal : undefined,
+      onToken: (d) => { raw += d; }
+    });
+  } catch (_e) { return { found: false }; }
+  return parseGroundingBox(splitThinking(raw).answer || raw || '');
 }
 
 // Ask the model to assemble the object from primitive shapes and return strict JSON.
@@ -3671,6 +3696,7 @@ ipcMain.handle('ui:sendText', async (_event, text) => {
     '{"action":"web_search","target":"best calisthenics parks","say":"Searching that now."}\n' +
     '{"action":"see_screen","query":"what the user is asking about the screen"}\n' +
     '{"action":"see_camera","query":"what the user wants to know about what the camera sees"}\n' +
+    '{"action":"focus_object","target":"the object the user wants highlighted, e.g. the mug in my hand"}\n' +
     '{"action":"close_camera"}\n' +
     '{"action":"generate_image","target":"a red fox in a snowy forest, cinematic","say":"Creating that now."}\n' +
     '{"action":"make_3d","target":"a red coffee mug"}\n' +
@@ -3688,6 +3714,11 @@ ipcMain.handle('ui:sendText', async (_event, text) => {
     'Use see_camera when the user asks you to LOOK AT THEM, look through the CAMERA or WEBCAM, ' +
     'see what they are HOLDING UP or SHOWING you, or identify a real object in front of them ' +
     '(e.g. "look at me", "what am I holding", "can you see this", "identify this"). ' +
+    'Use focus_object when the user asks you to FOCUS ON, LOCK ONTO, HIGHLIGHT, POINT TO, or ' +
+    'TRACK a specific object in the camera view (e.g. "focus on the object in my hand", ' +
+    '"highlight the mug", "lock onto my phone"); target is their description of that object. ' +
+    'It draws a targeting box on the object - use it instead of see_camera when they want you to ' +
+    'PINPOINT/HIGHLIGHT a thing rather than answer a question about the view. ' +
     'Use close_camera when the user asks you to CLOSE, STOP, EXIT, or TURN OFF the camera or webcam. ' +
     'Use make_3d when the user asks you to MAKE, BUILD, CREATE, or GENERATE a 3D MODEL of ' +
     'something - put the object in "target" (e.g. "a wooden chair", "a toy car"). If they refer ' +
@@ -3910,6 +3941,31 @@ ipcMain.handle('ui:sendText', async (_event, text) => {
           const q = String(action.query || msg || 'What do you see through the camera? Identify any objects, people, or text. Be concise and natural.');
           await describeImageToChat(cfg, dataUrl, q);
         }
+      } else if (action.action === 'focus_object') {
+        // D2: voice "focus on X" -> ground the object and draw a one-shot targeting box.
+        const target = String(action.target || action.query || '').trim();
+        activity.push({ kind: 'action', text: 'Focusing on ' + (target || 'that') + '…', time: clockTime() });
+        aiStatus = 'working';
+        let res = { found: false };
+        let frame = await requestCameraFrame();
+        if (frame) {
+          res = await groundObject(cfg, frame, target);
+          if (!res.found) { // one retry on a fresh frame
+            frame = await requestCameraFrame();
+            if (frame) res = await groundObject(cfg, frame, target);
+          }
+        }
+        let say;
+        if (res.found) {
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('camera:focus', { box: res.box, label: res.label });
+          say = res.label ? ('Locked on the ' + res.label + '.') : 'Locked on it.';
+        } else {
+          say = 'I can’t quite pinpoint that — can you hold it up clearly?';
+        }
+        activity.push({ kind: 'said', text: say, time: clockTime() });
+        mem().add('assistant', say);
+        speak(say);
+        aiStatus = 'idle';
       } else if (action.action === 'web_search') {
         const query = String(action.target || action.query || msg || '').trim();
         if (isOffline(cfg)) {
