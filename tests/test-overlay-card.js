@@ -12,20 +12,14 @@ assert.strictEqual(overlay.resolveAccent('hotpink'), null, 'unknown accent -> nu
 assert.strictEqual(overlay.resolveAccent(''), null, 'empty accent -> null');
 assert.strictEqual(overlay.resolveAccent(undefined), null, 'missing accent -> null');
 
-// --- mapIcon: OpenWeather codes -> sprite ids ---
-assert.strictEqual(overlay.mapIcon('01d'), 'sun');
-assert.strictEqual(overlay.mapIcon('01n'), 'moon');
-assert.strictEqual(overlay.mapIcon('02d'), 'partly');
-assert.strictEqual(overlay.mapIcon('02n'), 'partly');
-assert.strictEqual(overlay.mapIcon('03d'), 'cloud');
-assert.strictEqual(overlay.mapIcon('04n'), 'cloud');
-assert.strictEqual(overlay.mapIcon('09d'), 'drizzle');
-assert.strictEqual(overlay.mapIcon('10n'), 'rain');
-assert.strictEqual(overlay.mapIcon('11d'), 'thunder');
-assert.strictEqual(overlay.mapIcon('13d'), 'snow');
-assert.strictEqual(overlay.mapIcon('50d'), 'mist');
-assert.strictEqual(overlay.mapIcon('99x'), 'cloud', 'unknown code -> cloud default');
-assert.strictEqual(overlay.mapIcon(''), 'cloud', 'empty code -> cloud default');
+// --- mapIcon: now a sprite-id validator (the handler emits final sprite ids) ---
+['sun', 'moon', 'partly', 'cloud', 'drizzle', 'rain', 'thunder', 'snow', 'mist'].forEach((id) => {
+  assert.strictEqual(overlay.mapIcon(id), id, id + ' is a valid sprite id, passes through');
+});
+assert.strictEqual(overlay.mapIcon('01d'), 'cloud', 'a stale OpenWeather code is not a sprite -> cloud');
+assert.strictEqual(overlay.mapIcon('nonsense'), 'cloud', 'unknown -> cloud default');
+assert.strictEqual(overlay.mapIcon(''), 'cloud', 'empty -> cloud default');
+assert.strictEqual(overlay.mapIcon(undefined), 'cloud', 'missing -> cloud default');
 
 // --- normalizePayload: rows kind ---
 let p = overlay.normalizePayload({ title: 'System stats', accent: 'blue', rows: [{ label: 'CPU', value: '8 x Test' }] });
@@ -55,12 +49,12 @@ assert.ok(Array.isArray(overlay.normalizePayload(null).rows));
 function boardFixture() {
   return {
     kind: 'forecast', title: 'Beirut, LB', accent: 'sky', scene: 'storm',
-    current: { temp: 28.4, hi: 30, lo: 22, icon: '11d', condition: 'Thunderstorm',
+    current: { temp: 28.4, hi: 30, lo: 22, icon: 'thunder', condition: 'Thunderstorm',
       feelsLike: 29, humidity: 67, dewPoint: 21, pressure: 1007, visibility: 21,
       wind: { speed: 23, gust: 37, deg: 241 }, sunrise: '05:30', sunset: '19:52',
       isNight: false, moon: { phase: 'waning-gibbous', illumination: 82 } },
-    hourly: Array.from({ length: 8 }, (_, i) => ({ time: i + ':00', temp: 20 + i, icon: '10d', condition: 'Rain', pop: 40 })),
-    daily: Array.from({ length: 5 }, (_, i) => ({ day: i ? 'Sun' : 'Today', icon: '01d', lo: 20, hi: 30, pop: 10 })),
+    hourly: Array.from({ length: 8 }, (_, i) => ({ time: i + ':00', temp: 20 + i, icon: 'rain', condition: 'Rain', pop: 40 })),
+    daily: Array.from({ length: 5 }, (_, i) => ({ day: i ? 'Sun' : 'Today', icon: 'sun', lo: 20, hi: 30, pop: 10 })),
     narration: [{ text: 'a', tile: 0 }, { text: 'b', tile: 7 }]
   };
 }

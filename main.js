@@ -3504,52 +3504,52 @@ ipcMain.on('tts:idle', (_e, info) => {
 const CARD_FIXTURES = [
   { kind: 'forecast', title: 'Beirut, LB', accent: 'sky', scene: 'clear-day',
     current: {
-      temp: 28, hi: 31, lo: 23, icon: '01d', condition: 'Clear sky',
+      temp: 28, hi: 31, lo: 23, icon: 'sun', condition: 'Clear sky',
       feelsLike: 29, humidity: 54, dewPoint: 18, pressure: 1012, visibility: 10000,
       wind: { speed: 11, gust: 19, deg: 260 }, sunrise: '05:42', sunset: '19:48',
       isNight: false, moon: { phase: 'waxing-crescent', illumination: 22 }
     },
     hourly: [
-      { time: '15:00', temp: 28, icon: '01d', condition: 'Clear', pop: 0 },
-      { time: '18:00', temp: 26, icon: '02d', condition: 'Few clouds', pop: 5 },
-      { time: '21:00', temp: 23, icon: '01n', condition: 'Clear', pop: 0 },
-      { time: '00:00', temp: 21, icon: '01n', condition: 'Clear', pop: 0 },
-      { time: '03:00', temp: 20, icon: '01n', condition: 'Clear', pop: 0 },
-      { time: '06:00', temp: 21, icon: '01d', condition: 'Clear', pop: 0 },
-      { time: '09:00', temp: 24, icon: '01d', condition: 'Clear', pop: 0 },
-      { time: '12:00', temp: 27, icon: '01d', condition: 'Clear', pop: 0 }
+      { time: '15:00', temp: 28, icon: 'sun', condition: 'Clear', pop: 0 },
+      { time: '18:00', temp: 26, icon: 'partly', condition: 'Few clouds', pop: 5 },
+      { time: '21:00', temp: 23, icon: 'moon', condition: 'Clear', pop: 0 },
+      { time: '00:00', temp: 21, icon: 'moon', condition: 'Clear', pop: 0 },
+      { time: '03:00', temp: 20, icon: 'moon', condition: 'Clear', pop: 0 },
+      { time: '06:00', temp: 21, icon: 'sun', condition: 'Clear', pop: 0 },
+      { time: '09:00', temp: 24, icon: 'sun', condition: 'Clear', pop: 0 },
+      { time: '12:00', temp: 27, icon: 'sun', condition: 'Clear', pop: 0 }
     ],
     daily: [
-      { day: 'Today', icon: '01d', lo: 23, hi: 31, pop: 0 },
-      { day: 'Sat', icon: '01d', lo: 22, hi: 30, pop: 0 },
-      { day: 'Sun', icon: '02d', lo: 22, hi: 29, pop: 10 },
-      { day: 'Mon', icon: '01d', lo: 23, hi: 31, pop: 0 },
-      { day: 'Tue', icon: '01d', lo: 24, hi: 32, pop: 0 }
+      { day: 'Today', icon: 'sun', lo: 23, hi: 31, pop: 0 },
+      { day: 'Sat', icon: 'sun', lo: 22, hi: 30, pop: 0 },
+      { day: 'Sun', icon: 'partly', lo: 22, hi: 29, pop: 10 },
+      { day: 'Mon', icon: 'sun', lo: 23, hi: 31, pop: 0 },
+      { day: 'Tue', icon: 'sun', lo: 24, hi: 32, pop: 0 }
     ],
     narration: [{ text: 'now', tile: 0 }, { text: 'tonight', tile: 3 }, { text: 'tomorrow', tile: 7 }] },
   { kind: 'forecast', title: 'Tokyo, JP', accent: 'violet', scene: 'storm',
     current: {
-      temp: 19, hi: 21, lo: 16, icon: '11d', condition: 'Thunderstorm',
+      temp: 19, hi: 21, lo: 16, icon: 'thunder', condition: 'Thunderstorm',
       feelsLike: 18, humidity: 82, dewPoint: 16, pressure: 998, visibility: 6000,
       wind: { speed: 24, gust: 41, deg: 195 }, sunrise: '04:38', sunset: '18:53',
       isNight: false, moon: { phase: 'full', illumination: 98 }
     },
     hourly: [
-      { time: '15:00', temp: 19, icon: '11d', condition: 'Thunderstorm', pop: 80 },
-      { time: '18:00', temp: 18, icon: '10d', condition: 'Rain', pop: 70 },
-      { time: '21:00', temp: 17, icon: '10n', condition: 'Rain', pop: 65 },
-      { time: '00:00', temp: 17, icon: '10n', condition: 'Light rain', pop: 55 },
-      { time: '03:00', temp: 16, icon: '09n', condition: 'Drizzle', pop: 40 },
-      { time: '06:00', temp: 16, icon: '04d', condition: 'Clouds', pop: 20 },
-      { time: '09:00', temp: 17, icon: '03d', condition: 'Clouds', pop: 10 },
-      { time: '12:00', temp: 18, icon: '02d', condition: 'Few clouds', pop: 5 }
+      { time: '15:00', temp: 19, icon: 'thunder', condition: 'Thunderstorm', pop: 80 },
+      { time: '18:00', temp: 18, icon: 'rain', condition: 'Rain', pop: 70 },
+      { time: '21:00', temp: 17, icon: 'rain', condition: 'Rain', pop: 65 },
+      { time: '00:00', temp: 17, icon: 'rain', condition: 'Light rain', pop: 55 },
+      { time: '03:00', temp: 16, icon: 'drizzle', condition: 'Drizzle', pop: 40 },
+      { time: '06:00', temp: 16, icon: 'cloud', condition: 'Clouds', pop: 20 },
+      { time: '09:00', temp: 17, icon: 'cloud', condition: 'Clouds', pop: 10 },
+      { time: '12:00', temp: 18, icon: 'partly', condition: 'Few clouds', pop: 5 }
     ],
     daily: [
-      { day: 'Today', icon: '11d', lo: 16, hi: 21, pop: 80 },
-      { day: 'Sat', icon: '10d', lo: 16, hi: 20, pop: 60 },
-      { day: 'Sun', icon: '04d', lo: 15, hi: 19, pop: 30 },
-      { day: 'Mon', icon: '03d', lo: 15, hi: 20, pop: 10 },
-      { day: 'Tue', icon: '02d', lo: 16, hi: 21, pop: 5 }
+      { day: 'Today', icon: 'thunder', lo: 16, hi: 21, pop: 80 },
+      { day: 'Sat', icon: 'rain', lo: 16, hi: 20, pop: 60 },
+      { day: 'Sun', icon: 'cloud', lo: 15, hi: 19, pop: 30 },
+      { day: 'Mon', icon: 'cloud', lo: 15, hi: 20, pop: 10 },
+      { day: 'Tue', icon: 'partly', lo: 16, hi: 21, pop: 5 }
     ],
     narration: [{ text: 'now', tile: 0 }, { text: 'tonight', tile: 3 }, { text: 'tomorrow', tile: 7 }] },
   { kind: 'rows', title: 'System stats', accent: 'blue',

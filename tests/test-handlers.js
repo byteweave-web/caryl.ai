@@ -97,267 +97,245 @@ assert.strictEqual(rr.ok, true);
 assert.ok(typeof rr.speak === 'string' && rr.speak.length > 0);
 assert.ok(rr.overlay && Array.isArray(rr.overlay.rows), 'run() carries the overlay payload');
 
-// --- weather: mocked network, error mapping, exact overlay schema ---
-// The overlay card schema is shared with systemStats; both must satisfy it identically.
-function assertOverlaySchema(payload, label) {
-  assert.ok(payload && typeof payload === 'object', label + ': payload is an object');
-  assert.strictEqual(typeof payload.title, 'string', label + ': title is a string');
-  assert.ok(payload.title.length > 0, label + ': title non-empty');
-  assert.strictEqual(typeof payload.accent, 'string', label + ': accent is a string');
-  assert.ok(payload.accent.length > 0, label + ': accent non-empty');
-  assert.ok(Array.isArray(payload.rows) && payload.rows.length > 0, label + ': rows non-empty array');
-  for (const row of payload.rows) {
-    assert.strictEqual(typeof row.label, 'string', label + ': row.label is a string');
-    assert.strictEqual(typeof row.value, 'string', label + ': row.value is a string');
-    assert.deepStrictEqual(Object.keys(row).sort(), ['label', 'value'], label + ': row has exactly {label,value}');
-  }
-}
+// --- weather (Open-Meteo, no key): WMO code mapping ---
+// wmoSprite: code (+ day flag) -> board sprite id
+assert.strictEqual(weather.wmoSprite(0, true), 'sun');
+assert.strictEqual(weather.wmoSprite(0, false), 'moon');
+assert.strictEqual(weather.wmoSprite(1, true), 'sun');
+assert.strictEqual(weather.wmoSprite(1, false), 'moon');
+assert.strictEqual(weather.wmoSprite(2, true), 'partly');
+assert.strictEqual(weather.wmoSprite(3, true), 'cloud');
+assert.strictEqual(weather.wmoSprite(45, true), 'mist');
+assert.strictEqual(weather.wmoSprite(48, false), 'mist');
+assert.strictEqual(weather.wmoSprite(51, true), 'drizzle');
+assert.strictEqual(weather.wmoSprite(57, true), 'drizzle');
+assert.strictEqual(weather.wmoSprite(61, true), 'rain');
+assert.strictEqual(weather.wmoSprite(65, true), 'rain');
+assert.strictEqual(weather.wmoSprite(82, true), 'rain');
+assert.strictEqual(weather.wmoSprite(71, true), 'snow');
+assert.strictEqual(weather.wmoSprite(77, true), 'snow');
+assert.strictEqual(weather.wmoSprite(86, true), 'snow');
+assert.strictEqual(weather.wmoSprite(95, true), 'thunder');
+assert.strictEqual(weather.wmoSprite(99, false), 'thunder');
+assert.strictEqual(weather.wmoSprite(999, true), 'cloud', 'unknown code -> cloud');
 
-// systemStats and weather payloads must match the SAME overlay schema.
-assertOverlaySchema(sys.buildPayload(raw), 'systemStats');
+// wmoScene: code (+ day flag) -> sky scene
+assert.strictEqual(weather.wmoScene(0, true), 'clear-day');
+assert.strictEqual(weather.wmoScene(0, false), 'clear-night');
+assert.strictEqual(weather.wmoScene(1, false), 'clear-night');
+assert.strictEqual(weather.wmoScene(2, true), 'clouds');
+assert.strictEqual(weather.wmoScene(3, false), 'clouds');
+assert.strictEqual(weather.wmoScene(45, true), 'mist');
+assert.strictEqual(weather.wmoScene(55, true), 'rain');
+assert.strictEqual(weather.wmoScene(65, true), 'rain');
+assert.strictEqual(weather.wmoScene(82, true), 'rain');
+assert.strictEqual(weather.wmoScene(75, true), 'snow');
+assert.strictEqual(weather.wmoScene(86, true), 'snow');
+assert.strictEqual(weather.wmoScene(95, true), 'storm');
+assert.strictEqual(weather.wmoScene(99, true), 'storm');
+assert.strictEqual(weather.wmoScene(999, true), 'clouds', 'unknown -> clouds');
 
-const OWM_OK = {
-  name: 'Paris', sys: { country: 'FR' },
-  main: { temp: 18.3, feels_like: 17.1, humidity: 62 },
-  weather: [{ main: 'Clouds', description: 'broken clouds' }],
-  wind: { speed: 4.1 }
+// wmoText: code -> human condition; unknown -> em dash
+assert.strictEqual(weather.wmoText(0), 'Clear sky');
+assert.strictEqual(weather.wmoText(3), 'Overcast');
+assert.strictEqual(weather.wmoText(95), 'Thunderstorm');
+assert.strictEqual(weather.wmoText(999), '—', 'unknown code -> em dash');
+
+// --- weather: cleanLocation strips the trailing filler the "after:in" extractor drags in ---
+assert.strictEqual(weather.cleanLocation('Lebanon today?'), 'Lebanon');
+assert.strictEqual(weather.cleanLocation('New York today?'), 'New York');
+assert.strictEqual(weather.cleanLocation('Tokyo right now'), 'Tokyo');
+assert.strictEqual(weather.cleanLocation('Paris this evening'), 'Paris');
+assert.strictEqual(weather.cleanLocation('London tomorrow.'), 'London');
+assert.strictEqual(weather.cleanLocation('San Francisco'), 'San Francisco', 'clean input unchanged');
+assert.strictEqual(weather.cleanLocation('Rome please'), 'Rome');
+assert.strictEqual(weather.cleanLocation('  Berlin  '), 'Berlin');
+assert.strictEqual(weather.cleanLocation('today'), 'today', 'a lone word is never stripped away');
+assert.strictEqual(weather.cleanLocation(''), '');
+
+// --- weather: pickHour finds the first hourly slot at/after "now" ---
+const HRS = ['2026-07-05T07:00', '2026-07-05T08:00', '2026-07-05T09:00', '2026-07-05T10:00'];
+assert.strictEqual(weather.pickHour({ time: HRS }, '2026-07-05T09:00'), 2, 'matches the current hour');
+assert.strictEqual(weather.pickHour({ time: HRS }, '2026-07-05T08:30'), 2, 'rounds up to the next slot');
+assert.strictEqual(weather.pickHour({ time: HRS }, '2026-07-04T00:00'), 0, 'before the range -> 0');
+assert.strictEqual(weather.pickHour({}, 'x'), 0, 'no times -> 0');
+
+// --- weather: moonPhase (documented ephemeris, computed locally) ---
+let mp = weather.moonPhase(Date.UTC(2000, 0, 6, 19, 0));
+assert.strictEqual(mp.phase, 'new-moon');
+assert.ok(mp.illumination <= 5, 'new moon ~0% lit');
+mp = weather.moonPhase(Date.UTC(2000, 0, 21, 12, 0));
+assert.strictEqual(mp.phase, 'full-moon');
+assert.ok(mp.illumination >= 95, 'full moon ~100% lit');
+mp = weather.moonPhase(Date.UTC(2000, 0, 14, 12, 0));
+assert.strictEqual(mp.phase, 'first-quarter');
+
+// --- Open-Meteo fixtures + a URL-dispatching fetch stub (geocoding vs forecast) ---
+// Geocoding: two matches; the higher-population one must win (capital/largest city intent).
+const OM_GEO = {
+  results: [
+    { name: 'Manila', country: 'Philippines', latitude: 14.6, longitude: 120.98, timezone: 'Asia/Manila', population: 1600000 },
+    { name: 'Metro Manila', country: 'Philippines', latitude: 14.6, longitude: 121.0, timezone: 'Asia/Manila', population: 13000000 }
+  ]
 };
-// A fetch stub returning a Response-like object with a given status + JSON body.
-function fetchReturning(status, body) {
-  return async (_url) => ({ status, json: async () => body });
+// Forecast: 24 hourly slots for the day (so "now" at 09:00 leaves 8 tiles), 6 daily rows.
+const OM_FC = (function () {
+  const hours = [], temp = [], code = [], pop = [], isday = [];
+  for (let h = 0; h < 24; h++) {
+    hours.push('2026-07-05T' + String(h).padStart(2, '0') + ':00');
+    temp.push(28 + (h === 12 ? 5 : 0));
+    code.push(h === 15 ? 61 : 1);          // a rain hour in the strip so narration mentions it
+    pop.push(h === 15 ? 80 : 10);
+    isday.push(h >= 6 && h < 18 ? 1 : 0);
+  }
+  return {
+    utc_offset_seconds: 28800, timezone: 'Asia/Manila',
+    current: {
+      time: '2026-07-05T09:00', temperature_2m: 30.7, relative_humidity_2m: 67,
+      apparent_temperature: 36.7, is_day: 1, weather_code: 95, surface_pressure: 1011.4,
+      wind_speed_10m: 12, wind_direction_10m: 162, wind_gusts_10m: 18, dew_point_2m: 23.9, visibility: 26800
+    },
+    hourly: { time: hours, temperature_2m: temp, weather_code: code, precipitation_probability: pop, is_day: isday },
+    daily: {
+      time: ['2026-07-05', '2026-07-06', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10'],
+      weather_code: [95, 80, 3, 1, 61, 0],
+      temperature_2m_max: [33.3, 33.2, 32.9, 32.4, 30, 28.3],
+      temperature_2m_min: [26.5, 25.8, 25.9, 26.2, 27.3, 25.4],
+      precipitation_probability_max: [100, 97, 40, 10, 73, 0],
+      sunrise: ['2026-07-05T05:31', '2026-07-06T05:31', '2026-07-07T05:32', '2026-07-08T05:32', '2026-07-09T05:32', '2026-07-10T05:33'],
+      sunset: ['2026-07-05T18:29', '2026-07-06T18:29', '2026-07-07T18:29', '2026-07-08T18:29', '2026-07-09T18:29', '2026-07-10T18:29']
+    }
+  };
+})();
+function omFetch(status, body) { return async (_url) => ({ status, json: async () => body }); }
+function omDispatch(geo, fc) {
+  return async (url) => (String(url).indexOf('geocoding-api') >= 0
+    ? { status: 200, json: async () => geo }
+    : { status: 200, json: async () => fc });
 }
 
 (async () => {
-  // buildPayload is pure and schema-exact
-  let wp = weather.buildPayload(weather.normalize(OWM_OK), 'metric');
-  assertOverlaySchema(wp, 'weather');
-  assert.ok(/Paris/.test(wp.title), 'title carries the city');
-  assert.ok(wp.rows.some((r) => /18/.test(r.value)), 'temperature is present');
-  assert.ok(wp.rows.some((r) => /°C/.test(r.value)), 'metric shows °C');
+  // --- geocode: picks the highest-population match ---
+  let g = await weather.geocode('Manila', { fetchImpl: omFetch(200, OM_GEO) });
+  assert.strictEqual(g.ok, true);
+  assert.strictEqual(g.place.name, 'Metro Manila', 'highest population wins');
+  assert.strictEqual(g.place.lat, 14.6);
+  assert.strictEqual(g.place.country, 'Philippines');
 
-  // imperial units -> °F
-  wp = weather.buildPayload(weather.normalize(OWM_OK), 'imperial');
-  assert.ok(wp.rows.some((r) => /°F/.test(r.value)), 'imperial shows °F');
+  g = await weather.geocode('Zzzznowhere', { fetchImpl: omFetch(200, { results: [] }) });
+  assert.strictEqual(g.ok, false);
+  assert.ok(/find weather/i.test(g.error), 'no results -> friendly not-found');
 
-  // run() happy path with mocked network + injected config
-  let r = await weather.run({ location: 'Paris' }, { config: { openWeatherApiKey: 'k', weatherUnits: 'metric' }, fetch: fetchReturning(200, OWM_OK) });
+  // leading-article fallback: "the Philippines" is empty, retry drops "the" -> resolves.
+  // A name where the article is real ("the Hague") resolves on the FIRST try (no retry).
+  let geoNames = [];
+  const articleFetch = async (url) => {
+    const name = decodeURIComponent((String(url).match(/name=([^&]*)/) || [])[1] || '');
+    geoNames.push(name);
+    const found = { results: [{ name: 'Manila', country: 'Philippines', latitude: 14.6, longitude: 121, population: 1600000 }] };
+    return { status: 200, json: async () => (name.toLowerCase() === 'philippines' ? found : { results: [] }) };
+  };
+  g = await weather.geocode('the Philippines', { fetchImpl: articleFetch });
+  assert.strictEqual(g.ok, true, 'the Philippines resolves via the article-stripped retry');
+  assert.deepStrictEqual(geoNames, ['the Philippines', 'Philippines'], 'tried as-typed first, then without "the"');
+
+  geoNames = [];
+  const hagueFetch = async (url) => {
+    const name = decodeURIComponent((String(url).match(/name=([^&]*)/) || [])[1] || '');
+    geoNames.push(name);
+    return { status: 200, json: async () => ({ results: [{ name: 'The Hague', country: 'Netherlands', latitude: 52.08, longitude: 4.31, population: 500000 }] }) };
+  };
+  g = await weather.geocode('the Hague', { fetchImpl: hagueFetch });
+  assert.strictEqual(g.ok, true);
+  assert.deepStrictEqual(geoNames, ['the Hague'], 'a real-article name resolves on the first try, no retry');
+
+  g = await weather.geocode('X', { fetchImpl: async () => { throw new Error('ENOTFOUND boom'); } });
+  assert.strictEqual(g.ok, false);
+  assert.ok(!/ENOTFOUND/.test(g.error), 'raw network error is not leaked');
+
+  // --- buildBoardPayload: v2 shape straight from an Open-Meteo body (no unit conversion) ---
+  const place = { name: 'Manila', country: 'Philippines', lat: 14.6, lon: 120.98 };
+  const bp = weather.buildBoardPayload(place, OM_FC, 'metric');
+  assert.strictEqual(bp.kind, 'forecast');
+  assert.strictEqual(bp.scene, 'storm', 'WMO 95 by day -> storm');
+  assert.strictEqual(bp.title, 'Manila, Philippines');
+  assert.strictEqual(bp.current.icon, 'thunder', 'WMO 95 -> thunder sprite');
+  assert.strictEqual(bp.current.condition, 'Thunderstorm');
+  assert.strictEqual(bp.current.temp, 31);
+  assert.strictEqual(bp.current.feelsLike, 37);
+  assert.strictEqual(bp.current.humidity, 67);
+  assert.strictEqual(bp.current.dewPoint, 24, 'dew point straight from the body, rounded once');
+  assert.strictEqual(bp.current.pressure, 1011);
+  assert.strictEqual(bp.current.wind.speed, 12, 'wind used as-is (already km/h) - NOT multiplied by 3.6');
+  assert.strictEqual(bp.current.wind.gust, 18);
+  assert.strictEqual(bp.current.wind.deg, 162);
+  assert.strictEqual(bp.current.visibility, 26.8, 'metres -> km, one decimal');
+  assert.strictEqual(bp.current.units, 'metric');
+  assert.strictEqual(bp.current.isNight, false, 'is_day 1 -> day');
+  assert.strictEqual(bp.current.sunrise, '05:31');
+  assert.strictEqual(bp.current.sunset, '18:29');
+  assert.ok(bp.current.moon && typeof bp.current.moon.illumination === 'number');
+  assert.strictEqual(bp.hourly.length, 8, '8 tiles starting at "now" (09:00)');
+  assert.strictEqual(bp.hourly[0].time, '09:00');
+  assert.strictEqual(bp.hourly[0].icon, 'sun', 'WMO 1 by day -> sun');
+  assert.strictEqual(bp.daily.length, 6);
+  assert.strictEqual(bp.daily[0].day, 'Today');
+  assert.strictEqual(bp.daily[0].icon, 'thunder');
+  assert.strictEqual(bp.daily[0].hi, 33);
+  assert.strictEqual(bp.daily[0].lo, 27);        // 26.5 rounds to 27
+  assert.strictEqual(bp.daily[0].pop, 100);
+  assert.ok(Array.isArray(bp.narration) && bp.narration.length >= 2);
+  assert.ok(/rain/i.test(bp.narration.map((s) => s.text).join(' ')), 'the rain hour is narrated');
+
+  // imperial: units tag flips, numbers are used as returned (no double conversion), visibility -> miles
+  const bpi = weather.buildBoardPayload(place, OM_FC, 'imperial');
+  assert.strictEqual(bpi.current.units, 'imperial');
+  assert.strictEqual(bpi.current.wind.speed, 12, 'imperial wind used as-is (already mph)');
+  assert.strictEqual(bpi.current.visibility, 16.7, '26800 m -> ~16.7 mi');
+
+  // --- run(): geocode -> forecast -> board payload, all mocked, no real network ---
+  r = await weather.run({ location: 'Manila' }, { config: { weatherUnits: 'metric' }, fetch: omDispatch(OM_GEO, OM_FC) });
   assert.strictEqual(r.ok, true);
-  assertOverlaySchema(r.overlay, 'weather.run overlay');
-  assert.ok(typeof r.speak === 'string' && /Paris/.test(r.speak), 'spoken line names the place');
+  assert.strictEqual(r.overlay.kind, 'forecast');
+  assert.strictEqual(r.overlay.title, 'Metro Manila, Philippines');
+  assert.ok(/Right now/.test(r.speak), 'spoken line is the narration');
+  assert.strictEqual(r.speak, r.overlay.narration.map((s) => s.text).join(' '), 'speak === joined narration');
 
-  // 404 -> safe user-facing message, raw API text not leaked
-  r = await weather.run({ location: 'Nowherecity' }, { config: { openWeatherApiKey: 'k' }, fetch: fetchReturning(404, { cod: '404', message: 'city not found' }) });
-  assert.strictEqual(r.ok, false);
-  assert.ok(/couldn.?t find|not find|find weather/i.test(r.error), 'friendly 404 message');
-  assert.ok(!/city not found/i.test(r.error), 'raw API message is not leaked to the user');
+  // country query "Lebanon today?" -> cleaned -> geocoded, no key needed anywhere
+  let usedUrl = '';
+  r = await weather.run({ location: 'Lebanon today?' }, {
+    config: {},
+    fetch: async (url) => {
+      if (!usedUrl) usedUrl = url;
+      return String(url).indexOf('geocoding-api') >= 0
+        ? { status: 200, json: async () => OM_GEO }
+        : { status: 200, json: async () => OM_FC };
+    }
+  });
+  assert.strictEqual(r.ok, true, 'works with no API key configured');
+  assert.ok(/name=Lebanon(&|$)/.test(usedUrl), 'geocoded for "Lebanon", not "Lebanon today?": ' + usedUrl);
 
-  // 401 -> invalid key message
-  r = await weather.run({ location: 'Paris' }, { config: { openWeatherApiKey: 'bad' }, fetch: fetchReturning(401, { cod: 401, message: 'Invalid API key' }) });
-  assert.strictEqual(r.ok, false);
-  assert.ok(/key/i.test(r.error), 'invalid-key message mentions the key');
-
-  // network throw -> safe connection error, raw error not leaked
-  r = await weather.run({ location: 'Paris' }, { config: { openWeatherApiKey: 'k' }, fetch: async () => { throw new Error('ENOTFOUND boom'); } });
-  assert.strictEqual(r.ok, false);
-  assert.ok(/connect|reach|network|unavailable/i.test(r.error), 'friendly network error');
-  assert.ok(!/ENOTFOUND/.test(r.error), 'raw network error is not leaked');
-
-  // 200 but incomplete body -> safe error, not a crash
-  r = await weather.run({ location: 'Paris' }, { config: { openWeatherApiKey: 'k' }, fetch: fetchReturning(200, { name: 'X' }) });
-  assert.strictEqual(r.ok, false);
-  assert.ok(/weather/i.test(r.error), 'incomplete data yields a safe error');
-
-  // missing API key -> friendly settings prompt, and NEVER hits the network
+  // no location and no default -> asks once, and NEVER hits the network
   let hit = false;
-  r = await weather.run({ location: 'Paris' }, { config: {}, fetch: async () => { hit = true; return { status: 200, json: async () => OWM_OK }; } });
-  assert.strictEqual(r.ok, false);
-  assert.ok(/api key|settings/i.test(r.error), 'missing key points the user to Settings');
-  assert.strictEqual(hit, false, 'no network call without an API key');
-
-  // missing location and no default -> asks for it, and NEVER hits the network
-  hit = false;
-  r = await weather.run({}, { config: { openWeatherApiKey: 'k' }, fetch: async () => { hit = true; return { status: 200, json: async () => OWM_OK }; } });
+  r = await weather.run({}, { config: {}, fetch: async () => { hit = true; return { status: 200, json: async () => OM_GEO }; } });
   assert.strictEqual(r.ok, false);
   assert.ok(Array.isArray(r.needs) && r.needs.includes('location'), 'asks for the location');
   assert.strictEqual(hit, false, 'no network call without a location');
 
-  // --- weather: cleanLocation strips the trailing filler the "after:in" extractor drags in ---
-  // ("How is the weather in Lebanon today?" -> extractor yields "Lebanon today?" -> 404)
-  assert.strictEqual(weather.cleanLocation('Lebanon today?'), 'Lebanon');
-  assert.strictEqual(weather.cleanLocation('New York today?'), 'New York');
-  assert.strictEqual(weather.cleanLocation('Tokyo right now'), 'Tokyo');
-  assert.strictEqual(weather.cleanLocation('Paris this evening'), 'Paris');
-  assert.strictEqual(weather.cleanLocation('London tomorrow.'), 'London');
-  assert.strictEqual(weather.cleanLocation('San Francisco'), 'San Francisco', 'clean input unchanged');
-  assert.strictEqual(weather.cleanLocation('Rome please'), 'Rome');
-  assert.strictEqual(weather.cleanLocation('  Berlin  '), 'Berlin');
-  assert.strictEqual(weather.cleanLocation('today'), 'today', 'a lone word is never stripped away');
-  assert.strictEqual(weather.cleanLocation(''), '');
+  // geocoding finds nothing -> safe error, raw body not leaked
+  r = await weather.run({ location: 'Zzzznowhere' }, { config: {}, fetch: omFetch(200, { results: [] }) });
+  assert.strictEqual(r.ok, false);
+  assert.ok(/find weather/i.test(r.error), 'friendly not-found');
 
-  // run() actually queries the CLEANED location (no "today"/"?" reaching the API)
-  let seenUrl = '';
-  r = await weather.run({ location: 'Lebanon today?' }, {
-    config: { openWeatherApiKey: 'k', weatherUnits: 'metric' },
-    fetch: async (url) => { seenUrl = seenUrl || url; return { status: 200, json: async () => OWM_OK }; }
+  // forecast endpoint down -> safe error
+  r = await weather.run({ location: 'Manila' }, {
+    config: {},
+    fetch: async (url) => (String(url).indexOf('geocoding-api') >= 0
+      ? { status: 200, json: async () => OM_GEO }
+      : { status: 503, json: async () => ({}) })
   });
-  assert.ok(/q=Lebanon(&|$)/.test(seenUrl), 'the API is queried for "Lebanon", not "Lebanon today?": ' + seenUrl);
-
-  // --- weather: forecast normalization + narration (pure) ---
-  assert.strictEqual(weather.fmtHour(0, 0), '00:00');
-  assert.strictEqual(weather.fmtHour(15 * 3600, 0), '15:00');
-  assert.strictEqual(weather.fmtHour(23 * 3600, 2 * 3600), '01:00', 'tz offset wraps past midnight');
-
-  // OpenWeather /forecast shape: { city:{timezone}, list:[{dt, main:{temp}, weather:[{description,icon}]}] }
-  function owmForecast(n) {
-    return {
-      city: { timezone: 0 },
-      list: Array.from({ length: n }, (_, i) => ({
-        dt: (9 + i * 3) * 3600,
-        main: { temp: 20 + i },
-        weather: [{ description: i === 4 ? 'light rain' : 'few clouds', icon: i === 4 ? '10d' : '02d' }]
-      }))
-    };
-  }
-  let f = weather.normalizeForecast(owmForecast(12));
-  assert.ok(f && Array.isArray(f.tiles), 'normalizeForecast returns tiles');
-  assert.strictEqual(f.tiles.length, 8, 'takes the first 8 three-hour steps (~24h)');
-  assert.strictEqual(f.tiles[0].time, '09:00');
-  assert.strictEqual(f.tiles[0].temp, 20);
-  assert.strictEqual(f.tiles[4].icon, '10d', 'raw icon code preserved (mapping happens card-side)');
-  assert.strictEqual(weather.normalizeForecast({}), null, 'missing list -> null');
-  assert.strictEqual(weather.normalizeForecast({ list: [] }), null, 'empty list -> null');
-  assert.strictEqual(weather.normalizeForecast(null), null);
-
-  const wnorm = { city: 'Tokyo', country: 'JP', temp: 24.4, feelsLike: 25, humidity: 40, description: 'clear sky', windSpeed: 3 };
-
-  // buildNarration: ordered segments, tiles in range, first tile is 0, last is the strip end;
-  // joined text == what run() will speak
-  const segs = weather.buildNarration(wnorm, f.tiles, 'metric');
-  assert.ok(segs.length >= 2 && segs.length <= 4, '2-4 segments');
-  assert.strictEqual(segs[0].tile, 0, 'first segment anchors the current tile');
-  assert.strictEqual(segs[segs.length - 1].tile, f.tiles.length - 1, 'last segment anchors the strip end');
-  segs.forEach((s) => {
-    assert.ok(s.text && typeof s.text === 'string');
-    assert.ok(s.tile >= 0 && s.tile < f.tiles.length, 'tile index in range');
-  });
-  assert.ok(/rain/i.test(segs.map((s) => s.text).join(' ')), 'precipitation in the strip is mentioned');
-
-  // --- weather board: pure helpers (clock, night, scene, dew point, moon) ---
-  assert.strictEqual(weather.fmtClock(0, 0), '00:00');
-  assert.strictEqual(weather.fmtClock(19 * 3600 + 52 * 60, 0), '19:52');
-  assert.strictEqual(weather.fmtClock(23 * 3600, 2 * 3600), '01:00', 'tz wraps past midnight');
-
-  assert.strictEqual(weather.isNightAt(100, 200, 300), true, 'before sunrise = night');
-  assert.strictEqual(weather.isNightAt(250, 200, 300), false, 'between = day');
-  assert.strictEqual(weather.isNightAt(300, 200, 300), true, 'at/after sunset = night');
-
-  assert.strictEqual(weather.sceneFor('11d', false), 'storm');
-  assert.strictEqual(weather.sceneFor('09n', true), 'rain');
-  assert.strictEqual(weather.sceneFor('10d', false), 'rain');
-  assert.strictEqual(weather.sceneFor('13d', false), 'snow');
-  assert.strictEqual(weather.sceneFor('50d', false), 'mist');
-  assert.strictEqual(weather.sceneFor('03d', false), 'clouds');
-  assert.strictEqual(weather.sceneFor('04n', true), 'clouds');
-  assert.strictEqual(weather.sceneFor('01d', false), 'clear-day');
-  assert.strictEqual(weather.sceneFor('02n', true), 'clear-night');
-  assert.strictEqual(weather.sceneFor('01n', true), 'clear-night');
-  assert.strictEqual(weather.sceneFor('', false), 'clouds', 'unknown -> clouds');
-
-  assert.strictEqual(weather.dewPoint(28, 67), 21, 'Magnus: 28C/67% ~ 21C');
-  assert.strictEqual(weather.dewPoint(0, 100), 0, 'saturated at 0C');
-  assert.strictEqual(weather.dewPoint(NaN, 50), null);
-  assert.strictEqual(weather.dewPoint(20, 0), null, 'rh<=0 -> null');
-
-  // Documented ephemeris: 2000-01-06 ~18:14 UTC new moon; 2000-01-21 full moon.
-  let mp = weather.moonPhase(Date.UTC(2000, 0, 6, 19, 0));
-  assert.strictEqual(mp.phase, 'new-moon');
-  assert.ok(mp.illumination <= 5, 'new moon ~0% lit');
-  mp = weather.moonPhase(Date.UTC(2000, 0, 21, 12, 0));
-  assert.strictEqual(mp.phase, 'full-moon');
-  assert.ok(mp.illumination >= 95, 'full moon ~100% lit');
-  mp = weather.moonPhase(Date.UTC(2000, 0, 14, 12, 0));
-  assert.strictEqual(mp.phase, 'first-quarter');
-
-  // --- weather board: normalize v2 + aggregateDaily + board payload ---
-  const OWM_CUR = {
-    name: 'Beirut', sys: { country: 'LB', sunrise: 1000, sunset: 52000 }, dt: 30000, timezone: 10800,
-    main: { temp: 28.4, feels_like: 29.2, humidity: 67, pressure: 1007 }, visibility: 21000,
-    weather: [{ description: 'thunderstorm', icon: '11d' }], wind: { speed: 6.4, deg: 241, gust: 10.3 }
-  };
-  const wn2 = weather.normalize(OWM_CUR);
-  assert.strictEqual(wn2.pressure, 1007);
-  assert.strictEqual(wn2.visibilityM, 21000);
-  assert.strictEqual(wn2.windDeg, 241);
-  assert.ok(Math.abs(wn2.windGust - 10.3) < 1e-9);
-  assert.strictEqual(wn2.sunrise, 1000);
-  assert.strictEqual(wn2.sunset, 52000);
-  assert.strictEqual(wn2.tz, 10800);
-  assert.strictEqual(wn2.dt, 30000);
-  assert.strictEqual(weather.normalize({ main: { temp: 5 } }).pressure, null, 'absent fields -> null');
-
-  // forecast steps now carry pop (0..1 -> 0..100) and the FULL list rides along
-  function owmStep(dayIdx, hour, temp, icon, pop) {
-    return { dt: (dayIdx * 24 + hour) * 3600, main: { temp }, pop,
-             weather: [{ description: 'x', icon }] };
-  }
-  const OWM_F2 = { city: { timezone: 0 }, list: [] };
-  for (let d = 0; d < 5; d++) for (let h = 0; h < 24; h += 3)
-    OWM_F2.list.push(owmStep(d, h, 20 + d + (h === 12 ? 5 : 0), h === 12 ? '01d' : '03d', d === 1 && h === 12 ? 0.8 : 0.1));
-  const fn2 = weather.normalizeForecast(OWM_F2);
-  assert.strictEqual(fn2.tiles.length, 8, 'strip still 8');
-  assert.strictEqual(fn2.tiles[0].pop, 10, 'pop as 0..100');
-  assert.strictEqual(fn2.full.length, 40, 'full list rides along');
-  assert.strictEqual(typeof fn2.full[0].dt, 'number');
-
-  const daily = weather.aggregateDaily(fn2.full, fn2.tz);
-  assert.strictEqual(daily.length, 5);
-  assert.strictEqual(daily[0].day, 'Today');
-  assert.strictEqual(daily[1].icon, '01d', 'noon step icon wins');
-  assert.strictEqual(daily[1].hi, 26, 'hi = max of the day');
-  assert.strictEqual(daily[1].lo, 21, 'lo = min of the day');
-  assert.strictEqual(daily[1].pop, 80, 'max pop of the day');
-  assert.deepStrictEqual(weather.aggregateDaily([], 0), []);
-
-  // buildBoardPayload: full v2 shape
-  const bp = weather.buildBoardPayload(wn2, fn2, 'metric');
-  assert.strictEqual(bp.kind, 'forecast');
-  assert.strictEqual(bp.scene, 'storm');
-  assert.strictEqual(bp.current.hi, daily[0].hi);
-  assert.strictEqual(bp.current.lo, daily[0].lo);
-  assert.strictEqual(bp.current.dewPoint, weather.dewPoint(28.4, 67));
-  assert.strictEqual(bp.current.units, 'metric', 'units tag drives the board wind/visibility labels');
-  assert.strictEqual(bp.current.wind.speed, 23, 'm/s*3.6 rounded');
-  assert.strictEqual(bp.current.wind.gust, 37);
-  assert.strictEqual(bp.current.wind.deg, 241);
-  assert.strictEqual(bp.current.visibility, 21, 'km');
-  assert.strictEqual(weather.buildBoardPayload(wn2, fn2, 'imperial').current.units, 'imperial');
-  assert.strictEqual(bp.current.sunrise, weather.fmtClock(1000, 10800));
-  assert.strictEqual(bp.current.sunset, weather.fmtClock(52000, 10800));
-  assert.strictEqual(bp.current.isNight, false, 'dt 30000 between sunrise/sunset');
-  assert.ok(bp.current.moon && typeof bp.current.moon.illumination === 'number');
-  assert.strictEqual(bp.hourly.length, 8);
-  assert.strictEqual(bp.daily.length, 5);
-  assert.ok(Array.isArray(bp.narration) && bp.narration.length >= 2);
-  assert.strictEqual(bp.narration.map((s) => s.text).join(' ').length > 0, true);
-
-  // --- imperial dewPoint: single rounding, not double rounding ---
-  // Regression for: dewPoint() rounds to whole C internally; buildBoardPayload's imperial
-  // branch used to convert that ALREADY-ROUNDED C to F and round again, which can differ
-  // by 1F from the correct compute-raw-then-round-once-in-F result.
-  // Differing case found by grid search (temp=86F/30C, rh=67%): raw Magnus dew point is
-  // ~23.200000374757668C. Old (double-round): Math.round(Math.round(23.2)*9/5+32) = 73F.
-  // New (single-round): Math.round(23.200000374757668*9/5+32) = 74F.
-  const OWM_CUR_IMPERIAL = {
-    name: 'Phoenix', sys: { country: 'US', sunrise: 1000, sunset: 52000 }, dt: 30000, timezone: -25200,
-    main: { temp: 86, feels_like: 88, humidity: 67, pressure: 1007 }, visibility: 21000,
-    weather: [{ description: 'clear sky', icon: '01d' }], wind: { speed: 5, deg: 180, gust: 8 }
-  };
-  const wnImp = weather.normalize(OWM_CUR_IMPERIAL);
-  const bpImp = weather.buildBoardPayload(wnImp, fn2, 'imperial');
-  assert.strictEqual(bpImp.current.dewPoint, 74, 'single-rounded F dew point, not the old double-rounded 73');
-
-  // Contract consistency: dewPoint()'s rounded-C result still equals rounding dewPointRaw().
-  assert.strictEqual(weather.dewPoint(28.4, 67), Math.round(weather.dewPointRaw(28.4, 67)));
+  assert.strictEqual(r.ok, false);
+  assert.ok(/unavailable|try again/i.test(r.error), 'friendly forecast-down message');
 
   console.log('test-handlers: all assertions passed');
 })().catch((e) => { console.error(e); process.exit(1); });
