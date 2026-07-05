@@ -2,7 +2,8 @@
 
 **Date:** 2026-07-05
 **Sub-project:** Kernel weather handler — swap the data source.
-**Status:** Approved design, pre-implementation.
+**Status:** Implemented (weather-board branch; verified live against Open-Meteo for
+"the Philippines", "Tokyo", "New York").
 
 ## Context
 
