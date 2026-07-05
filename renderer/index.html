@@ -1404,7 +1404,7 @@ async function toggleCamera(){
     try{ _liveStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
     _liveStream=null;
     if(typeof camStopGreetListen==='function') camStopGreetListen();
-    if(typeof clearFocusBox==='function') clearFocusBox();
+    if(typeof stopTracking==='function') stopTracking();
     const v=document.getElementById('cam-live'); if(v) v.srcObject=null;
     setCamStatus('idle');
     if(full){ full.classList.remove('show'); full.style.display='none'; }
@@ -1531,41 +1531,98 @@ if(window.bridge && window.bridge.onCameraClose){
   window.bridge.onCameraClose(function(){ if(_liveStream) toggleCamera(); });
 }
 
-// ---- One-shot focus targeting box (D2) on the reserved #cam-overlay canvas ----
-// Drawn only when the user asks the AI to focus on something; the box (+ spoken label)
-// confirms the AI understood the request. Held ~5s, then cleared. Voice-driven, never ambient.
-let _focusTimer=null;
+// ---- Live single-object focus tracking (D2) on the reserved #cam-overlay canvas ----
+// The AI vision call picks WHICH object + its label (once, via focus_object). Then a fast
+// on-device detector (COCO-SSD) follows THAT object frame-to-frame by box overlap, so the
+// targeting box tracks live movement. If the tracker loses it, we re-locate with the AI.
+// Voice-driven, single object only - never the old ambient "box everything".
+let _coco=null, _cocoFailed=false, _trackRAF=null, _trackBusy=false;
+let _trackTarget=null;   // { box:[x1,y1,x2,y2] normalized, label }
+let _lostSince=0, _lastReground=0;
+function _loadScript(src){ return new Promise(function(res,rej){ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=function(){ rej(new Error('load fail')); }; document.head.appendChild(s); }); }
+async function ensureDetector(){
+  if(_coco) return _coco; if(_cocoFailed) return null;
+  try{
+    if(!window.cocoSsd){
+      await _loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js');
+      await _loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js');
+    }
+    if(!window.cocoSsd) throw new Error('no cocoSsd');
+    _coco=await window.cocoSsd.load(); return _coco;
+  }catch(e){ _cocoFailed=true; return null; } // tracking degrades to AI re-locate only
+}
 function clearFocusBox(){
-  if(_focusTimer){ clearTimeout(_focusTimer); _focusTimer=null; }
   const c=document.getElementById('cam-overlay'); if(c){ try{ const x=c.getContext('2d'); x.clearRect(0,0,c.width,c.height); }catch(e){} }
 }
-function drawFocusBox(payload){
+function stopTracking(){
+  if(_trackRAF){ cancelAnimationFrame(_trackRAF); _trackRAF=null; }
+  _trackTarget=null; _lostSince=0; clearFocusBox();
+}
+// Draw the current tracked box (normalized) + label on the overlay.
+function drawTrackBox(box, label){
   const video=document.getElementById('cam-live'); const canvas=document.getElementById('cam-overlay'); const stage=document.getElementById('cam-stage');
-  if(!video||!canvas||!stage||!payload||!Array.isArray(payload.box)) return;
+  if(!video||!canvas||!stage||!Array.isArray(box)) return;
   const cw=stage.clientWidth, ch=stage.clientHeight;
   if(canvas.width!==cw) canvas.width=cw; if(canvas.height!==ch) canvas.height=ch;
   canvas.style.width=cw+'px'; canvas.style.height=ch+'px';
-  const m=(window.bridge&&window.bridge.mapBoxToCanvas)?window.bridge.mapBoxToCanvas(payload.box,{vw:video.videoWidth,vh:video.videoHeight},{cw:cw,ch:ch}):null;
-  if(!m||m.w<=0) return;
+  const m=(window.bridge&&window.bridge.mapBoxToCanvas)?window.bridge.mapBoxToCanvas(box,{vw:video.videoWidth,vh:video.videoHeight},{cw:cw,ch:ch}):null;
   const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,cw,ch);
+  if(!m||m.w<=0) return;
   const accent=(function(){ try{ return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#7fd1ff'; }catch(e){ return '#7fd1ff'; } })();
-  // dim outside the box so the eye goes to the lock
-  ctx.save(); ctx.fillStyle='rgba(0,0,0,.28)'; ctx.fillRect(0,0,cw,ch); ctx.clearRect(m.x,m.y,m.w,m.h); ctx.restore();
-  // targeting rectangle + corner brackets
   ctx.strokeStyle=accent; ctx.lineWidth=Math.max(2,Math.round(cw/420)); ctx.strokeRect(m.x,m.y,m.w,m.h);
   const t=Math.max(14,Math.min(28,m.w*0.18)); ctx.lineWidth=Math.max(3,Math.round(cw/300));
   [[m.x,m.y,1,1],[m.x+m.w,m.y,-1,1],[m.x,m.y+m.h,1,-1],[m.x+m.w,m.y+m.h,-1,-1]].forEach(function(c){
     ctx.beginPath(); ctx.moveTo(c[0],c[1]+c[3]*t); ctx.lineTo(c[0],c[1]); ctx.lineTo(c[0]+c[2]*t,c[1]); ctx.stroke();
   });
-  // label chip above the box
-  const label=String(payload.label||'').trim();
-  if(label){ ctx.font='600 14px system-ui,sans-serif'; const tw=ctx.measureText(label).width+16; const lx=m.x, ly=Math.max(0,m.y-26);
-    ctx.fillStyle=accent; ctx.globalAlpha=.92; ctx.fillRect(lx,ly,tw,22); ctx.globalAlpha=1; ctx.fillStyle='#06121b'; ctx.fillText(label,lx+8,ly+16); }
-  if(_focusTimer) clearTimeout(_focusTimer);
-  _focusTimer=setTimeout(clearFocusBox,5000);
+  const lab=String(label||'').trim();
+  if(lab){ ctx.font='600 14px system-ui,sans-serif'; const tw=ctx.measureText(lab).width+16; const lx=m.x, ly=Math.max(0,m.y-26);
+    ctx.fillStyle=accent; ctx.globalAlpha=.92; ctx.fillRect(lx,ly,tw,22); ctx.globalAlpha=1; ctx.fillStyle='#06121b'; ctx.fillText(lab,lx+8,ly+16); }
+}
+// Seed/refresh the tracked target from an AI grounding result, then run the follow loop.
+function startTracking(payload){
+  if(!payload||!Array.isArray(payload.box)) return;
+  _trackTarget={ box:payload.box.slice(), label:payload.label||'' };
+  _lostSince=0;
+  drawTrackBox(_trackTarget.box, _trackTarget.label);
+  if(_trackRAF) return;               // loop already running (this was a re-seed)
+  ensureDetector().then(function(model){
+    let last=0;
+    (function loop(ts){
+      if(!_trackTarget || !_liveStream){ _trackRAF=null; return; }
+      _trackRAF=requestAnimationFrame(loop);
+      if(!model){                       // no detector: AI re-locate only, ~every 2s
+        maybeReground(); return;
+      }
+      const video=document.getElementById('cam-live');
+      if(_trackBusy || !video || !video.videoWidth) return;
+      if(ts-last<120) return; last=ts;  // ~8fps detect
+      _trackBusy=true;
+      model.detect(video).then(function(preds){
+        if(!_trackTarget) return;
+        const vw=video.videoWidth, vh=video.videoHeight;
+        const cands=(preds||[]).filter(function(p){ return p.score>=0.35; }).map(function(p){
+          return [p.bbox[0]/vw, p.bbox[1]/vh, (p.bbox[0]+p.bbox[2])/vw, (p.bbox[1]+p.bbox[3])/vh];
+        });
+        const best=(window.bridge&&window.bridge.pickBestBox)?window.bridge.pickBestBox(cands,_trackTarget.box,0.15):null;
+        if(best){ _trackTarget.box=best; _lostSince=0; drawTrackBox(best,_trackTarget.label); }
+        else { if(!_lostSince) _lostSince=Date.now(); maybeReground(); }   // lost this frame
+      }).catch(function(){}).finally(function(){ _trackBusy=false; });
+    })(0);
+  });
+}
+// When the on-device tracker can't find the object (non-COCO object, or it moved off), ask
+// the AI to re-locate it - throttled so we never spam the vision model.
+function maybeReground(){
+  if(!_trackTarget || !_liveStream) return;
+  const now=Date.now();
+  if(now-_lastReground<2000) return;
+  _lastReground=now;
+  if(window.bridge && window.bridge.regroundObject){ window.bridge.regroundObject().catch(function(){}); }
+  // If it's been lost a while and re-grounding isn't recovering it, fade the stale box.
+  if(_lostSince && now-_lostSince>5000){ clearFocusBox(); }
 }
 if(window.bridge && window.bridge.onCameraFocus){ window.bridge.onCameraFocus(function(p){
-  const cf=document.getElementById('cam-full'); if(cf && cf.style.display!=='none') drawFocusBox(p);
+  const cf=document.getElementById('cam-full'); if(cf && cf.style.display!=='none') startTracking(p);
 }); }
 // ---- 3D model viewer (AI-built from shapes; three.js loaded on demand) ----
 let _THREE=null, _GLTFExporter=null;

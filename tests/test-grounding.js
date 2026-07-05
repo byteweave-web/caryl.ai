@@ -71,4 +71,20 @@ assert.ok(approx(m.x, 0) && approx(m.y, 50) && approx(m.w, 100) && approx(m.h, 1
 m = g.mapBoxToCanvas([0, 0, 1, 1], { vw: 0, vh: 0 }, { cw: 100, ch: 100 });
 assert.ok(isFinite(m.x) && isFinite(m.w));
 
+// --- iou: normalized-box intersection over union ---
+assert.strictEqual(g.iou([0, 0, 1, 1], [0, 0, 1, 1]), 1, 'identical -> 1');
+assert.strictEqual(g.iou([0, 0, 0.5, 1], [0.5, 0, 1, 1]), 0, 'touching, no overlap -> 0');
+assert.strictEqual(g.iou([0, 0, 1, 1], [2, 2, 3, 3]), 0, 'disjoint -> 0');
+// half-overlap: A[0,0,1,1] area1, B[0.5,0,1.5,1] -> inter=0.5, union=1+1-0.5=1.5 -> 1/3
+assert.ok(approx(g.iou([0, 0, 1, 1], [0.5, 0, 1.5, 1]), 1 / 3), 'partial overlap iou');
+assert.strictEqual(g.iou(null, [0, 0, 1, 1]), 0, 'null-safe');
+
+// --- pickBestBox: the candidate most overlapping the seed, above a min IoU, else null ---
+const cands = [[0, 0, 0.2, 0.2], [0.45, 0.45, 0.95, 0.95], [0.8, 0.8, 1, 1]];
+let best = g.pickBestBox(cands, [0.5, 0.5, 1, 1], 0.1);
+assert.deepStrictEqual(best, [0.45, 0.45, 0.95, 0.95], 'picks the overlapping candidate');
+assert.strictEqual(g.pickBestBox(cands, [0.5, 0.5, 0.52, 0.52], 0.3), null, 'nothing above min IoU -> null');
+assert.strictEqual(g.pickBestBox([], [0, 0, 1, 1], 0.1), null, 'no candidates -> null');
+assert.strictEqual(g.pickBestBox(null, [0, 0, 1, 1], 0.1), null, 'null candidates -> null');
+
 console.log('test-grounding: all assertions passed');

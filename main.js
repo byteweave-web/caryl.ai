@@ -1785,6 +1785,27 @@ ipcMain.handle('camera:frame', (_e, dataUrl) => {
   return { ok: true };
 });
 
+// D2 live tracking: the renderer's on-device tracker lost the focused object and asks us to
+// re-locate it with a fresh AI vision call. Silent (no chat/speech) - just re-seed the box.
+// The renderer throttles how often it calls this; we also drop overlapping requests.
+let lastFocusTarget = '';
+let _regroundBusy = false;
+ipcMain.handle('camera:reground', async () => {
+  if (_regroundBusy || !lastFocusTarget) return { ok: false };
+  _regroundBusy = true;
+  try {
+    const frame = await requestCameraFrame();
+    if (!frame) return { ok: false };
+    const res = await groundObject(config.get(), frame, lastFocusTarget);
+    if (res.found && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('camera:focus', { box: res.box, label: res.label });
+      return { ok: true };
+    }
+    return { ok: false };
+  } catch (_e) { return { ok: false }; }
+  finally { _regroundBusy = false; }
+});
+
 // Send an image (screen OR camera) to the active vision model and stream the answer.
 // Shared instruction for BOTH camera and screen vision calls. Vision models default to
 // exhaustively cataloging everything in an image (headers, bullet lists, every object) unless
@@ -3942,8 +3963,9 @@ ipcMain.handle('ui:sendText', async (_event, text) => {
           await describeImageToChat(cfg, dataUrl, q);
         }
       } else if (action.action === 'focus_object') {
-        // D2: voice "focus on X" -> ground the object and draw a one-shot targeting box.
+        // D2: voice "focus on X" -> ground the object; the renderer then TRACKS it live.
         const target = String(action.target || action.query || '').trim();
+        lastFocusTarget = target; // remembered so the tracker can re-locate it (camera:reground)
         activity.push({ kind: 'action', text: 'Focusing on ' + (target || 'that') + '…', time: clockTime() });
         aiStatus = 'working';
         let res = { found: false };

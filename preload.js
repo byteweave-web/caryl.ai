@@ -13,7 +13,10 @@ contextBridge.exposeInMainWorld('bridge', {
   cameraStatus: (state) => cameraUi.statusLabel(state),
   // ----- Camera object focus (D2): letterbox box mapping + focus event -----
   mapBoxToCanvas: (box, video, canvas) => grounding.mapBoxToCanvas(box, video, canvas),
+  pickBestBox: (cands, seed, minIou) => grounding.pickBestBox(cands, seed, minIou),
   onCameraFocus: (cb) => ipcRenderer.on('camera:focus', (_e, payload) => cb(payload)),
+  // re-locate the last focused object with a fresh AI vision call (tracker lost it)
+  regroundObject: () => ipcRenderer.invoke('camera:reground'),
 
   // settings (AI Engine section)
   getConfig: () => ipcRenderer.invoke('config:get'),
