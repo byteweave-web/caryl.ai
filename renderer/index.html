@@ -1404,6 +1404,7 @@ async function toggleCamera(){
     try{ _liveStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
     _liveStream=null;
     if(typeof camStopGreetListen==='function') camStopGreetListen();
+    if(typeof clearFocusBox==='function') clearFocusBox();
     const v=document.getElementById('cam-live'); if(v) v.srcObject=null;
     setCamStatus('idle');
     if(full){ full.classList.remove('show'); full.style.display='none'; }
@@ -1530,9 +1531,42 @@ if(window.bridge && window.bridge.onCameraClose){
   window.bridge.onCameraClose(function(){ if(_liveStream) toggleCamera(); });
 }
 
-// Clean feed by design (D1): no always-on object boxes. The #cam-overlay canvas is kept
-// empty here and reused by D2 to draw an intentional, on-demand focus box only when the
-// user asks the AI to focus on something (the box confirms the AI understood the request).
+// ---- One-shot focus targeting box (D2) on the reserved #cam-overlay canvas ----
+// Drawn only when the user asks the AI to focus on something; the box (+ spoken label)
+// confirms the AI understood the request. Held ~5s, then cleared. Voice-driven, never ambient.
+let _focusTimer=null;
+function clearFocusBox(){
+  if(_focusTimer){ clearTimeout(_focusTimer); _focusTimer=null; }
+  const c=document.getElementById('cam-overlay'); if(c){ try{ const x=c.getContext('2d'); x.clearRect(0,0,c.width,c.height); }catch(e){} }
+}
+function drawFocusBox(payload){
+  const video=document.getElementById('cam-live'); const canvas=document.getElementById('cam-overlay'); const stage=document.getElementById('cam-stage');
+  if(!video||!canvas||!stage||!payload||!Array.isArray(payload.box)) return;
+  const cw=stage.clientWidth, ch=stage.clientHeight;
+  if(canvas.width!==cw) canvas.width=cw; if(canvas.height!==ch) canvas.height=ch;
+  canvas.style.width=cw+'px'; canvas.style.height=ch+'px';
+  const m=(window.bridge&&window.bridge.mapBoxToCanvas)?window.bridge.mapBoxToCanvas(payload.box,{vw:video.videoWidth,vh:video.videoHeight},{cw:cw,ch:ch}):null;
+  if(!m||m.w<=0) return;
+  const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,cw,ch);
+  const accent=(function(){ try{ return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#7fd1ff'; }catch(e){ return '#7fd1ff'; } })();
+  // dim outside the box so the eye goes to the lock
+  ctx.save(); ctx.fillStyle='rgba(0,0,0,.28)'; ctx.fillRect(0,0,cw,ch); ctx.clearRect(m.x,m.y,m.w,m.h); ctx.restore();
+  // targeting rectangle + corner brackets
+  ctx.strokeStyle=accent; ctx.lineWidth=Math.max(2,Math.round(cw/420)); ctx.strokeRect(m.x,m.y,m.w,m.h);
+  const t=Math.max(14,Math.min(28,m.w*0.18)); ctx.lineWidth=Math.max(3,Math.round(cw/300));
+  [[m.x,m.y,1,1],[m.x+m.w,m.y,-1,1],[m.x,m.y+m.h,1,-1],[m.x+m.w,m.y+m.h,-1,-1]].forEach(function(c){
+    ctx.beginPath(); ctx.moveTo(c[0],c[1]+c[3]*t); ctx.lineTo(c[0],c[1]); ctx.lineTo(c[0]+c[2]*t,c[1]); ctx.stroke();
+  });
+  // label chip above the box
+  const label=String(payload.label||'').trim();
+  if(label){ ctx.font='600 14px system-ui,sans-serif'; const tw=ctx.measureText(label).width+16; const lx=m.x, ly=Math.max(0,m.y-26);
+    ctx.fillStyle=accent; ctx.globalAlpha=.92; ctx.fillRect(lx,ly,tw,22); ctx.globalAlpha=1; ctx.fillStyle='#06121b'; ctx.fillText(label,lx+8,ly+16); }
+  if(_focusTimer) clearTimeout(_focusTimer);
+  _focusTimer=setTimeout(clearFocusBox,5000);
+}
+if(window.bridge && window.bridge.onCameraFocus){ window.bridge.onCameraFocus(function(p){
+  const cf=document.getElementById('cam-full'); if(cf && cf.style.display!=='none') drawFocusBox(p);
+}); }
 // ---- 3D model viewer (AI-built from shapes; three.js loaded on demand) ----
 let _THREE=null, _GLTFExporter=null;
 async function ensureThree(){
