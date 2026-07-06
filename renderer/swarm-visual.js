@@ -1,6 +1,6 @@
 // renderer/swarm-visual.js
 // -------------------------------------------------------------------
-//  The Nexus Swarm \u2014 minimalist V3 polish.
+//  The Nexus Swarm \u2014 V4 wide-cluster composition (telephoto FOV + camera pullback + key light + drift).
 //
 //  One 3D crystalline core + 7 orbiting polyhedra + single data ring +
 //  single sonar pulse ring + sparse star dust. The 2D orchestrator orb
@@ -13,8 +13,8 @@
 //    .nexus-readouts div     (6) monospaced "holographic" readouts
 //
 //  DEPTH OCCLUSION via an invisible occluder sphere: anything whose
-//  world-Z is on the far side of z=+84 is pixel-culled so the 2D canvas
-//  shows through. The central core sits at z<-90 with depthTest off so
+//  world-Z is on the far side of z=+100 is pixel-culled so the 2D canvas
+//  shows through. The central core sits at z<-100 with depthTest off so
 //  it composites over the 2D halo without being depth-culled.
 //
 //  BRIDGE: config-swarmShowOrbs hides the layer; live toggles
@@ -30,24 +30,28 @@
 (function () {
   // -------------------- Configuration --------------------
   const NEXUS_AGENTS = [
-    { name: 'EXECUTOR',   role: 'action',     displayHertz: '8.4 Hz',  initialState: 'IDLE',     geometry: 'octahedron',   color: 0xf0b96e, cssColor: '#f0b96e', meshSize: 28, distance: 220, theta0: 0.0, phi0:  0.10, speedTheta: 0.22, speedPhi: 0.30, spin: 1.00 },
-    { name: 'CODER',      role: 'synthesis',  displayHertz: '6.2 Hz',  initialState: 'READY',    geometry: 'icosahedron',  color: 0xa98bff, cssColor: '#a98bff', meshSize: 24, distance: 232, theta0: 1.0, phi0: -0.05, speedTheta: 0.27, speedPhi: 0.36, spin: 0.85 },
-    { name: 'CRITIC',     role: 'validation', displayHertz: '4.1 Hz',  initialState: 'READY',    geometry: 'tetrahedron',  color: 0xff5599, cssColor: '#ff5599', meshSize: 21, distance: 250, theta0: 2.0, phi0:  0.18, speedTheta: 0.32, speedPhi: 0.42, spin: 0.95 },
-    { name: 'VISION',     role: 'perception', displayHertz: '12.0 Hz', initialState: 'ACTIVE',   geometry: 'dodecahedron', color: 0x7fd1ff, cssColor: '#7fd1ff', meshSize: 18, distance: 265, theta0: 3.0, phi0: -0.12, speedTheta: 0.18, speedPhi: 0.28, spin: 0.75 },
-    { name: 'RESEARCHER', role: 'inquiry',    displayHertz: '3.7 Hz',  initialState: 'READY',    geometry: 'torusKnot',    color: 0x5ad6c4, cssColor: '#5ad6c4', meshSize: 15, distance: 286, theta0: 4.0, phi0:  0.05, speedTheta: 0.14, speedPhi: 0.22, spin: 0.65 },
-    { name: 'MEMORY',     role: 'recall',     displayHertz: '1.2 K/s', initialState: 'STANDBY',  geometry: 'sphere',       color: 0x5ad19a, cssColor: '#5ad19a', meshSize: 12, distance: 308, theta0: 5.0, phi0: -0.22, speedTheta: 0.10, speedPhi: 0.18, spin: 0.45 },
-    { name: 'PLANNER',    role: 'strategy',   displayHertz: '5.0 Hz',  initialState: 'READY',    geometry: 'cone',         color: 0xf5b53d, cssColor: '#f5b53d', meshSize: 17, distance: 240, theta0: 5.6, phi0:  0.15, speedTheta: 0.24, speedPhi: 0.32, spin: 0.78 },
+    { name: 'EXECUTOR',   role: 'action',     displayHertz: '8.4 Hz',  initialState: 'IDLE',     geometry: 'octahedron',   color: 0xf0b96e, cssColor: '#f0b96e', meshSize: 28, distance: 280, theta0: 0.0, phi0:  0.10, speedTheta: 0.22, speedPhi: 0.30, spin: 1.00 },
+    { name: 'CODER',      role: 'synthesis',  displayHertz: '6.2 Hz',  initialState: 'READY',    geometry: 'icosahedron',  color: 0xa98bff, cssColor: '#a98bff', meshSize: 24, distance: 320, theta0: 1.0, phi0: -0.05, speedTheta: 0.27, speedPhi: 0.36, spin: 0.85 },
+    { name: 'CRITIC',     role: 'validation', displayHertz: '4.1 Hz',  initialState: 'READY',    geometry: 'tetrahedron',  color: 0xff5599, cssColor: '#ff5599', meshSize: 21, distance: 380, theta0: 2.0, phi0:  0.18, speedTheta: 0.32, speedPhi: 0.42, spin: 0.95 },
+    { name: 'VISION',     role: 'perception', displayHertz: '12.0 Hz', initialState: 'ACTIVE',   geometry: 'dodecahedron', color: 0x7fd1ff, cssColor: '#7fd1ff', meshSize: 18, distance: 440, theta0: 3.0, phi0: -0.12, speedTheta: 0.18, speedPhi: 0.28, spin: 0.75 },
+    { name: 'RESEARCHER', role: 'inquiry',    displayHertz: '3.7 Hz',  initialState: 'READY',    geometry: 'torusKnot',    color: 0x5ad6c4, cssColor: '#5ad6c4', meshSize: 15, distance: 510, theta0: 4.0, phi0:  0.05, speedTheta: 0.14, speedPhi: 0.22, spin: 0.65 },
+    { name: 'MEMORY',     role: 'recall',     displayHertz: '1.2 K/s', initialState: 'STANDBY',  geometry: 'sphere',       color: 0x5ad19a, cssColor: '#5ad19a', meshSize: 12, distance: 580, theta0: 5.0, phi0: -0.22, speedTheta: 0.10, speedPhi: 0.18, spin: 0.45 },
+    { name: 'PLANNER',    role: 'strategy',   displayHertz: '5.0 Hz',  initialState: 'READY',    geometry: 'cone',         color: 0xf5b53d, cssColor: '#f5b53d', meshSize: 17, distance: 300, theta0: 5.6, phi0:  0.15, speedTheta: 0.24, speedPhi: 0.32, spin: 0.78 },
   ];
 
-  const FOV = 52;
-  const CAMERA_Z = 900;
-  const OCCLUDER_RADIUS = 84;
-  const CLEARANCE_SLOP_3D = 36;
-  const MIN_ORBIT_DIST = 235;
-  const STAR_COUNT = 180;
-  // Data ring drift rates hoisted so _tick() and the builder share one source of truth.
-  const DATA_RING_SPEED_X = 0.0035;
-  const DATA_RING_SPEED_Y = 0.0018;
+  // V4: telephoto FOV compresses depth and pulls the cluster into a tighter
+  // visual pyramid. CAMERA_Z pulled back so the wider orbital spread still
+  // fits in frame, OCCLUDER_RADIUS grown proportionally so the depth-cull
+  // screen ratio is preserved.
+  const FOV = 46;
+  const CAMERA_Z = 1100;
+  const OCCLUDER_RADIUS = 100;
+  const CLEARANCE_SLOP_3D = 42;
+  const MIN_ORBIT_DIST = 260;
+  const STAR_COUNT = 220;
+  // Data ring drift slowed because the ring is now wider; reads as gentle drift.
+  const DATA_RING_SPEED_X = 0.0026;
+  const DATA_RING_SPEED_Y = 0.0013;
 
   // -------------------- Boot config --------------------
   function boot(cb) {
@@ -103,6 +107,7 @@
   let _sonarRing = null;
   let _dataRing = null;
   let _comets = [];
+  let _starMesh = null;
 
   function _detectReducedMotion() {
     try {
@@ -231,7 +236,7 @@
 
     _scene = new _THREE.Scene();
     _scene.background = null;
-    _scene.fog = new _THREE.FogExp2(0x06070d, 0.0010);
+    _scene.fog = new _THREE.FogExp2(0x06070d, 0.0006);
     _camera = new _THREE.PerspectiveCamera(FOV, window.innerWidth / window.innerHeight, 0.1, 5000);
     _camera.position.set(0, 0, CAMERA_Z);
 
@@ -271,7 +276,7 @@
   // being symmetric with the 2D orb axis.
   function _buildRing() {
     const ring = new _THREE.Mesh(
-      new _THREE.TorusGeometry(150, 0.4, 6, 128),
+      new _THREE.TorusGeometry(220, 0.4, 6, 128),
       new _THREE.MeshBasicMaterial({
         color: 0xe7e9ee,
         transparent: true,
@@ -336,7 +341,7 @@
 
       const theta = a.theta0, phi = a.phi0, r = a.distance;
       const tx = Math.cos(theta) * Math.cos(phi) * r;
-      const ty = Math.sin(phi)               * r * 0.55;
+      const ty = Math.sin(phi)               * r * 0.78;
       const tz = Math.sin(theta) * Math.cos(phi) * r;
       mesh.position.set(tx, ty, tz);
 
@@ -372,7 +377,8 @@
       opacity: 0.32,
       depthWrite: false,
     });
-    _scene.add(new _THREE.Points(g, m));
+    _starMesh = new _THREE.Points(g, m);
+    _scene.add(_starMesh);
   }
 
   // Small crystalline core. depthTest off so it composites over the 2D
@@ -395,7 +401,7 @@
       depthTest: false,
     });
     _coreMesh = new _THREE.Mesh(coreGeom, coreMat);
-    _coreMesh.position.set(0, 0, -90);
+    _coreMesh.position.set(0, 0, -100);
     _scene.add(_coreMesh);
   }
 
@@ -412,7 +418,7 @@
       })
     );
     _sonarRing.rotation.x = Math.PI / 2;
-    _sonarRing.position.set(0, 0, -88);
+    _sonarRing.position.set(0, 0, -98);
     _sonarRing.scale.setScalar(0.001);
     _sonarRing.userData = { startedAt: performance.now() };
     _scene.add(_sonarRing);
@@ -428,6 +434,13 @@
     const amber = new _THREE.PointLight(0xf5b53d, 0.7, 1500, 1.6);
     amber.position.set(50, -240, -180);
     _scene.add(amber);
+    // V4 KEY LIGHT: a downward DirectionalLight so MeshPhysicalMaterial's
+    // iridescence + metalness get a top-facet hot edge. Without this the
+    // agents looked like flat circular discs; with it they read as faceted
+    // jewel forms orbiting the orb.
+    const key = new _THREE.DirectionalLight(0xfff8e0, 0.45);
+    key.position.set(0, 400, 200);
+    _scene.add(key);
     _scene.add(new _THREE.AmbientLight(0x1c2230, 0.18));
   }
 
@@ -444,6 +457,9 @@
 
     // Subtle cursor parallax (kept small so the scene doesn't feel like
     // a 3D viewport).
+    // Background star field yaw (parallax reference for the whole frame).
+    if (_starMesh) { _starMesh.rotation.y += 0.0003 * motionScale; }
+
     _pointerX += (_pointerTargetX - _pointerX) * 0.05;
     _pointerY += (_pointerTargetY - _pointerY) * 0.05;
     _camera.position.x = _pointerX * 9;
@@ -489,7 +505,7 @@
       const a = recI.data;
       const focusActive = (_focusedName === a.name);
       const theta = a.theta0 + elapsed * a.speedTheta;
-      const phi   = a.phi0 + Math.sin(elapsed * a.speedPhi) * 0.40;
+      const phi   = a.phi0 + Math.sin(elapsed * a.speedPhi + a.theta0 * 1.7) * 0.85;
       const r     = a.distance;
       recI.target.x = Math.cos(theta) * Math.cos(phi) * r;
       recI.target.y = Math.sin(phi)               * r * 0.55;
@@ -697,7 +713,7 @@
       _comets.forEach(function (c) { try { if (c.line.parent) c.line.parent.removeChild(c.line); c.geo.dispose(); c.mat.dispose(); } catch (_e) {} });
       _comets = [];
     }
-    _coreMesh = null; _sonarRing = null; _dataRing = null;
+    _coreMesh = null; _sonarRing = null; _dataRing = null; _starMesh = null;
     _pulseUntil = Object.create(null);
     _pointerX = 0; _pointerY = 0; _pointerTargetX = 0; _pointerTargetY = 0;
     if (_readoutsContainer) {
