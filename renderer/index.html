@@ -55,7 +55,7 @@ body{
 .stage{flex:1;position:relative;overflow:hidden}
 .view{position:absolute;inset:0;display:none;flex-direction:column}
 .view.active{display:flex}
-canvas.orb{position:absolute;inset:0;width:100%;height:100%}
+canvas.orb{position:absolute;inset:0;width:100%;height:100%;z-index:3}
 .orb-meta{position:absolute;left:0;right:0;bottom:42px;text-align:center;pointer-events:none}
 .orb-state{font-size:13px;color:var(--mut);letter-spacing:3px;text-transform:uppercase}
 .orb-caption{margin-top:12px;font-size:18px;color:var(--txt);max-width:680px;margin-left:auto;margin-right:auto;
@@ -170,6 +170,56 @@ html[data-os="win10"] .cam-glass{background:rgba(16,20,28,.94);-webkit-backdrop-
   background-size:33.33% 33.33%,33.33% 33.33%}
 .vf-vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.5) 100%)}
 @media (prefers-reduced-motion:reduce){#cam-full{transition:none} #cam-full.listening .cam-dot{animation:none}}
+/* ---- 7-Agent Swarm visualization overlay (orchestrator + 6 sub-agents) ---- */
+.swarm-canv-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
+.swarm-canv{position:absolute;pointer-events:auto;cursor:pointer;display:block;transition:opacity .4s ease,transform .4s cubic-bezier(.1,2,.4,1),filter .4s ease}
+.swarm-beam-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+@media (prefers-reduced-motion: reduce){ .swarm-svg *{animation:none!important} }
+/* ---- Nexus Swarm: 7-agent 3D polyhedra around the orchestrator ---- */
+.nexus-three{position:absolute;inset:0;width:100%;height:100%;z-index:4;background:transparent;cursor:grab}
+.nexus-leaders{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;overflow:visible}
+.nexus-leaders line{stroke-linecap:round;vector-effect:non-scaling-stroke}
+.nexus-readouts{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:6}
+.nexus-readout{position:absolute;top:0;left:0;font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;color:#e7e9ee;text-shadow:0 0 8px rgba(0,0,0,.85),0 0 2px var(--nx-color,#fff);padding:7px 10px 7px 10px;background:rgba(8,10,14,.55);border:1px solid rgba(255,255,255,.10);border-radius:6px;backdrop-filter:blur(8px);min-width:160px;letter-spacing:.5px;will-change:transform;transform:translate3d(0,0,0);transition:opacity .35s ease,transform .35s ease,border-color .35s ease}
+.nexus-readout::after{content:"";position:absolute;left:8px;right:8px;bottom:1px;height:1px;background:linear-gradient(90deg,transparent 0%,var(--nx-color,rgba(255,255,255,.5)) 50%,transparent 100%);opacity:.75}
+.nexus-readout.dim{opacity:.30}
+.nexus-readout.idle{opacity:.55}
+.nexus-readout.focused{transform:translate3d(0,0,0) scale(1.07);background:rgba(14,18,28,.85);box-shadow:0 0 22px -2px var(--nx-color,rgba(255,255,255,.45)),inset 0 0 0 1px var(--nx-color,rgba(255,255,255,.4));border-color:rgba(255,255,255,.6)}
+.nexus-readout .nx-name{font-size:11.5px;font-weight:700;letter-spacing:1.8px;color:var(--nx-color,#fff)}
+.nexus-readout .nx-role{font-size:9.5px;opacity:.7;margin-top:2px;letter-spacing:.7px;color:rgba(231,233,238,.82)}
+.nexus-readout .nx-state{display:flex;align-items:center;gap:6px;font-size:9px;margin-top:6px;color:var(--nx-color,#fff);opacity:.95;letter-spacing:1.5px;text-transform:uppercase;padding-top:5px;border-top:1px solid rgba(255,255,255,.07)}
+.nexus-readout .nx-dot{width:6px;height:6px;border-radius:50%;background:var(--nx-color,#fff);box-shadow:0 0 7px var(--nx-color,#fff),0 0 1px #fff;flex:none;animation:nxpulse 2.4s ease-in-out infinite}
+.nexus-readout.focused .nx-dot{animation:nxpulse 0.9s ease-in-out infinite}
+.nexus-readout .nx-spark{display:block;width:140px;height:18px;margin-top:6px;background:rgba(255,255,255,.04);border-radius:2px;overflow:hidden}
+.nexus-readout .nx-spark path{fill:none;stroke:var(--nx-color,#fff);stroke-width:1;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 2.5px var(--nx-color,#fff))}
+.nexus-readout .nx-bar{display:block;height:2px;background:rgba(255,255,255,.08);border-radius:3px;margin-top:6px;overflow:hidden;position:relative}
+.nexus-readout .nx-bar > i{display:block;height:100%;background:linear-gradient(90deg,transparent,var(--nx-color,#fff),transparent);width:0;transition:width .25s ease;box-shadow:0 0 6px var(--nx-color,rgba(255,255,255,.6))}
+@keyframes nxpulse{0%,100%{opacity:.55;transform:scale(.85)}50%{opacity:1;transform:scale(1.3)}}
+@media (prefers-reduced-motion: reduce){.nexus-readout,.nexus-readout .nx-dot{transition:none;animation:none}}
+.nexus-hud-chrome{position:absolute;inset:0;pointer-events:none;z-index:7}
+.nx-bracket{position:absolute;width:24px;height:24px;opacity:.55}
+.nx-bracket::before,.nx-bracket::after{content:"";position:absolute;background:rgba(127,209,255,.55)}
+.nx-bracket::before{width:24px;height:1.5px}
+.nx-bracket::after{height:24px;width:1.5px}
+.nx-bracket.tl{top:18px;left:18px}
+.nx-bracket.tl::before{top:0;left:0}
+.nx-bracket.tl::after{top:0;left:0}
+.nx-bracket.tr{top:18px;right:18px}
+.nx-bracket.tr::before{top:0;right:0}
+.nx-bracket.tr::after{top:0;right:0}
+.nx-bracket.bl{bottom:120px;left:18px}
+.nx-bracket.bl::before{bottom:0;left:0}
+.nx-bracket.bl::after{bottom:0;left:0}
+.nx-bracket.br{bottom:120px;right:18px}
+.nx-bracket.br::before{bottom:0;right:0}
+.nx-bracket.br::after{bottom:0;right:0}
+.nexus-reticle{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);pointer-events:none;z-index:2;opacity:.65}
+.nexus-reticle::before,.nexus-reticle::after{content:"";position:absolute;background:rgba(127,209,255,.42)}
+.nexus-reticle::before{left:50%;top:50%;width:64px;height:1px;transform:translate(-50%,-50%)}
+.nexus-reticle::after{left:50%;top:50%;width:1px;height:64px;transform:translate(-50%,-50%)}
+.nexus-reticle .nx-ring{position:absolute;left:50%;top:50%;width:44px;height:44px;border:1px solid rgba(127,209,255,.36);border-radius:50%;transform:translate(-50%,-50%)}
+.nexus-reticle .nx-pip{position:absolute;left:50%;top:50%;width:3px;height:3px;border-radius:50%;background:rgba(127,209,255,.95);transform:translate(-50%,-50%);box-shadow:0 0 6px rgba(127,209,255,.85)}
+@media (prefers-reduced-motion: reduce){.nexus-reticle{transition:none}}
 </style>
 <link rel="stylesheet" href="theme.css">
 </head>
@@ -212,6 +262,11 @@ html[data-os="win10"] .cam-glass{background:rgba(16,20,28,.94);-webkit-backdrop-
     </div>
     <div class="view active" id="view-orb">
       <canvas class="orb" id="orb-canvas"></canvas>
+      <canvas class="nexus-three" id="nexus-three-canvas"></canvas>
+      <div class="nexus-reticle" aria-hidden="true"><span class="nx-ring"></span><span class="nx-pip"></span></div>
+      <svg class="nexus-leaders" id="nexus-leaders" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="nexus-readouts" id="nexus-readouts"></div>
+      <div class="nexus-hud-chrome" aria-hidden="true"><span class="nx-bracket tl"></span><span class="nx-bracket tr"></span><span class="nx-bracket bl"></span><span class="nx-bracket br"></span></div>
       <div class="orb-meta">
         <div class="orb-state" id="orb-state">idle</div>
         <div class="orb-caption" id="orb-caption"></div>
@@ -2359,5 +2414,11 @@ pollActivity(); setInterval(pollActivity,150);
   loadModels(true);
 })();
 </script>
+<script src="swarm-visual.js"></script><script src="coder-diff-modal.js"></script>
+
 </body>
 </html>
+      .swarm-canv.idle{opacity:.62}
+      .swarm-canv.dim{opacity:.42}
+      .swarm-canv.focused{z-index:10;filter:drop-shadow(0 0 0 1.5px #7fd1ff) drop-shadow(0 0 14px rgba(255,255,255,.55)) !important}
+      .swarm-canv.behind-main{z-index:1}
