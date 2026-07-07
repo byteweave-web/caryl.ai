@@ -29,6 +29,9 @@
       b.classList.toggle('active', b.dataset.view === t.focus);
     });
     root.setAttribute('data-focus', t.focus);
+    // Broadcast focus changes so decoupled surfaces (e.g. the Chat peripheral dock) can react
+    // without the runtime knowing about them.
+    try { document.dispatchEvent(new CustomEvent('shell:focus', { detail: { focus: t.focus } })); } catch (_e) {}
     // Engine throttle: reuse the deck's existing pause contract. The engine renders whenever
     // it is visible (not occluded, i.e. not throttled) — including behind translucent Chat.
     try { if (typeof window.deckSetActive === 'function') window.deckSetActive(!t.engineThrottle); } catch (_e) {}

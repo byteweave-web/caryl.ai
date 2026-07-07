@@ -81,6 +81,15 @@ body{
 @media (prefers-reduced-motion: reduce){#view-chat{transform:translate(-50%,-50%)}}
 canvas.orb{position:absolute;inset:0;width:100%;height:100%;z-index:3}
 .orb-meta{position:absolute;left:0;right:0;bottom:42px;text-align:center;pointer-events:none}
+/* Chat's peripheral vision (spec §6.3): the last exchange as a hairline ticker in the
+   Orb's lower-left. Appears only while the Orb is in focus and history exists. */
+.chat-dock{position:absolute;left:var(--gutter,30px);bottom:var(--gutter,30px);max-width:340px;
+  font-family:var(--mono);font-size:11px;line-height:1.65;color:var(--dim);
+  border-left:2px solid var(--core);padding:6px 0 6px 12px;cursor:pointer;text-align:left;
+  opacity:0;transform:translateY(6px);transition:opacity .3s ease,transform .3s ease;pointer-events:none}
+.chat-dock.on{opacity:.85;transform:none;pointer-events:auto}
+.chat-dock .who{color:var(--core);letter-spacing:.12em;text-transform:uppercase;font-size:9px;margin-right:6px}
+.chat-dock .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .orb-state{font-size:13px;color:var(--mut);letter-spacing:3px;text-transform:uppercase}
 .orb-caption{margin-top:12px;font-size:18px;color:var(--txt);max-width:680px;margin-left:auto;margin-right:auto;
   padding:0 24px;line-height:1.5;opacity:.92}
@@ -282,6 +291,7 @@ html[data-os="win10"] .cam-relock{background:rgba(16,20,28,.92);-webkit-backdrop
         <div class="orb-state" id="orb-state">idle</div>
         <div class="orb-caption" id="orb-caption"></div>
       </div>
+      <div class="chat-dock" id="chat-dock" onclick="setView('chat')" title="Resume conversation"></div>
     </div>
   </div>
 </div>
@@ -2677,7 +2687,26 @@ function renderActs(acts){
   if(oc){ if(orbCapOn()){ const lastSaid=acts.slice().reverse().find(function(a){return a.kind==='said';}); oc.textContent=lastSaid?lastSaid.text:''; } else { oc.textContent=''; } }
   const cf=document.getElementById('cam-full');
   if(cf && cf.style.display!=='none'){ const cap=document.getElementById('cam-caption'); if(cap){ const ls=acts.slice().reverse().find(function(a){return a.kind==='said';}); if(ls&&ls.text&&ls.text!==cap.textContent){ cap.textContent=ls.text; cap.style.display='block'; setCamStatus('idle'); } } }
+  try { updateChatDock(acts); } catch(_e) {}
 }
+// The Chat peripheral dock: while the Orb is in focus, show the last exchange as a
+// hairline ticker (spec §6.3). Reads the acts it's given, else the live lastActs.
+function updateChatDock(acts){
+  const dock=document.getElementById('chat-dock'); if(!dock) return;
+  acts=acts||lastActs||[];
+  const focus=document.documentElement.dataset.focus||'orb';
+  const lastUser=acts.slice().reverse().find(function(a){return a.kind==='heard';});
+  const lastAI=acts.slice().reverse().find(function(a){return a.kind==='said';});
+  if(focus==='orb' && (lastUser||lastAI)){
+    dock.innerHTML=(lastUser?'<div class="txt"><span class="who">you</span>'+esc(lastUser.text)+'</div>':'')+
+                   (lastAI?'<div class="txt"><span class="who">caryl</span>'+esc(lastAI.text)+'</div>':'');
+    dock.classList.add('on');
+  } else {
+    dock.classList.remove('on');
+  }
+}
+document.addEventListener('shell:focus', function(){ try{ updateChatDock(); }catch(_e){} });
+window.updateChatDock = updateChatDock;
 async function pollActivity(){
   const d=await getJSON('/activity'); if(!d||!d.activity) return;
   lastActs=d.activity;
