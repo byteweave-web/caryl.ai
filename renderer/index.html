@@ -11,6 +11,9 @@
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
 <script>try{ if(window.ort){ ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/'; ort.env.wasm.numThreads=1; } }catch(e){}</script>
 <script src="wakeword.js"></script>
+<!-- Unified OS System Shell: pure reducer (state -> targets) + runtime (applies them). -->
+<script src="shell-reducer.js"></script>
+<script src="system-shell.js" defer></script>
 <!-- Chat tab: Import button, attachment chips, ```docgen``` block detection. Additive, no existing code replaced. -->
 <script src="chat-import.js"></script>
 <!-- Unified OS: the single shared material (tokens, glass, grid, motion spine, fallbacks). -->
@@ -66,6 +69,16 @@ body{
 .stage{flex:1;position:relative;overflow:hidden}
 .view{position:absolute;inset:0;display:none;flex-direction:column}
 .view.active{display:flex}
+/* Unified OS: Chat is an L2 floating glass layer, not a tab. Its rise + the engine
+   pull-back both read the shared --focus-depth (spec §5/§6). Present but faded + inert
+   until focused, so it never intercepts clicks while the Orb is in focus. */
+#view-chat{z-index:20;left:50%;top:50%;right:auto;bottom:auto;
+  width:min(720px,94vw);height:min(78vh,760px);
+  transform:translate(-50%, calc(-50% + 14px*(1 - var(--focus-depth))));
+  opacity:var(--focus-depth);pointer-events:none;overflow:hidden;
+  display:flex;flex-direction:column}
+#view-chat.active{pointer-events:auto}
+@media (prefers-reduced-motion: reduce){#view-chat{transform:translate(-50%,-50%)}}
 canvas.orb{position:absolute;inset:0;width:100%;height:100%;z-index:3}
 .orb-meta{position:absolute;left:0;right:0;bottom:42px;text-align:center;pointer-events:none}
 .orb-state{font-size:13px;color:var(--mut);letter-spacing:3px;text-transform:uppercase}
@@ -236,7 +249,7 @@ html[data-os="win10"] .cam-relock{background:rgba(16,20,28,.92);-webkit-backdrop
   </div>
 
   <div class="stage">
-    <div class="view" id="view-chat">
+    <div class="view glass" id="view-chat">
       <div class="chat-wrap">
         <div class="chat-scroll" id="chat-scroll"></div>
         <div class="hint">Click the mic or hold your push-to-talk key to speak, or type below.</div>
@@ -690,11 +703,15 @@ async function getJSON(path){
 }
 
 function setView(v){
+  // The System Shell (system-shell.js) now owns focus, the layer stack, tab chrome, and the
+  // engine's render throttle. setView stays as a thin funnel so any legacy caller still
+  // routes through one place; the shell keeps the engine rendering behind translucent Chat.
+  if(window.Shell){ window.Shell.setFocus(v); _curView=v; return; }
+  // Fallback (shell not yet loaded): preserve the original tab behavior.
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.view===v));
   document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
-  document.getElementById('view-'+v).classList.add('active');
-  _curView=v; _bgApply();   // animated background runs in Chat view only
-  deckSetActive(v==='orb'); // pause the deck's WebGL loop when off the Orb tab
+  var el=document.getElementById('view-'+v); if(el) el.classList.add('active');
+  _curView=v;
 }
 function openSettings(){ document.getElementById('settings').classList.add('open'); document.getElementById('scrim').classList.add('open'); populateEngine(); populateWeather(); populateAiMode(); populateVoiceInputCard();
   /* install_learn_my_voice:openSettings-hook */
