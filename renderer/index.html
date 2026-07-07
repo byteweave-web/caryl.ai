@@ -13,6 +13,8 @@
 <script src="wakeword.js"></script>
 <!-- Chat tab: Import button, attachment chips, ```docgen``` block detection. Additive, no existing code replaced. -->
 <script src="chat-import.js"></script>
+<!-- Unified OS: the single shared material (tokens, glass, grid, motion spine, fallbacks). -->
+<link rel="stylesheet" href="system-shell.css">
 <style>
 :root{
   --bg:#08090b; --panel:#0e1014; --panel2:#14171c; --line:rgba(255,255,255,.08);
@@ -2394,10 +2396,17 @@ function onWakeDetected(score){
     lwStatus('Listening for \u201CHey Jarvis\u201D\u2026');
     try{
       const blob=new Blob(chunks,{type:'audio/webm'});
-      if(blob.size<1200 || !_lwHeardSpeech) return; // nothing useful / no real speech heard
+      // No real speech captured after the wake word: say so instead of dying silently.
+      // (This is the #1 reason "it says listening but sends nothing" - the command audio
+      //  never cleared the VAD floor, so we never even reached transcription.)
+      if(blob.size<1200 || !_lwHeardSpeech){ setHint('⚠ Heard the wake word but didn’t catch a command — speak right after “Hey Jarvis”.', 5000); return; }
       const res=await window.bridge.transcribe(await blob.arrayBuffer());
-      if(res&&res.ok&&res.text){ submitVoiceCommand(res.text); }
-    }catch(e){}
+      // Mirror the mic-button path (startRecording.onstop): surface every outcome so a
+      // failure is visible and self-diagnosing, never a silent black hole.
+      if(res && res.ok && res.text){ submitVoiceCommand(res.text); }
+      else if(res && res.error){ setHint('⚠ Voice: '+res.error, 6000); }                 // STT key / sidecar / network failure
+      else if(res && res.ok && !res.text){ setHint('⚠ I didn’t catch that — say it again?', 4000); } // VAD dropped it as silence/noise
+    }catch(e){ setHint('⚠ Voice failed: '+(e&&e.message?e.message:e), 6000); }
   };
   try{ rec.start(); }catch(e){ _lwCommandRec=null; _lwCapturing=false; _lwFinishFn=null; return; }
 }
@@ -2805,7 +2814,8 @@ pollActivity(); setInterval(pollActivity,150);
   loadModels(true);
 })();
 </script>
-<script src="swarm-visual.js"></script><script src="coder-diff-modal.js">/* install_learn_my_voice:handlers:begin */
+<script src="swarm-visual.js"></script><script src="coder-diff-modal.js"></script>
+<script>/* install_learn_my_voice:handlers:begin */
 // ---- Learn my voice (Settings > Voice): enrollment UI + gating controls ----
 // All three handlers below share the canonical WakeWord.meanPool / WakeWord.cosineSim
 // helpers — no duplicate math code. The userVoicePrint is a 96-d Float32Array trimmed
