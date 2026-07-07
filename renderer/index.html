@@ -34,7 +34,14 @@ body{
 }
 ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}
 .app{display:flex;flex-direction:column;height:100vh;position:relative;z-index:1}
-#bg-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.engine{position:fixed;inset:0;z-index:0;pointer-events:none;
+  transform:scale( calc(1 - .08*var(--focus-depth)) );
+  filter:blur( calc(6px*var(--focus-depth)) ) brightness( calc(1 - .4*var(--focus-depth)) );
+  transform-origin:50% 42%}
+.engine #orb-deck{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+@media (prefers-reduced-motion: reduce){
+  .engine{transform:none;filter:brightness( calc(1 - .4*var(--focus-depth)) )}
+}
 .topbar{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
   background:rgba(10,11,13,.6);backdrop-filter:blur(12px);z-index:20}
 .brand{font-weight:700;letter-spacing:.5px;font-size:15px;display:flex;align-items:center;gap:8px}
@@ -206,7 +213,11 @@ html[data-os="win10"] .cam-relock{background:rgba(16,20,28,.92);-webkit-backdrop
 <link rel="stylesheet" href="theme.css">
 </head>
 <body>
-<canvas id="bg-canvas"></canvas>
+<!-- L0: the live Nexus engine is the full-bleed background of the whole app (spec §4.1).
+     Its defocus (scale/blur/dim) reads the shared --focus-depth for the camera pull-back. -->
+<div class="engine" id="engine">
+  <iframe class="orb-deck" id="orb-deck" src="nexus-deck.html?embed=1" title="Caryl Nexus Deck"></iframe>
+</div>
 <div class="app">
   <div class="topbar">
     <div class="brand"><span class="dot"></span>Caryl<small>.ai</small></div>
@@ -243,7 +254,6 @@ html[data-os="win10"] .cam-relock{background:rgba(16,20,28,.92);-webkit-backdrop
       </div>
     </div>
     <div class="view active" id="view-orb">
-      <iframe class="orb-deck" id="orb-deck" src="nexus-deck.html?embed=1" title="Caryl Nexus Deck"></iframe>
       <div class="orb-meta">
         <div class="orb-state" id="orb-state">idle</div>
         <div class="orb-caption" id="orb-caption"></div>
