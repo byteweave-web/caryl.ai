@@ -34,19 +34,29 @@ body{
   margin:0;background:radial-gradient(1200px 700px at 70% -10%, var(--glow) 0%, var(--bg) 55%);
   color:var(--txt);font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   -webkit-font-smoothing:antialiased;overflow:hidden;
+  /* Desktop-shell convention: the chrome is not text-selectable, so a drag on the Orb
+     (or anywhere in the shell) never highlights marginalia like the "idle" status word.
+     Readable content (chat transcript) + editable fields opt back in on the next line. */
+  user-select:none;-webkit-user-select:none;
 }
+.msg,.chat-scroll,input,textarea,select{user-select:text;-webkit-user-select:text}
 ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}
-.app{display:flex;flex-direction:column;height:100vh;position:relative;z-index:1}
+.app{display:flex;flex-direction:column;height:100vh;position:relative;z-index:1;pointer-events:none}
 .engine{position:fixed;inset:0;z-index:0;pointer-events:none;
   transform:scale( calc(1 - .08*var(--focus-depth)) );
   filter:blur( calc(6px*var(--focus-depth)) ) brightness( calc(1 - .4*var(--focus-depth)) );
   transform-origin:50% 42%}
 .engine #orb-deck{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+/* When the Core is in focus the live deck IS the interactive surface: the HUD above it
+   (.app) is pointer-transparent — pointer-events inherits — so drag-orbit / hover /
+   click-focus fall straight through to the deck. Any other focus (chat/settings/camera)
+   leaves the engine inert (default below) so the focused layer captures instead. */
+:root[data-focus="orb"] .engine{pointer-events:auto}
 @media (prefers-reduced-motion: reduce){
   .engine{transform:none;filter:brightness( calc(1 - .4*var(--focus-depth)) )}
 }
 .topbar{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
-  background:rgba(10,11,13,.6);backdrop-filter:blur(12px);z-index:20}
+  background:rgba(10,11,13,.6);backdrop-filter:blur(12px);z-index:20;pointer-events:auto}
 .brand{font-weight:700;letter-spacing:.5px;font-size:15px;display:flex;align-items:center;gap:8px}
 .brand .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent)}
 .brand small{color:var(--accent);font-weight:600}
