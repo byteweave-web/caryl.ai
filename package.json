@@ -15,7 +15,8 @@
   },
   "devDependencies": {
     "electron": "^43.0.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "three": "^0.160.0"
   },
   "build": {
     "appId": "com.farouk.caryl",

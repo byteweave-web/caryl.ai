@@ -9,16 +9,16 @@
   NEXUS DECK — V5 of the Nexus Swarm series (standalone, self-contained).
   A navigable 3D inspection deck for the Caryl.ai orchestrator + 7 sub-agents.
   All interaction manipulates the local visual index only — no process is touched.
-  Same three.js CDN importmap as renderer/index.html; needs network, like the app.
-  Open directly in a browser, or wire into Electron as its own BrowserWindow/view.
-  URL params for tooling: ?shot=1 (skip boot, seeded RNG, warm telemetry) ?focus=NAME
+  three.js + fonts are vendored locally (renderer/vendor/) — fully offline, no CDN.
+  Embedded in the app's Orb tab as an <iframe> (see renderer/index.html); also opens
+  standalone in a browser.
+  URL params: ?shot=1 (skip boot, seeded RNG, warm telemetry) ?focus=NAME
+               ?embed=1 (skip boot veil + hide HUD chrome; live-driven by the app)
 -->
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
 </script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@300;400&family=IBM+Plex+Mono:wght@300;400;600&display=swap">
+<link rel="stylesheet" href="./vendor/fonts/fonts.css">
 <style>
   :root{
     --void:#05060B; --ink:#E8ECF4; --dim:#5A657D; --steel:#22304A;
@@ -101,6 +101,9 @@
   @media (prefers-reduced-motion: reduce){
     #focuscard,#ledger .row,.tag{transition:none}
   }
+  /* embed mode: hide HUD chrome so the deck reads as a clean orb inside the
+     app's Orb tab (index.html supplies its own state/caption overlays). */
+  body.embed #vitals, body.embed #chron, body.embed #ledger, body.embed #legend{ display:none !important; }
 </style>
 </head>
 <body>
@@ -140,7 +143,7 @@
 </div>
 
 <div id="veil"><div class="v-mark">NEXUS IGNITION</div></div>
-<div id="fallback"><div>NEXUS DECK REQUIRES WEBGL + NETWORK<br>(three.js loads from cdn.jsdelivr.net)</div></div>
+<div id="fallback"><div>NEXUS DECK REQUIRES WEBGL<br>(hardware acceleration unavailable)</div></div>
 <p class="sr">Interactive 3D visualization of the Caryl agent swarm. Drag to orbit, wheel to zoom, Tab to cycle agents, Escape to release focus.</p>
 
 <script type="module">
@@ -850,6 +853,54 @@ if(SHOT){
   log('NEXUS ignition — 7 agents on station');
 }
 
+/* ================= embed + live-drive surface (Caryl app bridge) =================
+   When embedded in the app's Orb tab (?embed=1), the host (renderer/index.html)
+   pushes Caryl's live voice state via postMessage; we map it onto the core so the
+   deck reacts the way the old 2D orb did. The 7 roster agents stay decorative. */
+const EMBED = qs.get('embed') === '1';
+if(EMBED){ document.body.classList.add('embed'); skipBoot(); }
+
+const live = { on:false, recording:false, speaking:false, busy:false, level:0, wasSpeaking:false };
+
+/* one host message → update the live snapshot; broadcast on the rising edge of speech */
+function driveState(s){
+  if(!s || typeof s!=='object') return;
+  live.on = true;
+  live.recording = !!s.recording;
+  live.speaking  = !!s.speaking;
+  live.busy      = !!s.busy;
+  live.level     = Math.max(0, Math.min(1, +s.level || 0));
+  if(live.speaking && !live.wasSpeaking) broadcast();   // core → all agents ping
+  live.wasSpeaking = live.speaking;
+}
+
+/* per-frame: translate the live snapshot into core energy + accretion spin.
+   Runs after stepTelemetry so it wins, and it parks the random auto-dispatcher
+   so on-screen motion reflects Caryl, not synthetic noise. */
+function stepLive(dt){
+  if(!live.on) return;
+  sim.nextDispatch = 9;                       // suppress random dispatch while live
+  let target;
+  if(live.speaking)       target = 1.25 + live.level*0.35;   // broadcasting
+  else if(live.recording) target = 0.62 + live.level*0.30;   // listening glow
+  else if(live.busy)      target = 0.85;                      // working
+  else                    target = 0.30 + live.level*0.20;    // idle breath
+  coreUniforms.uActivity.value += (target - coreUniforms.uActivity.value) * Math.min(1, dt*3.2);
+  const loadTarget = (live.busy||live.speaking) ? 0.9 : (live.recording ? 0.5 : 0.15);
+  sim.load += (loadTarget - sim.load) * Math.min(1, dt*1.5);  // accretion spin-up
+}
+
+/* host controls whether we render — an iframe hidden via CSS display:none does
+   NOT fire visibilitychange, so the Orb tab pauses us explicitly on tab switch. */
+function setActive(on){ hostActive = !!on; applyRunning(); }
+
+window.addEventListener('message', (ev)=>{
+  const d = ev.data;
+  if(!d || typeof d!=='object') return;
+  if(d.type === 'caryl-orb')         driveState(d.state || d);
+  else if(d.type === 'caryl-active') setActive(!!d.active);
+});
+
 /* ============================ per-frame ============================ */
 const V = { a:new THREE.Vector3(), b:new THREE.Vector3(), c:new THREE.Vector3(), d:new THREE.Vector3(),
             core:new THREE.Vector3(), scr:new THREE.Vector3(), scrCore:new THREE.Vector3() };
@@ -859,11 +910,14 @@ let degrade = false, lowClock = 0;
 window.__frames = 0;
 
 let lastT = performance.now();
+let hostActive = true;   // host (Orb tab) says its view is visible; see setActive()
 let running = true;
-document.addEventListener('visibilitychange', ()=>{
-  running = !document.hidden;
-  if(running){ lastT = performance.now(); requestAnimationFrame(tick); }
-});
+function applyRunning(){
+  const want = hostActive && !document.hidden;
+  if(want && !running){ running = true; lastT = performance.now(); requestAnimationFrame(tick); }
+  else if(!want){ running = false; }
+}
+document.addEventListener('visibilitychange', applyRunning);
 
 function tick(now){
   if(!running) return;
@@ -873,6 +927,7 @@ function tick(now){
 
   stepBoot(dt);
   stepTelemetry(dt);
+  stepLive(dt);
   sampleHistory(dt);
   coreUniforms.uTime.value = t;
   finalPass.uniforms.uTime.value = t%97;
@@ -1088,8 +1143,9 @@ window.addEventListener('resize', ()=>{
 });
 glCanvas.addEventListener('webglcontextlost', ev=>{ ev.preventDefault(); log('GL context lost — reload to relight'); });
 
-/* shot-mode debug handle for the screenshot harness (never wired in normal use) */
-if(SHOT) window.__nexus = { agents, setFocus, clearFocus, broadcast, dispatch, rig };
+/* programmatic handle: the screenshot harness (SHOT) and the host app both use it.
+   Always exposed so the Orb-tab bridge and offscreen tooling can drive the deck. */
+window.__nexus = { agents, setFocus, clearFocus, broadcast, dispatch, rig, driveState, setActive, live };
 </script>
 </body>
 </html>

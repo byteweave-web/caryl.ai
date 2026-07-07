@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Caryl.ai</title>
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
 </script>
 <!-- onnxruntime-web powers the local "Hey Jarvis" wake word (loaded from CDN; models are downloaded separately) -->
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
 <script>try{ if(window.ort){ ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/'; ort.env.wasm.numThreads=1; } }catch(e){}</script>
 <script src="wakeword.js"></script>
+<!-- Chat tab: Import button, attachment chips, ```docgen``` block detection. Additive, no existing code replaced. -->
+<script src="chat-import.js"></script>
 <style>
 :root{
   --bg:#08090b; --panel:#0e1014; --panel2:#14171c; --line:rgba(255,255,255,.08);
@@ -170,28 +172,34 @@ html[data-os="win10"] .cam-glass{background:rgba(16,20,28,.94);-webkit-backdrop-
   background-size:33.33% 33.33%,33.33% 33.33%}
 .vf-vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.5) 100%)}
 @media (prefers-reduced-motion:reduce){#cam-full{transition:none} #cam-full.listening .cam-dot{animation:none}}
+/* ---- Tracking: DOM label chip with backdrop-filter blur (canvas can't blur) ---- */
+#track-chip{position:absolute;z-index:5;display:none;pointer-events:none;
+  background:rgba(16,20,28,.55);color:#fff;border:1px solid var(--accent);border-radius:10px;padding:6px 12px;
+  font:600 11.5px ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;letter-spacing:.7px;text-transform:uppercase;
+  box-shadow:0 6px 22px rgba(0,0,0,.5),0 0 8px color-mix(in srgb,var(--accent) 35%,transparent);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  transform:translate(-50%,-100%) scale(.92);opacity:0;
+  transition:opacity .22s ease,transform .22s cubic-bezier(.1,2,.4,1);white-space:nowrap;will-change:transform,opacity,left,top}
+html[data-os="win10"] #track-chip{background:rgba(16,20,28,.92);-webkit-backdrop-filter:none;backdrop-filter:none}
+#track-chip.show{opacity:1;transform:translate(-50%,-100%) scale(1)}
+#track-chip .tc-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);display:inline-block;margin-right:8px;vertical-align:middle;animation:tcpulse 1.5s ease-in-out infinite}
+#track-chip.lost{border-color:#e9637b;box-shadow:0 6px 22px rgba(0,0,0,.5),0 0 8px rgba(233,99,123,.45)}
+#track-chip.lost .tc-dot{background:#e9637b;box-shadow:0 0 8px #e9637b;animation:tcpulse .8s ease-in-out infinite}
+@keyframes tcpulse{0%,100%{opacity:.45;transform:scale(.85)}50%{opacity:1;transform:scale(1.2)}}
+/* ---- Re-lock pill: sits next to "What is this?" in the bottom bar ---- */
+.cam-relock{background:rgba(16,20,28,.5);border:1px solid var(--accent);color:#fff;border-radius:24px;padding:10px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s,transform .12s,opacity .15s;display:flex;align-items:center;gap:6px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.cam-relock:hover{background:rgba(16,20,28,.72)}
+.cam-relock:active{transform:scale(.96)}
+.cam-relock:disabled{opacity:.45;cursor:not-allowed;transform:none}
+html[data-os="win10"] .cam-relock{background:rgba(16,20,28,.92);-webkit-backdrop-filter:none;backdrop-filter:none}
+@media (prefers-reduced-motion:reduce){#track-chip,.cam-relock{transition:none} #track-chip .tc-dot{animation:none}}
 /* ---- 7-Agent Swarm visualization overlay (orchestrator + 6 sub-agents) ---- */
 .swarm-canv-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
 .swarm-canv{position:absolute;pointer-events:auto;cursor:pointer;display:block;transition:opacity .4s ease,transform .4s cubic-bezier(.1,2,.4,1),filter .4s ease}
 .swarm-beam-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
 @media (prefers-reduced-motion: reduce){ .swarm-svg *{animation:none!important} }
-/* ---- Nexus Swarm: 7-agent 3D polyhedra around the orchestrator ---- */
-.nexus-three{position:absolute;inset:0;width:100%;height:100%;z-index:4;background:transparent;cursor:grab}
-.nexus-leaders{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;overflow:visible}
-.nexus-leaders line{stroke-linecap:round;vector-effect:non-scaling-stroke}
-.nexus-readouts{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:6}
-.nexus-readout{position:absolute;top:0;left:0;font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;color:#e7e9ee;text-shadow:0 0 6px rgba(0,0,0,.85),0 0 1px var(--nx-color,#fff);padding:0;background:transparent;border:0;letter-spacing:.6px;min-width:140px;will-change:transform;transform:translate3d(0,0,0);transition:opacity .35s ease,transform .35s ease}
-.nexus-readout.dim{opacity:.30}
-.nexus-readout.idle{opacity:.58}
-.nexus-readout.focused{transform:translate3d(0,0,0) scale(1.05);min-width:140px}
-.nexus-readout .nx-name{font-size:11px;font-weight:700;letter-spacing:1.9px;color:var(--nx-color,#fff)}
-.nexus-readout .nx-row{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:9px;letter-spacing:1.4px;color:rgba(231,233,238,.74)}
-.nexus-readout .nx-row .nx-state-text{color:var(--nx-color,#fff);opacity:.92;text-transform:uppercase;letter-spacing:1.6px}
-.nexus-readout .nx-row .nx-role{color:rgba(231,233,238,.55);text-transform:none;letter-spacing:.8px}
-.nexus-readout .nx-dot{width:5px;height:5px;border-radius:50%;background:var(--nx-color,#fff);box-shadow:0 0 5px var(--nx-color,#fff);flex:none;animation:nxpulse 4s ease-in-out infinite}
-.nexus-readout.focused .nx-dot{animation:nxpulse 1.4s ease-in-out infinite}
-@keyframes nxpulse{0%,100%{opacity:.55;transform:scale(.85)}50%{opacity:1;transform:scale(1.25)}}
-@media (prefers-reduced-motion: reduce){.nexus-readout,.nexus-readout .nx-dot{transition:none;animation:none}}
+/* ---- Nexus Deck: the standalone 3D command deck, embedded as the Orb tab ---- */
+.orb-deck{position:absolute;inset:0;width:100%;height:100%;border:0;z-index:2;background:transparent;display:block}
 </style>
 <link rel="stylesheet" href="theme.css">
 </head>
@@ -233,10 +241,7 @@ html[data-os="win10"] .cam-glass{background:rgba(16,20,28,.94);-webkit-backdrop-
       </div>
     </div>
     <div class="view active" id="view-orb">
-      <canvas class="orb" id="orb-canvas"></canvas>
-      <canvas class="nexus-three" id="nexus-three-canvas"></canvas>
-      <svg class="nexus-leaders" id="nexus-leaders" xmlns="http://www.w3.org/2000/svg"></svg>
-      <div class="nexus-readouts" id="nexus-readouts"></div>
+      <iframe class="orb-deck" id="orb-deck" src="nexus-deck.html?embed=1" title="Caryl Nexus Deck"></iframe>
       <div class="orb-meta">
         <div class="orb-state" id="orb-state">idle</div>
         <div class="orb-caption" id="orb-caption"></div>
@@ -479,7 +484,22 @@ html[data-os="win10"] .cam-glass{background:rgba(16,20,28,.94);-webkit-backdrop-
         <input id="lw-thresh" type="range" min="0.15" max="0.9" step="0.05" value="0.5" oninput="setWakeThreshold(this.value)" style="width:140px"></div>
       <div class="row" id="lw-status-row" style="display:none"><div class="d" id="lw-status" style="font-size:12px">&nbsp;</div></div>
     </div>
-    </section>
+    <!-- install_learn_my_voice:card:begin -->
+    <div class="sec" id="voice-enroll-card">
+      <h3>Learn my voice</h3>
+      <div class="sub">Optional. When Caryl hears you say the wake word, she'll double-check that the voice matches your enrollment &mdash; not just the sound. Trained automatically during first-run; re-train any time below. Requires the wake-word model to be running (green "Listening" pill).</div>
+      <div class="row"><div><div class="l">Enrollment status</div><div class="d"><span id="voice-enroll-status" class="statusline">&mdash;</span> &middot; <span id="voice-enroll-count" class="statusline">0 samples</span></div></div>
+      <button id="voice-enroll-btn" class="minibtn" onclick="triggerVoiceReEnrollment()">Re-enroll</button></div>
+      <div class="row"><div><div class="l">Gate detections by speaker match</div><div class="d">If on, wake-word detections whose voice embedding doesn't match the enrolled print are silently dropped. Useful when other people can reach the mic.</div></div>
+        <label class="sw"><input type="checkbox" id="voice-tog-speakerrec" onchange="toggleSpeakerRecognition()"><span></span></label></div>
+      <div class="row" style="flex-direction:column;align-items:stretch"><div><div class="l">Match threshold</div><div class="d">Minimum cosine similarity required between a wake-word detection's voice embedding and the enrolled print. <b id="voice-thresh-label">0.65</b> is the default (balanced). Drop to 0.4 to be more forgiving; raise to 0.85+ for strict matching.</div></div>
+        <input type="range" id="voice-thresh" min="0.4" max="0.95" step="0.05" oninput="setSpeakerMatchThreshold(this.value)" style="width:100%;margin-top:8px"></div>
+    </div>
+<!-- install_learn_my_voice:card:end -->
+
+
+
+  </section>
     <section class="page" data-page="automation">
     <div class="sec">
       <h3>Desktop Automation</h3>
@@ -573,6 +593,10 @@ html[data-os="win10"] .cam-glass{background:rgba(16,20,28,.94);-webkit-backdrop-
   <div id="cam-stage" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
     <video id="cam-live" autoplay muted playsinline style="display:block;max-width:100vw;max-height:100vh"></video>
     <canvas id="cam-overlay" style="position:absolute;left:0;top:0;pointer-events:none"></canvas>
+    <!-- DOM label chip: lives inside #cam-stage so its top/left match the video pixel space.
+         Plain canvas fillText can't apply backdrop-filter blur, so this is layered as a
+         sibling of #cam-overlay and JS repositions it to sit just above the targeting box. -->
+    <div id="track-chip" role="status" aria-live="polite"><span class="tc-dot"></span><span id="track-chip-text">Locked</span></div>
   </div>
   <!-- viewfinder chrome: bracket corners + rule-of-thirds grid + vignette (non-interactive) -->
   <div id="cam-vf">
@@ -597,6 +621,7 @@ html[data-os="win10"] .cam-glass{background:rgba(16,20,28,.94);-webkit-backdrop-
     <input id="cam-input" placeholder="Ask about what you're showing&hellip;" onkeydown="if(event.key==='Enter')camSendInput()" class="cam-glass cam-field">
     <button id="cam-mic" onclick="toggleRecording()" title="Talk" class="cam-glass cam-btn cam-round">&#127908;</button>
     <button onclick="askAboutCamera()" title="Ask about this" class="cam-accent">What is this?</button>
+    <button id="cam-relock" class="cam-relock" onclick="userReground()" title="Force a fresh AI re-detect of the locked object (camera:reground)">&#9883; Re-lock</button>
     <button onclick="makeModelFromCamera()" title="Build a 3D model of what you're showing" class="cam-glass cam-btn">&#129513; Make 3D</button>
   </div>
 </div>
@@ -657,8 +682,12 @@ function setView(v){
   document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
   _curView=v; _bgApply();   // animated background runs in Chat view only
+  deckSetActive(v==='orb'); // pause the deck's WebGL loop when off the Orb tab
 }
-function openSettings(){ document.getElementById('settings').classList.add('open'); document.getElementById('scrim').classList.add('open'); populateEngine(); populateWeather(); populateAiMode(); populateVoiceInputCard(); syncSettings(); loadModels(); loadMics(); populateExtras(); renderAppearance(); showSettingsPage('engines'); }
+function openSettings(){ document.getElementById('settings').classList.add('open'); document.getElementById('scrim').classList.add('open'); populateEngine(); populateWeather(); populateAiMode(); populateVoiceInputCard();
+  /* install_learn_my_voice:openSettings-hook */
+  try { populateLearnMyVoiceCard(); } catch (_e) {}
+ syncSettings(); loadModels(); loadMics(); populateExtras(); renderAppearance(); showSettingsPage('engines'); }
 function showSettingsPage(id){
   document.querySelectorAll('#settings .page').forEach(function(p){ p.classList.toggle('active', p.dataset.page===id); });
   document.querySelectorAll('#settings .nav button[data-nav]').forEach(function(b){ b.classList.toggle('active', b.dataset.nav===id); });
@@ -1370,7 +1399,12 @@ function ttsActive(){
   if(_ttsAudio && !_ttsAudio.paused && !_ttsAudio.ended) return true;
   return false;
 }
-if(window.bridge && window.bridge.onSpeak){ window.bridge.onSpeak(function(text, meta){ speak(text, meta); }); }
+// (1) Continuous Listening: re-arm after the LAST chunk of a reply. meta.last is the
+// canonical tts-done signal from main; we don't subscribe to a separate tts:end.
+if(window.bridge && window.bridge.onSpeak){ window.bridge.onSpeak(function(text, meta){
+  speak(text, meta);
+  if(meta && meta.last && _conversationMode){ _scheduleConversationRearm(); }
+}); }
 // Piper voice: queue the WAV that main synthesized so clips play in order.
 if(window.bridge && window.bridge.onTtsAudio){ window.bridge.onTtsAudio(function(buf, meta){
   if(!ttsEnabled) return;
@@ -1556,14 +1590,35 @@ if(window.bridge && window.bridge.onCameraClose){
   window.bridge.onCameraClose(function(){ if(_liveStream) toggleCamera(); });
 }
 
-// ---- Live single-object focus tracking (D2) on the reserved #cam-overlay canvas ----
-// The AI vision call picks WHICH object + its label (once, via focus_object). Then a fast
-// on-device detector (COCO-SSD) follows THAT object frame-to-frame by box overlap, so the
-// targeting box tracks live movement. If the tracker loses it, we re-locate with the AI.
-// Voice-driven, single object only - never the old ambient "box everything".
+// ---- Live single-object focus tracking (D2 + upgrades) ----
+// Vision call picks WHICH object + label once. COCO-SSD then follows it frame-to-frame by
+// box overlap (lib/grounding.iou / pickBestBox). The detector hops a few px each ~8fps tick,
+// so each new box is fed through EMA smoothing (window.bridge.smoothBox / lib/grounding.smoothBox)
+// to suppress jitter - and snaps instantly when the new center jumped >30% of the frame, so a
+// stale box never sweeps across the screen to reach a brand-new lock position.
+// Visuals: outside-box dim mask (focus), breathing corner brackets, faint center crosshair,
+// and a DOM-chipped label that uses backdrop-filter blur (canvas fillText cannot blur).
+// Lost-state: when COCO-SSD misses a frame the box expands outward (a "searching" affordance)
+// and a "Searching..." chip pulses; AI re-ground fires ~every 2s; we give up after 8s.
 let _coco=null, _cocoFailed=false, _trackRAF=null, _trackBusy=false;
-let _trackTarget=null;   // { box:[x1,y1,x2,y2] normalized, label }
+let _trackTarget=null;          // { box, label, lost, _seedId }
 let _lostSince=0, _lastReground=0;
+let _settledAlpha=1;            // 0 = actively moving, 1 = settled (used to quiet breathing)
+let _lastBox=null;              // previous smoothed box (for settled detection)
+let _lockPulseAt=0;             // performance.now() of the last lock pulse start
+let _regroundBusy=false;        // guard so the Re-lock button can't queue double calls
+let _seedCounter=0;             // bumped on every fresh lock; detect handlers use it to
+//                                drop results from a stale seed that resolved AFTER the
+//                                tracker was already re-seeded mid-detect.
+let _userRegroundAt=0;          // performance.now() of the last user Re-lock click; lets the
+//                                next payload earn a lock-pulse for ~1.5s after the click.
+// Reduced-motion: when the user prefers reduced motion, freeze the box's animated
+// micro-behaviors (breathing corners, lock-on pulse, lost-state outward swell). The
+// dim mask, box rect, and label chip stay so the affordance isn't lost - just static.
+// CSS transitions/keyframes are already handled by the @media block in the stylesheet;
+// this only governs the runtime canvas math inside drawTrackBox.
+let _reducedMotion = (function(){ try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(_e){ return false; } })();
+let _lastLostDraw=0;            // last accepted drawTrackBox timestamp (throttles lost-state redraws to ~30fps)
 function _loadScript(src){ return new Promise(function(res,rej){ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=function(){ rej(new Error('load fail')); }; document.head.appendChild(s); }); }
 async function ensureDetector(){
   if(_coco) return _coco; if(_cocoFailed) return null;
@@ -1574,81 +1629,254 @@ async function ensureDetector(){
     }
     if(!window.cocoSsd) throw new Error('no cocoSsd');
     _coco=await window.cocoSsd.load(); return _coco;
-  }catch(e){ _cocoFailed=true; return null; } // tracking degrades to AI re-locate only
+  }catch(e){ _cocoFailed=true; return null; }
 }
+
+// ---- DOM label chip helpers (canvas fillText can't do backdrop-filter blur) ----
+function _chip(){ return document.getElementById('track-chip'); }
+function _chipText(){ return document.getElementById('track-chip-text'); }
+function _showChip(text, mode){
+  const c=_chip(); const t=_chipText(); if(!c||!t) return;
+  const wasShown = c.classList.contains('show');
+  if(t.textContent !== (text || 'Locked')) t.textContent = text || 'Locked';
+  c.classList.toggle('lost', mode==='lost');
+  // Only do the show RAF+display:block on the FIRST transition. Subsequent text updates
+  // (every frame of breathing/lost) skip the RAF entirely - the chip is already mounted.
+  if(!wasShown){
+    c.style.display='block';
+    requestAnimationFrame(function(){ c.classList.add('show'); });
+  }
+}
+function _hideChip(){ const c=_chip(); if(!c) return; c.classList.remove('show'); setTimeout(function(){ c.style.display='none'; }, 260); }
+
 function clearFocusBox(){
-  const c=document.getElementById('cam-overlay'); if(c){ try{ const x=c.getContext('2d'); x.clearRect(0,0,c.width,c.height); }catch(e){} }
+  const cv=document.getElementById('cam-overlay'); if(cv){ try{ const x=cv.getContext('2d'); x.clearRect(0,0,cv.width,cv.height); }catch(_e){} }
+  _hideChip();
 }
 function stopTracking(){
   if(_trackRAF){ cancelAnimationFrame(_trackRAF); _trackRAF=null; }
-  _trackTarget=null; _lostSince=0; clearFocusBox();
+  _trackTarget=null; _lastBox=null; _lostSince=0; _settledAlpha=1;
+  clearFocusBox();
 }
-// Draw the current tracked box (normalized) + label on the overlay.
+
+// Math helpers
+function _lerp(a,b,t){ return a+(b-a)*t; }
+function _smoothstep(a,b,x){ const t=Math.min(1,Math.max(0,(x-a)/(b-a))); return t*t*(3-2*t); }
+
+// Inline mapBoxToCanvas (lib/grounding is pure - doesn't throw)
+function _mapBox(box, video, cw, ch){
+  return window.bridge.mapBoxToCanvas(box, { vw:video.videoWidth, vh:video.videoHeight }, { cw:cw, ch:ch });
+}
+
+// Draw the targeting box (animated each frame). Reduced-motion + lost-state throttling both
+// gate when this actually paints so we don't waste CPU on a static frame.
 function drawTrackBox(box, label){
-  const video=document.getElementById('cam-live'); const canvas=document.getElementById('cam-overlay'); const stage=document.getElementById('cam-stage');
+  if(!_trackTarget) return;
+  const video=document.getElementById('cam-live');
+  const canvas=document.getElementById('cam-overlay');
+  const stage=document.getElementById('cam-stage');
   if(!video||!canvas||!stage||!Array.isArray(box)) return;
   const cw=stage.clientWidth, ch=stage.clientHeight;
-  if(canvas.width!==cw) canvas.width=cw; if(canvas.height!==ch) canvas.height=ch;
+  if(canvas.width!==cw) canvas.width=cw;
+  if(canvas.height!==ch) canvas.height=ch;
   canvas.style.width=cw+'px'; canvas.style.height=ch+'px';
-  const m=(window.bridge&&window.bridge.mapBoxToCanvas)?window.bridge.mapBoxToCanvas(box,{vw:video.videoWidth,vh:video.videoHeight},{cw:cw,ch:ch}):null;
-  const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,cw,ch);
+  const m=_mapBox(box, video, cw, ch);
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,cw,ch);
   if(!m||m.w<=0) return;
-  const accent=(function(){ try{ return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#7fd1ff'; }catch(e){ return '#7fd1ff'; } })();
-  ctx.strokeStyle=accent; ctx.lineWidth=Math.max(2,Math.round(cw/420)); ctx.strokeRect(m.x,m.y,m.w,m.h);
-  const t=Math.max(14,Math.min(28,m.w*0.18)); ctx.lineWidth=Math.max(3,Math.round(cw/300));
-  [[m.x,m.y,1,1],[m.x+m.w,m.y,-1,1],[m.x,m.y+m.h,1,-1],[m.x+m.w,m.y+m.h,-1,-1]].forEach(function(c){
-    ctx.beginPath(); ctx.moveTo(c[0],c[1]+c[3]*t); ctx.lineTo(c[0],c[1]); ctx.lineTo(c[0]+c[2]*t,c[1]); ctx.stroke();
+  const accent=(function(){ try{ return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#7fd1ff'; }catch(_e){ return '#7fd1ff'; } })();
+  const now=performance.now();
+  // Throttle lost-state redraws to ~30fps so we don't repaint the full canvas at 60fps just
+  // to animate a slow outward swell + opacity breath. Locked-state redraws on COCO ticks so
+  // smoothing/math is unaffected.
+  if(_trackTarget.lost && (now - _lastLostDraw) < 33) return;
+  _lastLostDraw = now;
+  // Lock-on pulse: bigger recent lock scales the box down from 1.18 -> 1.0 in 350ms.
+  // Reduced-motion: skip the pulse - expand stays at 1.0.
+  const sincePulse=now-_lockPulseAt;
+  const pulseT=_reducedMotion ? 1 : _smoothstep(0, 350, sincePulse);
+  const expand = _reducedMotion ? 1 : (1 + (1-pulseT)*0.18);
+  // Lost-state: box slowly expands outward ("searching") and opacity drops over ~1.5s.
+  // Reduced-motion: hold the lost-expand offshoot (alpha still drops so user notices).
+  const lost = !!_trackTarget.lost;
+  const lostProgress = lost ? Math.min(1, (now-_lostSince)/1500) : 0;
+  const lostExpand = _reducedMotion ? 1 : (1 + lostProgress*0.18);
+  const lostAlpha = 1 - (lost ? (_reducedMotion ? 0.55 : lostProgress*0.55) : 0);
+  // Breathing: subtle sine on the corner mark length. Reduced-motion: hold midpoint.
+  const breath = _reducedMotion ? 0.5 : (0.5+0.5*Math.sin(now/600));
+  const cornerInset = _lerp(0.18, 0.30, breath*_settledAlpha);
+  const ex = m.x + m.w*(1 - expand*lostExpand)/2;
+  const ey = m.y + m.h*(1 - expand*lostExpand)/2;
+  const ew = m.w*expand*lostExpand;
+  const eh = m.h*expand*lostExpand;
+  const accentLine = accent;
+  const lostLine  = '#e9637b';
+  // Outside-box dim mask + center crosshair + corner brackets
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.34)';
+  ctx.fillRect(0,0,cw,ch);
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillRect(ex, ey, ew, eh);
+  ctx.restore();
+  ctx.save();
+  ctx.globalAlpha = lostAlpha*(0.85 + 0.15*breath);
+  ctx.strokeStyle = lost ? lostLine : accentLine;
+  ctx.lineWidth = Math.max(2, Math.round(cw/420));
+  ctx.strokeRect(ex, ey, ew, eh);
+  ctx.globalAlpha *= 0.45;
+  ctx.strokeRect(ex+3, ey+3, Math.max(0, ew-6), Math.max(0, eh-6));
+  ctx.restore();
+  ctx.save();
+  ctx.globalAlpha = lostAlpha*(0.9 + 0.1*breath);
+  ctx.strokeStyle = lost ? lostLine : accentLine;
+  ctx.lineWidth = Math.max(2, Math.round(cw/380));
+  const ci = Math.max(12, Math.min(26, ew*cornerInset));
+  const corners = [
+    [ex, ey, 1, 1], [ex+ew, ey, -1, 1],
+    [ex, ey+eh, 1, -1], [ex+ew, ey+eh, -1, -1],
+  ];
+  corners.forEach(function(c){
+    ctx.beginPath();
+    ctx.moveTo(c[0], c[1]+c[3]*ci);
+    ctx.lineTo(c[0], c[1]);
+    ctx.lineTo(c[0]+c[2]*ci, c[1]);
+    ctx.stroke();
   });
-  const lab=String(label||'').trim();
-  if(lab){ ctx.font='600 14px system-ui,sans-serif'; const tw=ctx.measureText(lab).width+16; const lx=m.x, ly=Math.max(0,m.y-26);
-    ctx.fillStyle=accent; ctx.globalAlpha=.92; ctx.fillRect(lx,ly,tw,22); ctx.globalAlpha=1; ctx.fillStyle='#06121b'; ctx.fillText(lab,lx+8,ly+16); }
+  ctx.restore();
+  ctx.save();
+  ctx.globalAlpha = lostAlpha*0.55;
+  ctx.strokeStyle = lost ? lostLine : accentLine;
+  ctx.lineWidth = 1;
+  const cx = ex + ew/2, cy = ey + eh/2;
+  const cr = Math.max(6, Math.min(14, Math.min(ew, eh)*0.10));
+  ctx.beginPath(); ctx.moveTo(cx-cr, cy); ctx.lineTo(cx+cr, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy-cr); ctx.lineTo(cx, cy+cr); ctx.stroke();
+  ctx.restore();
+  // DOM chip repositioned just above the box
+  const chip=_chip();
+  if(chip){
+    const chipX = ex+ew/2;
+    const chipY = Math.max(28, ey-12);
+    chip.style.left = chipX+'px';
+    chip.style.top  = chipY+'px';
+    _showChip(lost ? 'Searching\u2026' : (_trackTarget.label || 'Locked'), lost ? 'lost' : 'locked');
+  }
 }
-// Seed/refresh the tracked target from an AI grounding result, then run the follow loop.
+
+// Seed / refresh the tracked target from an AI grounding payload, then run the follow loop.
+// Pulse rule: only on FIRST seed, or on a payload arriving within ~1.5s of a user-initiated
+// Re-lock click. AI re-grounds every 2s while lost no longer fire a disruptive scale pulse.
 function startTracking(payload){
   if(!payload||!Array.isArray(payload.box)) return;
-  _trackTarget={ box:payload.box.slice(), label:payload.label||'' };
-  _lostSince=0;
+  const newLabel = String(payload.label||'').trim();
+  const nowMs = performance.now();
+  const wasEmpty = !_trackTarget;
+  const reseeding = wasEmpty || _trackTarget.label !== newLabel;
+  _seedCounter++;
+  _trackTarget = { box:payload.box.slice(), label:newLabel, lost:false, _seedId:_seedCounter };
+  _lostSince = 0;
+  _lastBox = null;
+  _settledAlpha = 1;
+  // Pulse only on (a) FIRST seed or (b) within 1.5s of an explicit user Re-lock click.
+  // If the camera closed mid-reground (_liveStream null), suppress the pulse so we don't
+  // briefly animate a now-empty stage.
+  const recentUserClick = _userRegroundAt && (nowMs - _userRegroundAt) < 1500;
+  if(_liveStream && (wasEmpty || recentUserClick)){ _lockPulseAt = nowMs; }
   drawTrackBox(_trackTarget.box, _trackTarget.label);
-  if(_trackRAF) return;               // loop already running (this was a re-seed)
-  ensureDetector().then(function(model){
-    let last=0;
-    (function loop(ts){
-      if(!_trackTarget || !_liveStream){ _trackRAF=null; return; }
-      _trackRAF=requestAnimationFrame(loop);
-      if(!model){                       // no detector: AI re-locate only, ~every 2s
-        maybeReground(); return;
-      }
-      const video=document.getElementById('cam-live');
-      if(_trackBusy || !video || !video.videoWidth) return;
-      if(ts-last<120) return; last=ts;  // ~8fps detect
-      _trackBusy=true;
-      model.detect(video).then(function(preds){
-        if(!_trackTarget) return;
-        const vw=video.videoWidth, vh=video.videoHeight;
-        const cands=(preds||[]).filter(function(p){ return p.score>=0.35; }).map(function(p){
-          return [p.bbox[0]/vw, p.bbox[1]/vh, (p.bbox[0]+p.bbox[2])/vw, (p.bbox[1]+p.bbox[3])/vh];
-        });
-        const best=(window.bridge&&window.bridge.pickBestBox)?window.bridge.pickBestBox(cands,_trackTarget.box,0.15):null;
-        if(best){ _trackTarget.box=best; _lostSince=0; drawTrackBox(best,_trackTarget.label); }
-        else { if(!_lostSince) _lostSince=Date.now(); maybeReground(); }   // lost this frame
-      }).catch(function(){}).finally(function(){ _trackBusy=false; });
-    })(0);
-  });
+  if(_trackRAF) return;                // loop already running (this was a re-seed)
+  ensureDetector().then(function(model){ _runLoop(model); });
 }
-// When the on-device tracker can't find the object (non-COCO object, or it moved off), ask
-// the AI to re-locate it - throttled so we never spam the vision model.
+function _runLoop(model){
+  let last=0;
+  (function loop(ts){
+    if(!_trackTarget || !_liveStream){ _trackRAF=null; return; }
+    _trackRAF = requestAnimationFrame(loop);
+    if(!model){ maybeReground(); drawTrackBox(_trackTarget.box, _trackTarget.label); return; }
+    const video = document.getElementById('cam-live');
+    if(_trackBusy || !video || !video.videoWidth){ drawTrackBox(_trackTarget.box, _trackTarget.label); return; }
+    if(ts-last<120){ drawTrackBox(_trackTarget.box, _trackTarget.label); return; } last=ts;
+    _trackBusy = true;
+    model.detect(video).then(function(preds){
+      // Stale-detection guard: if startTracking was called again while this detect was in
+      // flight (e.g. an AI re-ground arrived), the result belongs to the OLD seed. Bail
+      // BOTH branches so a late valid match can't corrupt the new tracker's box by yanking
+      // it toward the old detection.
+      if(!_trackTarget || !preds) return;
+      const liveSeedId = _trackTarget._seedId;
+      if(_trackTarget._seedId !== liveSeedId) return;
+      const vw=video.videoWidth, vh=video.videoHeight;
+      const cands=(preds||[]).filter(function(p){ return p.score>=0.5; }).map(function(p){
+        return [p.bbox[0]/vw, p.bbox[1]/vh, (p.bbox[0]+p.bbox[2])/vw, (p.bbox[1]+p.bbox[3])/vh];
+      });
+      const best=(window.bridge&&window.bridge.pickBestBox)?window.bridge.pickBestBox(cands, _trackTarget.box, 0.15):null;
+      if(best){
+        // EMA-smooth the new box onto current to drop per-frame jitter (alpha 0.4, snapDist 0.3).
+        const smoothed = (window.bridge && window.bridge.smoothBox)
+          ? window.bridge.smoothBox(_trackTarget.box, best, 0.4, 0.3) : best;
+        if(_lastBox){
+          var dx = Math.abs(smoothed[0]-_lastBox[0]) + Math.abs(smoothed[2]-_lastBox[2])
+                 + Math.abs(smoothed[1]-_lastBox[1]) + Math.abs(smoothed[3]-_lastBox[3]);
+          _settledAlpha = (dx<0.004) ? Math.max(0, _settledAlpha-0.06) : Math.min(1, _settledAlpha+0.15);
+        }
+        _lastBox = smoothed.slice();
+        _trackTarget.box = smoothed;
+        _trackTarget.lost = false;
+        _lostSince = 0;
+        drawTrackBox(smoothed, _trackTarget.label);
+      } else {
+        if(!_lostSince) _lostSince = performance.now();
+        _trackTarget.lost = true;
+        drawTrackBox(_trackTarget.box, _trackTarget.label);
+        maybeReground();
+      }
+    }).catch(function(){}).finally(function(){ _trackBusy=false; });
+  })(0);
+}
+// AI re-ground: throttled ~2s; give up after 8s of being lost.
 function maybeReground(){
   if(!_trackTarget || !_liveStream) return;
   const now=Date.now();
   if(now-_lastReground<2000) return;
   _lastReground=now;
   if(window.bridge && window.bridge.regroundObject){ window.bridge.regroundObject().catch(function(){}); }
-  // If it's been lost a while and re-grounding isn't recovering it, fade the stale box.
-  if(_lostSince && now-_lostSince>5000){ clearFocusBox(); }
+  if(_lostSince && (performance.now()-_lostSince)>8000){ stopTracking(); }
 }
+
+// User-initiated Re-lock: force a fresh AI vision call right now, ignoring the 2s throttle.
+// Stamps _userRegroundAt so the resulting payload gets a lock-pulse; reflects main-side busy.
+async function userReground(){
+  if(!_liveStream || _regroundBusy) return;
+  _regroundBusy = true;
+  _userRegroundAt = performance.now();
+  const btn = document.getElementById('cam-relock');
+  if(btn){ btn.disabled = true; btn.innerHTML = '\u26A1 Locking\u2026'; }
+  try{
+    if(window.bridge && window.bridge.regroundObject){
+      const r = await window.bridge.regroundObject();
+      // Main returns {ok:false} when its own 2s re-ground throttle is busy. Reflect that so
+      // the user sees a brief "Busy\u2026" hint instead of thinking the click was ignored.
+      if(r && r.ok === false){
+        if(btn){ btn.innerHTML = '\u26A1 Busy\u2026'; }
+        await new Promise(function(res){ setTimeout(res, 900); });
+      }
+    }
+  }catch(_e){ }
+  setTimeout(function(){
+    _regroundBusy = false;
+    // Guard against camera closing mid-reground - don't re-enable a button that's been
+    // removed/hidden, and don't reset state on a stale tab.
+    if(_liveStream){
+      const b = document.getElementById('cam-relock');
+      if(b){ b.disabled = false; b.innerHTML = '\u9883 Re-lock'; }
+    }
+  }, 1500);
+}
+
 if(window.bridge && window.bridge.onCameraFocus){ window.bridge.onCameraFocus(function(p){
-  const cf=document.getElementById('cam-full'); if(cf && cf.style.display!=='none') startTracking(p);
+  const cf = document.getElementById('cam-full');
+  if(cf && cf.style.display!=='none') startTracking(p);
 }); }
+
 // ---- 3D model viewer (AI-built from shapes; three.js loaded on demand) ----
 let _THREE=null, _GLTFExporter=null;
 async function ensureThree(){
@@ -1855,6 +2083,192 @@ let _lwStarting=false, _lwCommandRec=null;
 // mistook your own voice for background noise and set the bar above your actual speaking level
 // (that's why real speech never registered). A continuously-tracked floor avoids that entirely.
 let _lwAmbientFloor=0.006, _lwCapturing=false, _lwAboveSince=0, _lwHeardSpeech=false, _lwLastSpeechAt=0, _lwCapStart=0, _lwFinishFn=null, _lwVadLastLog=0;
+// ===== Smart Audio & Voice Interaction (4) - renderer wiring =====
+// (1) Continuous Listening State: after wake fires, the next command recorder is auto-opened
+// by a meta.last hook AFTER the assistant finishes speaking - no wake word required for
+// follow-ups until a close phrase or cumulative silence tears the loop down.
+// (2) Context-Aware Filtering: short transcripts without interrogative/imperative prefixes
+// (or the assistant's name) get a spoken 'Were you speaking to me?' prompt; the next reply
+// either confirms and ships the buffered original, or denies and discards it.
+let _conversationMode=false;
+let _conversationReason='';
+let _conversationSilentAt=0;
+let _pendingAmbiguous=null;
+let _pendingRearmAt=0;
+let _addrCfg=null;
+function _loadVoiceCfg(){
+  if(typeof window.bridge === 'undefined' || !window.bridge.getConfig) return _addrCfg;
+  window.bridge.getConfig().then(function(c){
+    if(!c) return;
+    _addrCfg={
+      continuous: c.continuousListening !== false,
+      timeoutMs:  typeof c.conversationTimeoutMs === 'number' ? c.conversationTimeoutMs : 10000,
+      closePhrases: Array.isArray(c.conversationClosePhrases) ? c.conversationClosePhrases : ['thanks.','thank you.'],
+      contextAware: c.contextAwareFiltering !== false,
+      addressStarts: Array.isArray(c.addressStartsWith) ? c.addressStartsWith : [],
+      maxLen: typeof c.addressMaxLenChars === 'number' ? c.addressMaxLenChars : 28
+    };
+  }).catch(function(){});
+}
+_loadVoiceCfg();
+
+function _isClosePhrase(t){
+  const cfg = _addrCfg; if(!cfg || !cfg.closePhrases || !cfg.closePhrases.length) return false;
+  const norm = String(t||'').trim().toLowerCase();
+  if(!norm) return false;
+  return cfg.closePhrases.some(function(p){ return norm === String(p).toLowerCase(); });
+}
+function _isDirectlyAddressed(t){
+  const cfg = _addrCfg; if(!cfg) return true;
+  const norm = String(t||'').trim().toLowerCase();
+  if(!norm) return false;
+  if(norm.length > cfg.maxLen) return true;
+  return cfg.addressStarts.some(function(w){
+    if(norm === w) return true;
+    return norm.indexOf(w + ' ') === 0;
+  });
+}
+
+function _enterConversation(reason){
+  if(_conversationMode) return;
+  _conversationMode = true;
+  _conversationReason = String(reason||'wake');
+  _conversationSilentAt = Date.now();
+  _setVoiceStatus('listening', 'Conversation open (' + _conversationReason + ')');
+}
+function _exitConversation(reason, opts){
+  if(!_conversationMode) return;
+  const why = String(reason||'unknown');
+  _conversationMode = false;
+  _conversationReason = '';
+  if(_pendingRearmAt){ clearTimeout(_pendingRearmAt); _pendingRearmAt = 0; }
+  _pendingAmbiguous = null;
+  _setVoiceStatus('idle', opts && opts.silent ? null : ('Conversation ended (' + why + ')'));
+  if(opts && opts.speak) speak(opts.speak);
+}
+
+// Single funnel: any voice transcript (wake, mic-button, push-to-talk) routes through here.
+// Returns true when the gate has handled it (close-phrase / clarification ask); false to fall
+// through to the original submit pipeline.
+function _handleRpcText(rawText){
+  const text = String(rawText||'').trim();
+  if(!text) return false;
+  if(_conversationMode) _conversationSilentAt = Date.now();
+
+  // (1) Close-phrase teardown - only fires while already in conversation mode.
+  if(_conversationMode && _addrCfg && _isClosePhrase(text)){
+    _exitConversation('close-phrase', { speak: 'Okay, going back to sleep.', silent: false });
+    return true;
+  }
+
+  // (2) Context-aware filtering: ambiguous short transcript -> ask, don't send.
+  if(_addrCfg && _addrCfg.contextAware && !_isDirectlyAddressed(text)){
+    if(_pendingAmbiguous){
+      const reply = text.toLowerCase();
+      const affirmed = /^(yes|yeah|yep|yup|sure|i did|that was me|that's me|sorry|apologies|continue|please)/.test(reply);
+      const denied   = /^(no|nope|nah|nothing|never mind|i was talking to|someone else|forget it)/.test(reply);
+      if(affirmed){
+        const original = _pendingAmbiguous.text;
+        _pendingAmbiguous = null;
+        _sendToChat(original);
+        return true;
+      }
+      if(denied){
+        _pendingAmbiguous = null;
+        _setVoiceStatus('listening', 'Okay.');
+        return true;
+      }
+      // Reply itself is ambiguous - just ship the original.
+      const original = _pendingAmbiguous.text;
+      _pendingAmbiguous = null;
+      _sendToChat(original + ' (' + text + ')');
+      return true;
+    }
+    _pendingAmbiguous = { text: text, askedAt: Date.now() };
+    _setVoiceStatus('listening', 'Asking for clarification...');
+    speak('Were you speaking to me?');
+    return true;
+  }
+
+  if(_pendingAmbiguous){
+    const original = _pendingAmbiguous.text;
+    _pendingAmbiguous = null;
+    _sendToChat(original);
+    return false;
+  }
+  return false;
+}
+function _sendToChat(text){
+  const inp = document.getElementById('chat-input');
+  if(inp){ inp.value = text; sendText(); }
+}
+function _setVoiceStatus(state, label){
+  try {
+    const pill = document.getElementById('pill-state');
+    if(pill){ pill.textContent = label || state; }
+    const dot = document.getElementById('led-listen');
+    if(dot){ dot.classList.toggle('on', state === 'listening'); }
+  } catch(_e) {}
+  if(label){
+    try { setHint(label); } catch(_e) {}
+  }
+}
+
+function _scheduleConversationRearm(){
+  if(!_conversationMode) return;
+  if(_pendingRearmAt) return;
+  _pendingRearmAt = setTimeout(function(){
+    _pendingRearmAt = 0;
+    if(!_conversationMode) return;
+    if(_lwCommandRec) return;
+    if(!window.WakeWord || !WakeWord.stream) return;
+    try { _lwOpenCommandRecorder(); } catch(_e) {}
+  }, 320);
+}
+function _lwOpenCommandRecorder(){
+  if(_lwCommandRec) return;
+  if(typeof MediaRecorder === 'undefined') return;
+  if(!window.WakeWord || !WakeWord.stream) return;
+  _lwCapturing=true; _lwHeardSpeech=false; _lwAboveSince=0; _lwLastSpeechAt=0; _lwCapStart=Date.now();
+  let rec;
+  try { rec = new MediaRecorder(WakeWord.stream, MediaRecorder.isTypeSupported('audio/webm') ? {mimeType:'audio/webm'} : {}); }
+  catch(_e){ _lwCapturing=false; return; }
+  const chunks=[];
+  rec.ondataavailable = function(ev){ if(ev.data && ev.data.size) chunks.push(ev.data); };
+  _lwCommandRec = rec;
+  const finish = function(){
+    if(!_lwCommandRec || _lwCommandRec !== rec){ return; }
+    try { rec.stop(); } catch(_e){}
+  };
+  _lwFinishFn = finish;
+  rec.onstop = function(){
+    _lwCommandRec=null; _lwCapturing=false; _lwFinishFn=null;
+    try {
+      const blob = new Blob(chunks, {type: chunks.length && chunks[0].type ? chunks[0].type : 'audio/webm'});
+      if(!blob.size){ return; }
+      window.bridge.transcribe(blob).then(function(res){
+        const t = (res && res.text) ? String(res.text).trim() : '';
+        if(!t) return;
+        if(_conversationMode) _conversationSilentAt = Date.now();
+        submitVoiceCommand(t);
+      }).catch(function(_e){});
+    } catch(_e){}
+  };
+  try { rec.start(); } catch(_e){ _lwCommandRec=null; _lwCapturing=false; _lwFinishFn=null; }
+}
+
+// Idle-timeout teardown: every ~1s while in conversation mode, if we haven't heard speech
+// or had a successful turn past the configured timeout, close the conversation. Catches the
+// 'user walked away' case without needing an explicit close phrase.
+setInterval(function(){
+  if(!_conversationMode) return;
+  if(!_addrCfg) return;
+  const silentFor = Date.now() - (_conversationSilentAt || Date.now());
+  if(silentFor >= _addrCfg.timeoutMs){
+    _exitConversation('idle-timeout', { speak: 'Going back to sleep.', silent: false });
+  }
+}, 1000);
+
 // Follow-up listening: once you're mid-conversation and Caryl is unfocused in the background,
 // re-saying "Hey Jarvis" before every single thing gets old fast. So for a short grace window
 // after real activity (you spoke, or Caryl just replied), the NEXT thing you say starts a
@@ -2002,8 +2416,14 @@ function looksLikeSttHallucination(t){
   return /^(you|bye|so|the|uh+|um+|hmm+|okay|thanks?|thank\s*(you|u)(\s+so\s+much)?|so\s+thank\s+(you|u)|thanks?\s+for\s+watching|please\s+(like\s+and\s+)?subscribe.*|subtitles?\s+by.*|www\.[\w.-]+)[.!?\s]*$/i.test(s);
 }
 function submitVoiceCommand(cmd){
-  cmd=String(cmd||'').trim();
   if(!cmd || looksLikeSttHallucination(cmd)){ if(cmd) console.log('[voice] dropped hallucinated transcript:', cmd); return; }
+  // Voice transcripts always enter conversation mode when continuous listening is on. Without
+  // this, a wake word + first reply works but push-to-talk / a stray mic click leaves the
+  // mic cold for the rest of the session.
+  if(_addrCfg && _addrCfg.continuous) _enterConversation('voice');
+  // (1)/(2) gate: returns true if the close-phrase caught the moment or the address-prompt
+  // is now holding buffered text waiting for a yes/no. Otherwise fall through to chat.
+  if(_handleRpcText(cmd)) return;
   const inp=document.getElementById('chat-input'); if(inp){ inp.value=cmd; sendText(); }
 }
 
@@ -2218,37 +2638,37 @@ async function pollActivity(){
 }
 function esc(t){ return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function initOrb(canvasId){
-  const cv=document.getElementById(canvasId); const ctx=cv.getContext('2d');
-  function resize(){ const r=cv.getBoundingClientRect(); cv.width=r.width*devicePixelRatio; cv.height=r.height*devicePixelRatio; }
-  resize(); new ResizeObserver(resize).observe(cv);
-  let t=0;
-  (function draw(){
-    t+=0.016;
-    orb.level += (orb.target-orb.level)*0.08;
-    const w=cv.width,h=cv.height,cx=w/2,cy=h/2;
-    ctx.clearRect(0,0,w,h);
-    const acc=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#e7e9ee';
-    const base=Math.min(w,h)*0.16;
-    const R=base*(1+orb.level*0.5+Math.sin(t*1.6)*0.03);
-    const g=ctx.createRadialGradient(cx,cy,R*0.2,cx,cy,R*2.4);
-    g.addColorStop(0,hexToRgba(acc,0.5+orb.level*0.4));
-    g.addColorStop(0.35,hexToRgba(acc,0.10));
-    g.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,R*2.4,0,7); ctx.fill();
-    const cg=ctx.createRadialGradient(cx-R*0.3,cy-R*0.3,R*0.1,cx,cy,R);
-    cg.addColorStop(0,hexToRgba(acc,0.95)); cg.addColorStop(1,hexToRgba(acc,0.18));
-    ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.fill();
-    ctx.lineWidth=Math.max(1,devicePixelRatio);
-    for(let i=0;i<3;i++){
-      const rr=R*(1.5+i*0.45)+Math.sin(t*(1+i*0.5))*R*0.08;
-      ctx.strokeStyle=hexToRgba(acc,0.12-i*0.03+orb.level*0.1);
-      ctx.beginPath();
-      for(let a=0;a<=6.3;a+=0.1){ const wob=1+Math.sin(a*3+t*(1.5+i))*0.03*(1+orb.level); const x=cx+Math.cos(a)*rr*wob; const y=cy+Math.sin(a)*rr*wob; if(a===0){ctx.moveTo(x,y);}else{ctx.lineTo(x,y);} }
-      ctx.stroke();
+// The Orb tab is now the Nexus deck (renderer/nexus-deck.html) embedded as an
+// <iframe>. `orb` stays the single source of truth for state; this pump advances
+// orb.level and forwards the live snapshot to the deck, which maps it onto its
+// core (idle breath / listening glow / speaking broadcast / busy spin-up).
+function initOrb(){
+  const deck=document.getElementById('orb-deck');
+  let lastPost=0;
+  (function pump(ts){
+    ts=ts||0;
+    orb.level += (orb.target-orb.level)*0.08;   // keep the eased level other UI reads
+    if(ts-lastPost > 45){                        // throttle to ~22 msg/s
+      lastPost=ts;
+      const win=deck&&deck.contentWindow;
+      if(win){
+        win.postMessage({ type:'caryl-orb', state:{
+          level: orb.level,
+          speaking: !!orb.speaking,
+          busy: !!orb.busy,
+          recording: !!(typeof recording!=='undefined' && recording)
+        }}, '*');
+      }
     }
-    requestAnimationFrame(draw);
-  })();
+    requestAnimationFrame(pump);
+  })(0);
+}
+// Tell the deck whether the Orb tab is visible so it can pause its WebGL loop —
+// an iframe hidden via display:none does NOT receive visibilitychange itself.
+function deckSetActive(on){
+  const deck=document.getElementById('orb-deck');
+  const win=deck&&deck.contentWindow;
+  if(win) win.postMessage({ type:'caryl-active', active:!!on }, '*');
 }
 function orbCapOn(){ return localStorage.getItem('orbcap')==='1'; }
 function toggleOrbCap(){ localStorage.setItem('orbcap', document.getElementById('tog-orbcap').checked?'1':'0'); }
@@ -2344,8 +2764,9 @@ document.addEventListener('visibilitychange', _bgApply);
 function hexToRgba(hex,a){ hex=hex.replace('#',''); if(hex.length===3)hex=hex.split('').map(function(c){return c+c;}).join(''); const n=parseInt(hex,16); return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
 
 initBackground();
-initOrb('orb-canvas');
+initOrb();
 _bgApply();   // respects toggle + starts only if not on the Orb view
+deckSetActive(_curView==='orb');   // deck renders only while the Orb tab is up
 if(document.getElementById('tog-orbcap')) document.getElementById('tog-orbcap').checked=orbCapOn();
 if(document.getElementById('tog-bganim')) document.getElementById('tog-bganim').checked=bgAnimOn();
 poll(); setInterval(poll,1000);
@@ -2384,7 +2805,170 @@ pollActivity(); setInterval(pollActivity,150);
   loadModels(true);
 })();
 </script>
-<script src="swarm-visual.js"></script><script src="coder-diff-modal.js"></script>
+<script src="swarm-visual.js"></script><script src="coder-diff-modal.js">/* install_learn_my_voice:handlers:begin */
+// ---- Learn my voice (Settings > Voice): enrollment UI + gating controls ----
+// All three handlers below share the canonical WakeWord.meanPool / WakeWord.cosineSim
+// helpers — no duplicate math code. The userVoicePrint is a 96-d Float32Array trimmed
+// to a regular JS array so it round-trips cleanly through window.bridge.setConfig.
+//
+// Lifecycle caveat: WakeWord.on(evt, fn) is SINGLE-SLOT (cb[evt] = fn), not multi-.
+// That means a second `WakeWord.on('embedCapture', h)` REPLACES the first handler. So:
+//   (a) the re-entrancy guard `_reEnrollBusy` is required, otherwise two stacked
+//       captures can happen in a single detect window;
+//   (b) `cancelVoiceReEnrollment()` explicitly writes `cb.embedCapture = null` to
+//       release the slot - that's the canonical cleanup, not an array splice.
+
+let _reEnrollBusy = false;
+let _reEnrollBuffers = [];
+let _reEnrollHandler = null;
+let _reEnrollTimer = null;
+let _reEnrollLastTouch = 0;
+function setVoiceEnrollStatus(text) {
+  const el = document.getElementById('voice-enroll-status');
+  if (el) el.textContent = text;
+}
+
+function cancelVoiceReEnrollment(reason) {
+  if (!_reEnrollBusy && !_reEnrollHandler) return;
+  if (window.WakeWord && window.WakeWord.cb && typeof window.WakeWord.cb.embedCapture === 'function' && window.WakeWord.cb.embedCapture === _reEnrollHandler) {
+    try { window.WakeWord.cb.embedCapture = null; } catch (_e) {}
+  }
+  _reEnrollBusy = false;
+  _reEnrollHandler = null;
+  _reEnrollBuffers = [];
+  if (reason) setVoiceEnrollStatus(reason);
+}
+
+async function triggerVoiceReEnrollment() {
+  if (!window.WakeWord || typeof window.WakeWord.meanPool !== 'function' || typeof window.WakeWord.on !== 'function') {
+    setVoiceEnrollStatus('Wake-word engine not loaded yet — try again in a moment.');
+    return;
+  }
+  if (!window.bridge || typeof window.bridge.getConfig !== 'function') {
+    setVoiceEnrollStatus('Bridge not ready.');
+    return;
+  }
+  // Fix #1: re-entrancy guard. Caryl settings gets used carelessly - a frustrated user can
+  // double-click Re-enroll. Without this flag, two competing handlers attach (and the wakeword
+  // single-slot cb.embedCapture would overwrite the prior handler anyway, but only one of
+  // them would ever fire - the rest of the captures would silently miss).
+  if (_reEnrollBusy) {
+    setVoiceEnrollStatus('Already capturing — finish that round first.');
+    return;
+  }
+  _reEnrollBusy = true;
+  _reEnrollBuffers = [];
+  setVoiceEnrollStatus('Listening... (0/3)');
+  let wakeLabel = 'the wake word';
+  try {
+    const cfg = await window.bridge.getConfig();
+    if (cfg && cfg.wakeWordModel) {
+      const m = String(cfg.wakeWordModel);
+      // "hey_jarvis_v0.1.onnx" -> "hey jarvis"
+      wakeLabel = m.replace(/^hey_/, 'hey ').replace(/_v[0-9]+(\.[0-9]+)*\.onnx$/i, '').replace(/_/g, ' ').replace(/\.onnx$/i, '').trim() || wakeLabel;
+    }
+  } catch (_e) {}
+  setVoiceEnrollStatus('Say "' + wakeLabel + '" three times to capture embeddings.');
+  const handler = function (payload) {
+    if (!_reEnrollBusy) return; // cancelVoiceReEnrollment cleared us, swallow late events
+    _reEnrollLastTouch = Date.now();
+    if (!payload || !Array.isArray(payload.frames)) return;
+    const pool = window.WakeWord.meanPool(payload.frames);
+    if (!pool) return;
+    _reEnrollBuffers.push(pool);
+    setVoiceEnrollStatus('Listening... (' + _reEnrollBuffers.length + '/3)');
+    if (_reEnrollBuffers.length >= 3) {
+      cancelVoiceReEnrollment(null);  // free the single-slot callback BEFORE we save so
+      // wake-word resumes its own embedCapture behavior immediately.
+      finishVoiceReEnrollment();
+    }
+  };
+  _reEnrollHandler = handler;
+  window.WakeWord.on('embedCapture', handler);
+  // 30s idle timeout: if the user closes the laptop lid or walks away mid-capture, drop
+  // the lock so they don't come back to a frozen UI. The handler above writes to
+  // `_reEnrollLastTouch` on every fired capture event, so this only fires after 30s of
+  // TOTAL silence from the last wake-word detection.
+  _reEnrollLastTouch = Date.now();
+  if (_reEnrollTimer) clearInterval(_reEnrollTimer);
+  _reEnrollTimer = setInterval(function () {
+    if (!_reEnrollBusy) return;
+    if (Date.now() - _reEnrollLastTouch > 30000) cancelVoiceReEnrollment('Capture timed out (30s). Try again.');
+  }, 5000);
+}
+async function finishVoiceReEnrollment() {
+  if (_reEnrollTimer) { clearInterval(_reEnrollTimer); _reEnrollTimer = null; }
+  if (_reEnrollBuffers.length < 3) { _reEnrollBusy = false; return; }
+  // Build a centroid, drop the worst outlier against it (same heuristic as onboarding).
+  const dim = _reEnrollBuffers[0].length;
+  const centroid = new Float32Array(dim);
+  for (const v of _reEnrollBuffers) for (let j = 0; j < dim; j++) centroid[j] += v[j] / _reEnrollBuffers.length;
+  let worstIdx = 0, worstSim = Infinity;
+  for (let i = 0; i < _reEnrollBuffers.length; i++) {
+    const s = (window.WakeWord.cosineSim || function () { return 0; })(centroid, _reEnrollBuffers[i]);
+    if (s < worstSim) { worstSim = s; worstIdx = i; }
+  }
+  const kept = _reEnrollBuffers.filter(function (_, i) { return i !== worstIdx; });
+  const final = new Float32Array(dim);
+  for (const v of kept) for (let j = 0; j < dim; j++) final[j] += v[j] / kept.length;
+  setVoiceEnrollStatus('Saving...');
+  try {
+    await window.bridge.setConfig({ userVoicePrint: Array.from(final), voiceEnrollmentDone: true });
+    setVoiceEnrollStatus('Trained (' + kept.length + '/3 kept)');
+    const cnt = document.getElementById('voice-enroll-count');
+    if (cnt) cnt.textContent = '3 samples';
+  } catch (e) {
+    setVoiceEnrollStatus('Save failed: ' + (e && e.message ? e.message : String(e)));
+  }
+  _reEnrollBuffers = [];
+  _reEnrollBusy = false;
+  _reEnrollHandler = null;
+}
+
+async function toggleSpeakerRecognition() {
+  const cb = document.getElementById('voice-tog-speakerrec');
+  if (!cb || !window.bridge || !window.bridge.setConfig) return;
+  try { await window.bridge.setConfig({ speakerRecognition: !!cb.checked }); } catch (_e) {}
+}
+
+// Fix #3: debounce the slider so a fast drag doesn't generate dozens of IPC roundtrips.
+// We update the visible label immediately (instant feedback) but only persist 250ms after the
+// last move. Clear-and-reset on each new oninput event.
+let _setSpeakerMatchThresholdTimer = null;
+function setSpeakerMatchThreshold(v) {
+  const n = Math.max(0.4, Math.min(0.95, parseFloat(v) || 0.65));
+  const lbl = document.getElementById('voice-thresh-label');
+  if (lbl) lbl.textContent = n.toFixed(2);
+  if (!window.bridge || !window.bridge.setConfig) return;
+  if (_setSpeakerMatchThresholdTimer) clearTimeout(_setSpeakerMatchThresholdTimer);
+  _setSpeakerMatchThresholdTimer = setTimeout(function () {
+    _setSpeakerMatchThresholdTimer = null;
+    try { window.bridge.setConfig({ speakerMatchThreshold: n }); } catch (_e) {}
+  }, 250);
+}
+
+async function populateLearnMyVoiceCard() {
+  if (!window.bridge || !window.bridge.getConfig) return;
+  try {
+    const cfg = await window.bridge.getConfig();
+    const cb = document.getElementById('voice-tog-speakerrec');
+    const sl = document.getElementById('voice-thresh');
+    const slLbl = document.getElementById('voice-thresh-label');
+    const cnt = document.getElementById('voice-enroll-count');
+    if (cb) cb.checked = !!cfg.speakerRecognition;
+    const t = typeof cfg.speakerMatchThreshold === 'number' ? cfg.speakerMatchThreshold : 0.65;
+    if (sl && Math.abs(parseFloat(sl.value || 0) - t) > 0.001) sl.value = String(t);
+    if (slLbl) slLbl.textContent = t.toFixed(2);
+    if (cnt) cnt.textContent = (cfg.voiceEnrollmentDone ? '3 samples' : '0 samples');
+    setVoiceEnrollStatus(cfg.voiceEnrollmentDone ? 'Trained' : 'Not trained');
+  } catch (_e) {}
+}
+/* install_learn_my_voice:handlers:end */
+
+
+
+
+</script>
 
 </body>
 </html>
