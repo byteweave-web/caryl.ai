@@ -860,18 +860,22 @@ if(SHOT){
 const EMBED = qs.get('embed') === '1';
 if(EMBED){ document.body.classList.add('embed'); skipBoot(); }
 
-const live = { on:false, recording:false, speaking:false, busy:false, level:0, wasSpeaking:false };
+const live = { on:false, mode:'idle', levelSrc:'none', level:0 };
 
-/* one host message → update the live snapshot; broadcast on the rising edge of speech */
+/* one host message → update the live snapshot. v2 hosts send {mode, level, levelSrc};
+   a legacy host's {level,speaking,busy,recording} still maps to a sane mode. Speaking
+   no longer broadcasts to all agents — packets now mean real work only (spec §5). */
 function driveState(s){
   if(!s || typeof s!=='object') return;
   live.on = true;
-  live.recording = !!s.recording;
-  live.speaking  = !!s.speaking;
-  live.busy      = !!s.busy;
-  live.level     = Math.max(0, Math.min(1, +s.level || 0));
-  if(live.speaking && !live.wasSpeaking) broadcast();   // core → all agents ping
-  live.wasSpeaking = live.speaking;
+  if(typeof s.mode === 'string'){
+    live.mode = s.mode;
+    live.levelSrc = s.levelSrc || 'none';
+  }else{
+    live.mode = s.speaking ? 'speaking' : (s.recording ? 'listening' : (s.busy ? 'busy' : 'idle'));
+    live.levelSrc = s.recording ? 'mic' : 'none';
+  }
+  live.level = Math.max(0, Math.min(1, +s.level || 0));
 }
 
 /* per-frame: translate the live snapshot into core energy + accretion spin.
@@ -881,12 +885,20 @@ function stepLive(dt){
   if(!live.on) return;
   sim.nextDispatch = 9;                       // suppress random dispatch while live
   let target;
-  if(live.speaking)       target = 1.25 + live.level*0.35;   // broadcasting
-  else if(live.recording) target = 0.62 + live.level*0.30;   // listening glow
-  else if(live.busy)      target = 0.85;                      // working
-  else                    target = 0.30 + live.level*0.20;    // idle breath
+  if(live.mode==='speaking'){
+    /* the core talks: real Piper envelope when the host has one, else a ~4.5Hz
+       talking-rhythm LFO (half amplitude under prefers-reduced-motion) */
+    const env = live.levelSrc==='tts'
+      ? live.level
+      : 0.5 + (REDUCED ? 0.25 : 0.5) * Math.sin(sim.time * Math.PI * 9);
+    target = 1.05 + env*0.45;
+  }
+  else if(live.mode==='listening')  target = 0.62 + live.level*0.35;  // tracks YOUR voice
+  else if(live.mode==='busy')       target = 0.85;                    // working
+  else if(live.mode==='attentive')  target = 0.45 + live.level*0.15;  // armed, waiting
+  else                              target = 0.30 + live.level*0.20;  // idle breath
   coreUniforms.uActivity.value += (target - coreUniforms.uActivity.value) * Math.min(1, dt*3.2);
-  const loadTarget = (live.busy||live.speaking) ? 0.9 : (live.recording ? 0.5 : 0.15);
+  const loadTarget = (live.mode==='busy'||live.mode==='speaking') ? 0.9 : (live.mode==='listening' ? 0.5 : 0.15);
   sim.load += (loadTarget - sim.load) * Math.min(1, dt*1.5);  // accretion spin-up
 }
 
@@ -900,6 +912,17 @@ window.addEventListener('message', (ev)=>{
   if(d.type === 'caryl-orb')         driveState(d.state || d);
   else if(d.type === 'caryl-active') setActive(!!d.active);
 });
+
+/* Offscreen-probe surface (tools/probes/live-orb.js) + host handshake: the app queues
+   caryl-task directives until this ready ping so early dispatches are never lost. */
+window.__deckProbe = function(){
+  return {
+    on: live.on, mode: live.mode, level: live.level, levelSrc: live.levelSrc,
+    uActivity: coreUniforms.uActivity.value, load: sim.load,
+    pkts: agents.filter(a=>a.pktT>=0).map(a=>({ name:a.d.name, dir:a.pktDir||1, t:a.pktT })),
+  };
+};
+if(EMBED){ try{ window.parent.postMessage({ type:'caryl-ready' }, '*'); }catch(_e){} }
 
 /* ============================ per-frame ============================ */
 const V = { a:new THREE.Vector3(), b:new THREE.Vector3(), c:new THREE.Vector3(), d:new THREE.Vector3(),
