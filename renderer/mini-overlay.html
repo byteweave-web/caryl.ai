@@ -54,10 +54,12 @@
    every theme - one is the constant status language, the other
    just needs to stay legible; neither needed to change per-theme.
    ============================================================ */
+/* Alias shim (Unified OS Phase 4): accent/confirm resolve from system-shell.css; --mono now
+   comes shared. The orb art below is identity, not chrome — untouched. (#bubble's own --ink
+   and --glow are element-scoped values that deliberately shadow nothing.) */
 :root{
-  --accent:#7fd1ff;
-  --confirm:#5ad19a;
-  --mono:ui-monospace,'SF Mono','Cascadia Code','JetBrains Mono',Consolas,monospace;
+  --accent:var(--core);
+  --confirm:var(--good);
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:transparent;overflow:hidden;-webkit-font-smoothing:antialiased}
@@ -237,7 +239,7 @@ html,body{height:100%;margin:0;background:transparent;overflow:hidden;-webkit-fo
     0 1px 4px rgba(0,0,0,.45);
 }
 </style>
-<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="system-shell.css">
 </head>
 <body>
 
