@@ -4,37 +4,68 @@
 <meta charset="utf-8">
 <title>Welcome to Caryl.ai</title>
 <style>
-  :root{--bg:#0b0d12;--card:#11141c;--txt:#e8ecf3;--mut:#9aa4b5;--accent:#7fd1ff;--line:rgba(255,255,255,.10)}
-  html,body{height:100%;margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 "Segoe UI",system-ui,sans-serif}
-  .wrap{max-width:620px;margin:0 auto;padding:40px 24px;display:flex;flex-direction:column;min-height:calc(100% - 80px)}
+  /* Alias shim (Unified OS): onboarding is cut from the same glass as the OS. Its
+     bespoke palette is retired — every token resolves from system-shell.css, so the
+     first screen a user ever sees already reads as Caryl, not a generic setup wizard. */
+  :root{
+    --accent:var(--core);
+    --card:rgba(255,255,255,.03);
+    --txt:var(--ink); --mut:var(--dim);
+    --line:var(--hair);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:
+      radial-gradient(120% 90% at 50% -12%, rgba(88,198,255,.07), transparent 60%),
+      var(--void);
+    color:var(--txt);
+    font-family:var(--read); font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:600px;margin:0 auto;padding:44px 26px;display:flex;flex-direction:column;min-height:calc(100% - 88px)}
   .step{display:none;flex:1}
-  .step.on{display:block;animation:fade .25s ease}
+  .step.on{display:block;animation:fade .28s ease}
   @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1}}
-  h1{font-size:26px;margin:0 0 6px}
-  .sub{color:var(--mut);margin-bottom:22px}
+  @media (prefers-reduced-motion: reduce){ .step.on{animation:none} }
+
+  /* weight 400 = a real vendored face (300/400); anything heavier would synthesize */
+  h1{font-family:var(--disp);font-size:36px;font-weight:400;letter-spacing:.02em;line-height:1.05;margin:0 0 8px;color:var(--ink)}
+  .sub{color:var(--mut);margin-bottom:24px;font-size:13.5px;line-height:1.55;max-width:48ch}
+
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:10px 0}
-  .opt{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px;margin:8px 0;cursor:pointer;background:var(--card)}
-  .opt.sel{border-color:var(--accent);background:rgba(127,209,255,.08)}
-  input[type=text]{width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px 12px;font:inherit}
-  input[type=range]{width:100%}
-  .nav{display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:18px}
-  button{background:var(--accent);border:none;color:#06121c;border-radius:9px;padding:10px 22px;font:inherit;font-weight:600;cursor:pointer}
-  button.ghost{background:transparent;color:var(--mut);border:1px solid var(--line)}
-  .meter{height:8px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
-  .meter>div{height:100%;width:0;background:var(--accent);transition:width .12s}
-  .preview{display:flex;gap:12px;margin-top:12px}
-  .pv{flex:1;height:110px;border-radius:10px;border:1px solid var(--line);position:relative;overflow:hidden;
-      background:linear-gradient(120deg,#28577e,#7a3d6e,#2c7a5c)}
-  .pv .glass{position:absolute;inset:14px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
-  .pv .blur{background:rgba(16,20,28,.45);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-  .pv .solid{background:#10141c}
-  .status{color:var(--mut);font-size:12px;min-height:18px;margin-top:8px}
-  .dots{display:flex;gap:6px;justify-content:center;margin-bottom:26px}
-  .dots span{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.15)}
-  .dots span.on{background:var(--accent)}
+  .opt{display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--line);border-radius:11px;margin:8px 0;cursor:pointer;background:rgba(255,255,255,.02);transition:border-color .14s,background .14s}
+  .opt:hover{border-color:var(--dim)}
+  .opt.sel{border-color:var(--core);background:color-mix(in srgb,var(--core) 9%,transparent)}
+  .opt b{font-weight:600;color:var(--ink)}
+  input[type=text]{width:100%;box-sizing:border-box;background:rgba(255,255,255,.04);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:11px 13px;font:inherit;outline:none;transition:border-color .14s}
+  input[type=text]:focus{border-color:var(--core)}
+  input[type=text]::placeholder{color:var(--dim)}
+  input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:4px;border-radius:3px;background:var(--steel);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--core);box-shadow:0 0 10px rgba(88,198,255,.5);cursor:pointer}
+  .nav{display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:20px;margin-top:auto}
+  button{background:var(--core);border:none;color:#04121d;border-radius:9px;padding:10px 22px;font:inherit;font-weight:600;letter-spacing:.01em;cursor:pointer;transition:filter .14s}
+  button:hover{filter:brightness(1.08)}
+  button.ghost{background:transparent;color:var(--mut);border:1px solid var(--line);font-weight:500}
+  button.ghost:hover{color:var(--ink);border-color:var(--dim);filter:none}
+  .meter{height:6px;background:var(--steel);border-radius:4px;overflow:hidden}
+  .meter>div{height:100%;width:0;background:var(--core);box-shadow:0 0 10px rgba(88,198,255,.45);transition:width .12s}
+  .preview{display:flex;gap:12px;margin-top:14px}
+  .pv{flex:1;height:110px;border-radius:12px;border:1px solid var(--line);position:relative;overflow:hidden;
+      background:linear-gradient(120deg,#123047,#2a1838,#0f2c22)}
+  /* The preview pane genuinely IS the overlay glass — it wears the shared .glass
+     material; the Win10 branch overrides to the shared opaque fallback. */
+  .pv .glass{position:absolute;inset:14px;display:flex;align-items:center;justify-content:center;
+      font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink);--e:1}
+  .pv .glass.solid{-webkit-backdrop-filter:none;backdrop-filter:none;background:linear-gradient(180deg,rgba(18,24,36,.96),rgba(10,14,22,.98))}
+  .status{color:var(--mut);font-family:var(--mono);font-size:11px;letter-spacing:.02em;min-height:18px;margin-top:8px}
+  .dots{display:flex;gap:6px;justify-content:center;margin-bottom:30px}
+  .dots span{width:7px;height:7px;border-radius:50%;background:var(--steel);transition:background .2s}
+  .dots span.on{background:var(--core);box-shadow:0 0 8px rgba(88,198,255,.5)}
   small{color:var(--mut)}
+  b{color:var(--ink)}
 </style>
-<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="system-shell.css">
 </head>
 <body>
 <div class="wrap">
@@ -104,11 +135,11 @@
 <script>try{ if(window.ort){ ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/'; ort.env.wasm.numThreads=1; } }catch(e){}</script>
 <script src="wakeword.js"></script>
 <script>
-// Theme + accent (renderer/theme.css) - onboarding follows the app theme from first paint.
-window.bridge.getConfig().then(function (c) {
-  document.documentElement.dataset.theme = (c && c.theme) || 'cyanHud';
-  document.documentElement.dataset.accent = (c && c.accentColor) || 'cyan';
-}).catch(function () { document.documentElement.dataset.theme = 'cyanHud'; document.documentElement.dataset.accent = 'cyan'; });
+// OS-aware glass from first paint: Win11 keeps real blur, Win10 gets the shared
+// opaque fallback (fail solid, never transparent). One opinionated look — no themes.
+window.bridge.getShellStyle().then(function (s) {
+  document.documentElement.dataset.os = (s && s.osVariant) || 'win10';
+}).catch(function () { document.documentElement.dataset.os = 'win10'; });
 </script>
 <script>
   const TOTAL = 7;
