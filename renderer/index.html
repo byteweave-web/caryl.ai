@@ -1660,11 +1660,13 @@ async function askAboutCamera(){
 function camSendInput(){
   const i=document.getElementById('cam-input'); if(!i) return; const t=i.value.trim(); if(!t) return;
   i.value=''; window.bridge.sendText(t);
+  try{ if(window.NexusOrb) NexusOrb.taskBegin('camera', 'VISION', 'camera ask', 'ai-idle'); }catch(_e){}
 }
 // Voice path: main asks the renderer for a frame when the user says "look at me" / "what is this".
 if(window.bridge && window.bridge.onCameraCapture){
   window.bridge.onCameraCapture(async function(){
     if(document.getElementById('cam-full') && document.getElementById('cam-full').style.display!=='none') setCamStatus('looking');
+    try{ if(window.NexusOrb) NexusOrb.taskBegin('camera', 'VISION', 'camera look', 'ai-idle'); }catch(_e){}
     try{ const dataUrl=await grabCameraFrame(); window.bridge.cameraFrame(dataUrl); }
     catch(e){ window.bridge.cameraFrame(''); }
   });
@@ -2808,6 +2810,14 @@ function initOrb(){
     taskBegin: function(key, agent, label, endOn){ feed.taskBegin(key, agent, label, { endOn: endOn }, Date.now()).forEach(postTask); },
     taskEnd: function(key, ok){ feed.taskEnd(key, ok, Date.now()).forEach(postTask); }
   };
+}
+// Real sub-agent work → deck packets. The swarm router (lib/swarm/router.js) emits
+// dispatch-start BEFORE a handler runs and dispatch-end after; the feed maps agent
+// names (TitleCase alphabet) onto the deck roster and handles reject/rate-limit.
+if(window.bridge && window.bridge.onSwarmEvent){
+  window.bridge.onSwarmEvent(function(ev){
+    try{ if(window.NexusOrb) NexusOrb.swarmEvent(ev); }catch(_e){}
+  });
 }
 // Tell the deck whether the Orb tab is visible so it can pause its WebGL loop —
 // an iframe hidden via display:none does NOT receive visibilitychange itself.
