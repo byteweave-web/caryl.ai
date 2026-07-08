@@ -908,7 +908,11 @@ function setActive(on){ hostActive = !!on; applyRunning(); }
 
 /* ---- real task choreography (host → caryl-task) ---- */
 function returnPulse(a, ok){
-  a.pktDir = -1; a.pktT = 0; a.flash = Math.max(a.flash, 0.7);
+  // If the outbound packet is still in flight, let it finish reaching the agent and
+  // reverse it home on arrival (no visual jump); otherwise launch the return now.
+  if(a.pktT >= 0 && a.pktDir > 0) a._pendingReturn = true;
+  else { a.pktDir = -1; a.pktT = 0; }
+  a.flash = Math.max(a.flash, 0.7);
   a.state = 'READY'; a.queue = Math.max(0, a.queue - 1);
   a.actTarget = Math.max(0.15, a.actTarget - 0.30);
   log(`RETURN <span class="who" style="color:${a.d.css}">${a.d.name}</span> → core · ${ok?'done':'failed'}`, a.d.css);
@@ -1109,10 +1113,14 @@ function tick(now){
     if(a.pktT >= 0){
       a.pktT += dt/a.pktDur;
       if(a.pktT >= 1){
-        a.pktT = -1; a.pktMat.opacity = 0;
-        if(a.pktDir < 0){  // return pulse arrived: the core acknowledges
-          coreUniforms.uActivity.value = Math.min(1.6, coreUniforms.uActivity.value + 0.35);
-          a.pktDir = 1;
+        if(a.pktDir > 0 && a._pendingReturn){  // outbound landed & a return is waiting: reverse home seamlessly
+          a._pendingReturn = false; a.pktDir = -1; a.pktT = 0;
+        } else {
+          a.pktT = -1; a.pktMat.opacity = 0;
+          if(a.pktDir < 0){  // return pulse arrived: the core acknowledges
+            coreUniforms.uActivity.value = Math.min(1.6, coreUniforms.uActivity.value + 0.35);
+            a.pktDir = 1;
+          }
         }
       }
       else{

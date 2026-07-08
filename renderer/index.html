@@ -2751,8 +2751,9 @@ function initOrb(){
   let deckReady = false; const taskQ = [];
   function postTask(d){
     const w = deckWin();
-    if(deckReady && w){ w.postMessage({ type:'caryl-task', op:d.op, agent:d.agent, id:d.id, ok:d.ok, label:d.label }, '*'); }
-    else taskQ.push(d);
+    if(deckReady && w){ w.postMessage({ type:'caryl-task', op:d.op, agent:d.agent, id:d.id, ok:d.ok, label:d.label }, '*'); return; }
+    taskQ.push(d);
+    if(taskQ.length > 120) taskQ.shift();   // deck never booted: cap the backlog so a broken iframe can't grow memory unbounded
   }
   window.addEventListener('message', function(ev){
     if(ev.data && ev.data.type === 'caryl-ready'){
@@ -2777,7 +2778,7 @@ function initOrb(){
       recording: !!recording,
       lwCapturing: !!_lwCapturing,
       conversationOpen: !!_conversationMode,
-      graceArmed: Date.now() < _followupGraceUntil,
+      graceArmed: nowMs < _followupGraceUntil,
       ttsPlaying: ttsActive() || !!(lastStatus && lastStatus.ai_speaking),
       aiStatus: lastStatus ? (lastStatus.ai_status || 'idle') : 'idle',
       automationRunning: !!(lastStatus && lastStatus.automation_running)

@@ -24,7 +24,6 @@
   //    authority (posts every ~45ms from the feed), so we set the real input the pump
   //    reads for speech and let IT post 'speaking', the same way Piper playback does.
   //    (A competing postMessage would be overwritten by design — that's correct.)
-  _lwCapturing = false;
   var _origTtsActive = window.ttsActive;
   window.ttsActive = function(){ return true; };   // pump's sync() reads this -> ttsPlaying:true
   await sleep(300);
