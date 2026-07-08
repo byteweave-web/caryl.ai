@@ -13,6 +13,7 @@
 <script src="wakeword.js"></script>
 <!-- Unified OS System Shell: pure reducer (state -> targets) + runtime (applies them). -->
 <script src="shell-reducer.js"></script>
+<script src="slot-allocator.js"></script>
 <script src="nexus-feed.js"></script>
 <script src="system-shell.js" defer></script>
 <!-- Chat tab: Import button, attachment chips, ```docgen``` block detection. Additive, no existing code replaced. -->
@@ -98,7 +99,7 @@ canvas.orb{position:absolute;inset:0;width:100%;height:100%;z-index:3}
 .orb-meta{position:absolute;left:0;right:0;bottom:42px;text-align:center;pointer-events:none}
 /* Chat's peripheral vision (spec §6.3): the last exchange as a hairline ticker in the
    Orb's lower-left. Appears only while the Orb is in focus and history exists. */
-.chat-dock{position:absolute;left:var(--gutter,30px);bottom:var(--gutter,30px);max-width:340px;
+.chat-dock{max-width:340px;  /* positioned by its slot zone (Shell.slots, spec §9) */
   font-family:var(--mono);font-size:11px;line-height:1.65;color:var(--dim);
   border-left:2px solid var(--core);padding:6px 0 6px 12px;cursor:pointer;text-align:left;
   opacity:0;transform:translateY(6px);transition:opacity .3s ease,transform .3s ease;pointer-events:none}
@@ -313,6 +314,13 @@ html[data-os="win10"] .cam-relock{background:rgba(16,20,28,.92);-webkit-backdrop
     </div>
   </div>
 </div>
+
+<!-- L3 slot layer: the non-clutter corner allocator's zones (spec §9). Shell.slots
+     reparents floating HUD elements into these; the zone positions, the element acts. -->
+<div class="slotzone" data-zone="TL" id="slot-TL"></div>
+<div class="slotzone" data-zone="TR" id="slot-TR"></div>
+<div class="slotzone" data-zone="BL" id="slot-BL"></div>
+<div class="slotzone" data-zone="BR" id="slot-BR"></div>
 
 <aside class="settings glass" id="settings">
   <nav class="nav">
@@ -2745,6 +2753,15 @@ function updateChatDock(acts){
 }
 document.addEventListener('shell:focus', function(){ try{ updateChatDock(); }catch(_e){} });
 window.updateChatDock = updateChatDock;
+// The dock is a slot-allocator citizen: BL is its identity (the Orb's peripheral vision,
+// spec §6.3) — it ghosts rather than re-anchors when a satellite window covers that corner.
+// DOMContentLoaded runs after deferred scripts, so Shell exists by now.
+document.addEventListener('DOMContentLoaded', function () {
+  try {
+    var d = document.getElementById('chat-dock');
+    if (d && window.Shell && Shell.slots) Shell.slots.claim('chat-dock', { priority: 20, slots: ['BL'], el: d });
+  } catch (_e) {}
+});
 async function pollActivity(){
   const d=await getJSON('/activity'); if(!d||!d.activity) return;
   lastActs=d.activity;

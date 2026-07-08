@@ -52,6 +52,24 @@
 /* subtle chromatic aberration utility (spec §3.4) — near-subliminal RGB split */
 .ca{ text-shadow:.4px 0 0 rgba(88,198,255,.35), -.4px 0 0 rgba(233,99,123,.28); }
 
+/* ---- Phase 5: the slot layer (spec §9) — corner zones, ghosting ---- */
+/* Zones are the L3 hosts the allocator reparents floating HUD elements into. The zone
+   positions; the element acts. Zones are pointer-transparent; interactivity belongs to
+   their children (and to the zone itself only while it hosts a ghost — hover-reveal). */
+.slotzone{ position:fixed; z-index:30; display:flex; flex-direction:column; gap:10px;
+  pointer-events:none; max-width:40vw; }
+.slotzone[data-zone="TL"]{ top:calc(var(--gutter) + 48px); left:var(--gutter); align-items:flex-start; }
+.slotzone[data-zone="TR"]{ top:calc(var(--gutter) + 48px); right:var(--gutter); align-items:flex-end; }
+.slotzone[data-zone="BL"]{ bottom:var(--gutter); left:var(--gutter); align-items:flex-start; }
+.slotzone[data-zone="BR"]{ bottom:var(--gutter); right:var(--gutter); align-items:flex-end; }
+/* Ghosting (spec §9): filter multiplies with the element's own opacity, so a hidden
+   element stays hidden while ghosted. pointer-events is an OS-level override (!important
+   beats e.g. .chat-dock.on). A zone hosting a ghost becomes its hover-reveal surface. */
+.ghosted{ filter:opacity(.35); pointer-events:none !important; transition:filter .3s ease; }
+.slotzone.has-ghost{ pointer-events:auto; }
+.slotzone.has-ghost:hover .ghosted{ filter:opacity(.92); pointer-events:auto !important; }
+@media (prefers-reduced-motion: reduce){ .ghosted{ transition:none; } }
+
 /* ---- fallback matrix (spec §11) — one policy, here ---- */
 html[data-os="win10"] .glass{                    /* no backdrop-filter on Win10 */
   -webkit-backdrop-filter:none; backdrop-filter:none;

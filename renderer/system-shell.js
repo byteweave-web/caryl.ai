@@ -37,8 +37,73 @@
     try { if (typeof window.deckSetActive === 'function') window.deckSetActive(!t.engineThrottle); } catch (_e) {}
   }
 
+  // ---- Phase 5: the slot layer (spec §9) ----
+  // Pure allocation lives in slot-allocator.js; this applies placements to the DOM:
+  // reparent each claimed element into its corner zone, stamp data-slot, toggle ghosting.
+  var claims = {};        // id -> { priority, slots, el }
+  var externalSlots = []; // slot names covered by satellite windows (absolute)
+
+  function zoneEl(slot) { return document.getElementById('slot-' + slot); }
+
+  function claimList() {
+    return Object.keys(claims).map(function (id) {
+      return { id: id, priority: claims[id].priority, slots: claims[id].slots };
+    });
+  }
+
+  function applySlots() {
+    if (!window.SlotAllocator) return;
+    var out = window.SlotAllocator.allocate(claimList(), externalSlots);
+    Object.keys(out.placements).forEach(function (id) {
+      var c = claims[id]; if (!c || !c.el) return;
+      var p = out.placements[id];
+      var zone = p.slot && zoneEl(p.slot);
+      if (zone && c.el.parentElement !== zone) zone.appendChild(c.el);
+      if (p.slot) c.el.dataset.slot = p.slot; else delete c.el.dataset.slot;
+      c.el.classList.toggle('ghosted', !!p.ghost);
+    });
+    // A zone "has a ghost" when any current child is ghosted (it becomes the hover surface).
+    ['TL', 'TR', 'BL', 'BR'].forEach(function (s) {
+      var z = zoneEl(s); if (!z) return;
+      z.classList.toggle('has-ghost', !!z.querySelector('.ghosted'));
+    });
+    try { document.dispatchEvent(new CustomEvent('shell:slots', { detail: Slots.get() })); } catch (_e) {}
+  }
+
+  var Slots = {
+    // A claim is an upsert; the claim owns the element's placement from here on.
+    claim: function (id, spec) {
+      if (!id || !spec || !spec.el) return;
+      claims[id] = { priority: +spec.priority || 0, slots: (spec.slots || []).slice(), el: spec.el };
+      applySlots();
+    },
+    // Release also removes the element from its zone (it was ours to place).
+    release: function (id) {
+      var c = claims[id];
+      if (!c) return;
+      delete claims[id];
+      if (c.el) {
+        c.el.classList.remove('ghosted');
+        delete c.el.dataset.slot;
+        if (c.el.parentElement && c.el.parentElement.classList.contains('slotzone')) c.el.remove();
+      }
+      applySlots();
+    },
+    external: function (list) {
+      externalSlots = Array.isArray(list) ? list.slice() : [];
+      applySlots();
+    },
+    get: function () {
+      var out = window.SlotAllocator
+        ? window.SlotAllocator.allocate(claimList(), externalSlots)
+        : { placements: {}, zones: {}, ghosted: [] };
+      return { placements: out.placements, ghosted: out.ghosted, external: externalSlots.slice() };
+    },
+  };
+
   var Shell = {
     state: state,
+    slots: Slots,
     setFocus: function (name) {
       state.focus = (R.FOCUS.indexOf(name) >= 0) ? name : 'orb';
       apply();
