@@ -12,3 +12,11 @@ piper/
 *.log
 @AutomationLog.txt
 __pycache__/
+
+# One-shot patch/install scaffolding (applied then retired — never committed)
+_insert_*.js
+_install_*.js
+_patch_*.js
+
+# External reference clones dropped into the tree (not Caryl code)
+open-design/
