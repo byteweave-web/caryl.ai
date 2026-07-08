@@ -81,6 +81,16 @@
   .shell-toast{ transition:opacity .2s linear; transform:none; }
 }
 
+/* The action chip: a toast with buttons (Phase 6 scene suggestions). One at a time. */
+.shell-chip{ display:flex; flex-direction:column; gap:8px; pointer-events:auto; }
+.shell-chip .chip-actions{ display:flex; gap:8px; justify-content:flex-end; }
+.shell-chip .chip-btn{ font-family:var(--mono); font-size:10px; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--ink); background:transparent;
+  border:1px solid var(--hair); border-radius:8px; padding:5px 10px; cursor:pointer; }
+.shell-chip .chip-btn:hover{ border-color:var(--dim); }
+.shell-chip .chip-btn.primary{ color:var(--core);
+  border-color:color-mix(in srgb, var(--core) 55%, transparent); }
+
 /* ---- fallback matrix (spec §11) — one policy, here ---- */
 html[data-os="win10"] .glass{                    /* no backdrop-filter on Win10 */
   -webkit-backdrop-filter:none; backdrop-filter:none;

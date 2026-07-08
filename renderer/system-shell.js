@@ -123,10 +123,53 @@
     }, Math.max(600, +opts.ms || 3200));
   }
 
+  // ---- Phase 6: the action chip — a toast with buttons (scene-watcher suggestions) ----
+  // One at a time (spec D3: ONE high-confidence suggestion); a new chip replaces the old.
+  var chipEl = null, chipTimer = null;
+  function dismissChip() {
+    if (chipTimer) { clearTimeout(chipTimer); chipTimer = null; }
+    if (chipEl) chipEl.classList.remove('show');
+    Slots.release('chip');
+  }
+  function chip(text, opts) {
+    opts = opts || {};
+    if (!chipEl) {
+      chipEl = document.createElement('div');
+      chipEl.className = 'shell-toast shell-chip glass';
+      chipEl.setAttribute('role', 'status');
+      chipEl.setAttribute('aria-live', 'polite');
+    }
+    chipEl.textContent = '';
+    var msg = document.createElement('div');
+    msg.className = 'chip-text';
+    msg.textContent = String(text || '');
+    chipEl.appendChild(msg);
+    var row = document.createElement('div');
+    row.className = 'chip-actions';
+    (opts.actions || []).forEach(function (a, i) {
+      if (!a || !a.label) return;
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip-btn' + (i === 0 ? ' primary' : '');
+      b.textContent = a.label;
+      b.addEventListener('click', function () {
+        try { if (typeof a.fn === 'function') a.fn(); } catch (_e) {}
+        dismissChip();
+      });
+      row.appendChild(b);
+    });
+    chipEl.appendChild(row);
+    Slots.claim('chip', { priority: 85, slots: ['TR', 'TL', 'BR'], el: chipEl });
+    requestAnimationFrame(function () { if (chipEl) chipEl.classList.add('show'); });
+    if (chipTimer) clearTimeout(chipTimer);
+    chipTimer = setTimeout(dismissChip, Math.max(1500, +opts.ms || 12000));
+  }
+
   var Shell = {
     state: state,
     slots: Slots,
     toast: toast,
+    chip: chip,
     setFocus: function (name) {
       state.focus = (R.FOCUS.indexOf(name) >= 0) ? name : 'orb';
       apply();
