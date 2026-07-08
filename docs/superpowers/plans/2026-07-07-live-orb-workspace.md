@@ -726,7 +726,9 @@ After `<script src="shell-reducer.js"></script>` add:
 - [ ] **Step 2: Find every `orb` reader before deleting it**
 
 Run: `grep -n "orb\." renderer/index.html | grep -vE "orb-deck|orb-state|orb-caption|orb-meta|window\.bridge|NexusOrb"`
-Expected: matches ONLY at the four known sites — the `let orb` declaration (~711), `setMicState` (~1506), the poll block (~2586–2589), `refreshSpeakingUI` (~2866–2873), and `initOrb`'s pump (~2736–2745). If anything else reads `orb.`, STOP and rework that site first (report it in the task summary).
+Expected sites: the `let orb` declaration (~711), `setMicState` (~1506), the poll block (~2586–2589), `refreshSpeakingUI` (~2866–2873), `initOrb`'s pump (~2736–2745), AND `_bgDraw` (~2799, `const lvl=(typeof orb!=='undefined'&&orb)?orb.level:0;` — the legacy ambient-background tumble reads the eased level). If anything else reads `orb.`, STOP and rework that site first (report it in the task summary).
+
+**Amendment (controller decision, resolving the `_bgDraw` reader):** the pump exposes the eased level so the background keeps its voice-reactive tumble. In `initOrb()` add `let lastLevel = 0;` with the pump locals; after `const st = sync(nowMs);` add `lastLevel = st.level;`; add `currentLevel: function(){ return lastLevel; },` to the `window.NexusOrb` object; and change line ~2799 to `const lvl=(window.NexusOrb?NexusOrb.currentLevel():0);`. After this, the Step 9 grep still returns empty (`NexusOrb.currentLevel()` is excluded, bare `orb.level` is gone). No activity proxy for the busy/thinking case — YAGNI; the honest audio level is enough for a background tumble.
 
 - [ ] **Step 3: Delete the `orb` object; rewrite `initOrb` as the NexusOrb pump**
 

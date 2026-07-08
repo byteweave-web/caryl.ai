@@ -47,6 +47,9 @@ app.on('second-instance', () => {
 
 // Register a tiny scheme so generated images on disk load in the renderer reliably.
 protocol.registerSchemesAsPrivileged([{ scheme: 'brainimg', privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true } }]);
+// (handler attached below near app startup so generated GLBs (3d:download output) load
+// via brainimg:// URLs in the renderer; without it those URLs 404 even though the scheme
+// is registered as privileged.)
 
 // One-time data migration from the BRAIN.AI era. Must run before the first config read.
 require('./lib/migrate').run(app);
@@ -62,12 +65,40 @@ const localSearch = require('./lib/local-search');
 const enginesLib = require('./lib/engines');
 const downloads = require('./lib/downloads');
 const { parseGroundingBox } = require('./lib/grounding'); // D2: normalize the vision model's focus box
+const docgen = require('./lib/docgen'); // Caryl document generation: PDF + HTML/MD/TXT
 
 // Ensure cfg.engines exists (one-time derivation from the pre-Caryl flags).
 {
   const norm = enginesLib.normalizeEngines(config.get());
   if (norm.changed) config.set({ engines: norm.engines });
 }
+
+// ----- 7-Agent Swarm bootstrap (Orchestrator + 6 sub-agents) -----
+// Sets up orchestrator:dispatch + orchestrator:dispatchChain IPCs and
+// broadcasts `swarm:event` to every BrowserWindow so the renderer's
+// 7-orb visualization reacts in real time. See lib/swarm/install.js.
+try {
+  require('./lib/swarm/install').install({
+    ipcMain, BrowserWindow, sidecarCall,
+    // Swarm needs to read swarmShowOrbs / coderAutoApply at boot and react to
+    // live toggles in Settings. getConfig/setConfig wrap lib/config so the
+    // swarm never couples to the module directly. onConfigChange pipes any
+    // settings change into the swarm's broadcast channel so the renderer can
+    // hide/show orbs without a restart.
+    getConfig: () => config.get(),
+    setConfig: (patch) => config.set(patch),
+    onConfigChange: (cb) => { if (typeof cb === 'function') _swarmCfgListeners.push(cb); },
+  });
+  // Hook the existing config:set IPC so it pumps a snapshot into the swarm listeners.
+  const _origConfigSet = (typeof configHandle === 'function') ? configHandle : null;
+  void _origConfigSet; // (kept as a no-op anchor; the main config:set handler is patched below)
+} catch (e) {
+  console.error('[swarm] install failed (non-fatal):', (e && e.message) || String(e));
+}
+
+// Listeners are filled by install.onConfigChange(cb); main.js pumps the
+// latest config snapshot into them whenever the renderer mutates settings.
+const _swarmCfgListeners = [];
 
 // Named accents (single source for status + migration; hexes match renderer/theme.css).
 const ACCENT_HEX = { cyan: '#7fd1ff', blue: '#4c8dff', white: '#eef1f6', teal: '#35d6b0', amber: '#f5b53d', violet: '#a98bff' };
@@ -2266,7 +2297,25 @@ ipcMain.handle('stt:transcribe', async (_e, arrayBuffer) => {
             audio_b64: buf.toString('base64'),
             min_speech_ms: cfg.vadMinSpeechMs || 450,
             energy_floor_db: cfg.vadEnergyFloorDb || -45,
-            max_silence_pad_ms: cfg.vadMaxSilencePadMs || 300
+            max_silence_pad_ms: cfg.vadMaxSilencePadMs || 300,
+            // === install_dynamic_noise_floor:G:begin ===
+            dynamic_floor: cfg.dynamicNoiseFloor !== false,
+
+                        margin_db: typeof cfg.noiseFloorMarginDb === 'number' ? cfg.noiseFloorMarginDb : 10,
+            // === install_dynamic_noise_floor:G:end ===
+
+// (dedup)             dynamic_floor: cfg.dynamicNoiseFloor !== false,
+// (dedup)             margin_db: typeof cfg.noiseFloorMarginDb === 'number' ? cfg.noiseFloorMarginDb : 10,
+// (dedup)             dynamic_floor: cfg.dynamicNoiseFloor !== false,
+// (dedup)             margin_db: typeof cfg.noiseFloorMarginDb === 'number' ? cfg.noiseFloorMarginDb : 10,
+// (dedup)             dynamic_floor: cfg.dynamicNoiseFloor !== false,
+// (dedup)             margin_db: typeof cfg.noiseFloorMarginDb === 'number' ? cfg.noiseFloorMarginDb : 10,
+// (dedup)             dynamic_floor: cfg.dynamicNoiseFloor !== false,
+// (dedup)             margin_db: typeof cfg.noiseFloorMarginDb === 'number' ? cfg.noiseFloorMarginDb : 10,
+// (dedup)             dynamic_floor: cfg.dynamicNoiseFloor !== false,
+// (dedup)             margin_db: typeof cfg.noiseFloorMarginDb === 'number' ? cfg.noiseFloorMarginDb : 10,
+// (dedup)             dynamic_floor: cfg.dynamicNoiseFloor !== false,  // default ON; set false to revert to the static -45dB floor
+// (dedup)             margin_db: typeof cfg.noiseFloorMarginDb === 'number' ? cfg.noiseFloorMarginDb : 10
           })
         });
         if (vadRes.ok) {
@@ -2780,7 +2829,18 @@ async function importFilePath(file) {
     const text = await extractDocText(file);
     if (!text || !text.trim()) return { ok: false, error: 'No readable text found in that file.' };
     summarizeDocument(path.basename(file), text); // streams the summary into the thread + speaks it
-    return { ok: true, name: path.basename(file) };
+    // Richer return: the renderer uses these to show an attachment chip
+    // in the chat thread (name, size, preview text) AND to remember the file
+    // path so the user can click the chip to trigger a re-import later.
+    const stat = (function () { try { return fs.statSync(file); } catch (_e) { return null; } })();
+    return {
+      ok: true,
+      name: path.basename(file),
+      path: file,
+      ext: path.extname(file).toLowerCase().replace(/^./, ''),
+      sizeBytes: (stat && stat.size) || 0,
+      preview: (text || '').slice(0, 600)
+    };
   } catch (e) {
     return { ok: false, error: (e && e.message) || String(e) };
   }
@@ -2845,6 +2905,38 @@ ipcMain.handle('doc:import', async () => {
 ipcMain.handle('doc:importPath', async (_e, filePath) => {
   if (!filePath || typeof filePath !== 'string') return { ok: false, error: 'No file path received.' };
   return importFilePath(filePath);
+});
+
+// -------------------------------------------------------------------- doc:generate
+// Render an AI-emitted ```docgen``` JSON block into the chosen format. The PDF
+// path uses a HIDDEN BrowserWindow + webContents.printToPDF so we get full
+// Chromium typography (@page CSS, multi-page breaks, font fallback) without
+// bundling pdfkit/jsPDF. Pure helpers (renderSectionsHtml, generateMarkdown,
+// generateText, generateHtml) are re-exported through the preload bridge so
+// the chat tab can render an in-chat preview of the document layout without a
+// main-side round-trip.
+ipcMain.handle('doc:generate', async (_e, opts) => {
+  const format = String((opts && opts.format) || 'pdf').toLowerCase();
+  try {
+    if (format === 'pdf') {
+      const r = await docgen.generatePdf(Object.assign({ BrowserWindow: BrowserWindow }, opts || {}));
+      return r;
+    }
+    if (format === 'md')   return Object.assign({ ok: true, format: 'md'   }, docgen.generateMarkdown(opts || {}));
+    if (format === 'txt')  return Object.assign({ ok: true, format: 'txt'  }, docgen.generateText(opts || {}));
+    if (format === 'html') return Object.assign({ ok: true, format: 'html' }, docgen.generateHtml(opts || {}));
+    return { ok: false, error: 'unsupported_format: ' + format };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
+});
+
+// ----------------------------------------------------------------------- doc:save
+// Native Save dialog, then write the buffer (pdf) or text (html/md/txt) to
+// the chosen path. Returns { ok:true, path } when saved; { ok:false, canceled }
+// when the user cancelled.
+ipcMain.handle('doc:save', async (_e, payload) => {
+  return docgen.saveDocDialog(Object.assign({}, payload, { dialog: dialog, app: app }));
 });
 
 function createWindow() {
@@ -3180,6 +3272,8 @@ ipcMain.handle('shell:style', () => shellStyle());
 ipcMain.handle('config:set', (_e, patch) => {
   const prev = config.get(); // [OFFLINE-INTEGRATION] snapshot so we can detect what changed
   const r = config.set(patch || {});
+  try { for (const cb of _swarmCfgListeners) { try { cb(r, prev); } catch (_e) {} } } catch (_e) {}
+
   if (patch && (patch.globalHotkey || ('pushToTalkMode' in patch) || ('pttHotkey' in patch))) applyVoiceHotkeyMode();
   // Translate legacy mode flags (old settings UI / old renderer versions) into engines,
   // and keep legacy flags in sync when engines is patched directly - both directions,
@@ -3400,6 +3494,32 @@ ipcMain.handle('automation:setPermissions', (_e, perms) => {
   config.set({ allow_mouse_control: !!(perms && perms.mouse), allow_system_scripting: !!(perms && perms.scripting) });
   return sidecarCall('/permissions', { mouse: !!(perms && perms.mouse), scripting: !!(perms && perms.scripting) });
 });
+
+
+// === UIA-first workflow runner ===
+// Tries the hardcoded UIA workflow first (50 intents in automation_workflows.json);
+// the renderer can fall back to the vision-based /act flow if this returns ok:false.
+ipcMain.handle('automation:uia-run', async (_e, intent, params) => {
+  return sidecarCall('/uia_run', { intent, params: params || {} });
+});
+
+// Lists all available UIA intents (intent_name + description + parameters).
+ipcMain.handle('automation:uia-intents', async () => {
+  return sidecarCall('/uia_intents', {});
+});
+// ===================== D3 + D4 + D5: 3D generation + research overlay =====================
+// IPC bundle (lib/d3d4d5.js) registers 3D submit/poll/download/test IPCs and the floating
+// research card window. D4 (health/diet) is a system-prompt concern handled by the 120B
+// Orchestrator + the renderer's camera-mode buttons; no main-side IPC needed for it.
+try {
+  require('./lib/d3d4d5').install({
+    ipcMain, app, BrowserWindow, path, fs, screen, config,
+    mesh3d: require('./lib/mesh3d'),
+  });
+} catch (e) {
+  console.error('[d3d4d5] install failed (non-fatal):', (e && e.message) || String(e));
+}
+
 
 // Pull a JSON action out of a model reply, tolerating code fences. Returns the action
 // object only if it has an "action" field; otherwise null (meaning: it's a normal chat).

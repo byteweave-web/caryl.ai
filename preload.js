@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('bridge', {
   // ----- Camera object focus (D2): letterbox box mapping + focus event -----
   mapBoxToCanvas: (box, video, canvas) => grounding.mapBoxToCanvas(box, video, canvas),
   pickBestBox: (cands, seed, minIou) => grounding.pickBestBox(cands, seed, minIou),
+  // EMA smoothing for the tracker (renderer applies it per detect to drop COCO-SSD jitter;
+  // large jumps snap instead of swooping so a confused detector doesn't glue a stale box to
+  // a brand-new lock position for half a second).
+  smoothBox: (curr, next, alpha, snapDist) => grounding.smoothBox(curr, next, alpha, snapDist),
   onCameraFocus: (cb) => ipcRenderer.on('camera:focus', (_e, payload) => cb(payload)),
   // re-locate the last focused object with a fresh AI vision call (tracker lost it)
   regroundObject: () => ipcRenderer.invoke('camera:reground'),
@@ -122,7 +126,23 @@ contextBridge.exposeInMainWorld('bridge', {
   // ----- Document import -----
   importDoc: () => ipcRenderer.invoke('doc:import'),
   importDocPath: (filePath) => ipcRenderer.invoke('doc:importPath', filePath),
+  // Live event: fires whenever ANY renderer window successfully imports a
+  // file (so the chat tab can show an attachment chip even when the import
+  // happened via drag-drop or via the overlay panel). Returns the same shape
+  // the import IPC returns: {name, path, ext, sizeBytes, preview}.
+  onDocImported: function (cb) {
+    const handler = function (_e, payload) { try { cb(payload); } catch (_err) {} };
+    ipcRenderer.on('doc:imported', handler);
+    return function () { try { ipcRenderer.removeListener('doc:imported', handler); } catch (_e) {} };
+  },
   getPathForFile: (file) => { try { return webUtils.getPathForFile(file); } catch (e) { return ''; } },
+
+  // ----- Document generation (Caryl emits ```docgen``` blocks; renderer forwards to main) -----
+  // For pdf, returns { ok, pdfBuffer (Uint8Array), html, filename }. For html/md/txt,
+  // returns { ok, format, <text|html|markdown>, filename }.
+  generateDoc: function (opts) { return ipcRenderer.invoke('doc:generate', opts); },
+  // Save dialog + write. Pass { format, buffer OR text, defaultFilename }.
+  saveDoc: function (payload) { return ipcRenderer.invoke('doc:save', payload); },
 
   // ----- Local wake word (openWakeWord) -----
   wakewordEnsure: () => ipcRenderer.invoke('wakeword:ensure'),
@@ -149,6 +169,80 @@ contextBridge.exposeInMainWorld('bridge', {
   automationConfirmShell: (id, approve) => ipcRenderer.invoke('automation:confirmShell', id, approve),
   automationPick: (id, choice) => ipcRenderer.invoke('automation:pick', id, choice),
   automationSetPermissions: (perms) => ipcRenderer.invoke('automation:setPermissions', perms),
+  automationUiaRun: (intent, params) => ipcRenderer.invoke('automation:uia-run', intent, params),
+  automationUiaIntents: () => ipcRenderer.invoke('automation:uia-intents'),
+
+  // ----- D3: Real 3D generation (Meshy.ai / Tripo3D / custom) -----
+  // Provider keys are read in main from config + env vars (MESHY_API_KEY, TRIPO_API_KEY).
+  // The renderer MUST throttle `poll3D` calls to ~3.5s — the adapter is stateless,
+  // unthrottled polls will trip HTTP 429 rate limits.
+  submit3D: (provider, image_data_url) => ipcRenderer.invoke('3d:submit', { provider, image_data_url }),
+  poll3D: (provider, task_id, started_at_ms) => ipcRenderer.invoke('3d:poll', { provider, task_id, started_at_ms }),
+  download3D: (glb_url) => ipcRenderer.invoke('3d:download', { glb_url }),
+  list3DProviders: () => ipcRenderer.invoke('3d:providers'),
+  test3DConnection: () => ipcRenderer.invoke('3d:test'),
+
+  // ----- D5: Real-time research overlay -----
+  // Push a research-result payload to the floating blue-glass card. Idempotent — repeated
+  // calls while the card is already open just update the content (no relaunch).
+  openResearchOverlay: (payload) => ipcRenderer.invoke('research:open', payload),
+  closeResearchOverlay: () => ipcRenderer.invoke('research:close'),
+  setResearchPin: (pinned) => ipcRenderer.invoke('research:set-pin', !!pinned),
+  // Sync fetch of the last payload (called by the overlay on first mount, before its
+  // onResearchUpdate listener has fired for THIS session). Together they make the mount
+  // race-free against spamming research:open calls.
+  getResearchPayload: () => ipcRenderer.invoke('research:get-payload'),
+  // Live updates broadcast from main (overlay's only channel for content changes).
+  onResearchUpdate: (cb) => {
+    const handler = (_e, payload) => { try { cb(payload); } catch (_err) {} };
+    ipcRenderer.on('research:update', handler);
+    return () => ipcRenderer.removeListener('research:update', handler);
+  },
+  // Renderer pushes its camera-mode state on every toggleCamera() show/hide so main can
+  // gate research-result auto-open while a camera session is active.
+  setCameraSessionOpen: (open) => ipcRenderer.invoke('camera:set-session', !!open),
+
+  // ----- D4: Health / diet prompt injection -----
+  // The 120B Orchestrator already controls the prompt surface; the camera buttons here
+  // just route to the standard vision path with an explicit "honest" injection. This
+  // helper returns the injection string the renderer appends to a vision request.
+  healthHonestInjection: (kind) => {
+    if (kind === 'calories') {
+      return 'Honest calorie analysis: give a single best-estimate range (' +
+        'e.g. "320–420 kcal") for the food on screen. Be direct, no disclaimers. If you ' +
+        'cannot identify the food, say "I can\u2019t tell what this is" — never guess.';
+    }
+    if (kind === 'physique') {
+      return 'Honest physique check: describe what you see in plain, neutral language. ' +
+        'Estimate body fat % only if you can see clear muscle definition; otherwise say ' +
+        '"not enough information" rather than invent a number. No moralizing.';
+    }
+    return '';
+  },
+
+  // ----- 7-Agent Swarm: dispatch payloads from the 120B Orchestrator -----
+  // Single dispatch with full Critic retry loop (max 3 retries per
+  // prompts/orchestrator-system.md §4). Pass either one JSON object, OR
+  // {raw: "<model reply text>"} and the chain parser will JSONL-split it.
+  orchestratorDispatch: (payload) => ipcRenderer.invoke('orchestrator:dispatch', payload),
+  orchestratorDispatchChain: (body) => ipcRenderer.invoke('orchestrator:dispatchChain', body),
+  // Real-time events broadcast from main whenever a swarm dispatch starts or
+  // ends. Payload shape: {kind:'dispatch-start'|'dispatch-end'|...,
+  //                      to, task_id, action, ok, error}.
+  onSwarmEvent: (cb) => {
+    const handler = (_e, ev) => { try { cb(ev); } catch (_err) {} };
+    ipcRenderer.on('swarm:event', handler);
+    return () => ipcRenderer.removeListener('swarm:event', handler);
+  },
+  // The swarm's pre-mount config: read once on boot to decide whether the
+  // 6 background orbs get rendered or stay invisible. Returns the explicit
+  // values the renderer needs (not the whole config blob).
+  swarmConfig: () => ipcRenderer.invoke('swarm:config'),
+  // Coder apply (gated). confirmed:true MUST be passed by user click; the
+  // server enforces the same gate so a malicious renderer can't bypass.
+  coderApply: (payload) => ipcRenderer.invoke('coder:apply', payload),
+  // Coder diff preview (used by the diff modal to show unified-diff text).
+  coderPreview: (payload) => ipcRenderer.invoke('coder:preview', payload),
 
   // ----- [OFFLINE-INTEGRATION] Offline mode / local AI (Ollama) -----
   ollamaModels: () => ipcRenderer.invoke('ollama:models'),

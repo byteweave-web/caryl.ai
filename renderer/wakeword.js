@@ -26,13 +26,49 @@
   let threshold = 0.5;
   let lastDetect = 0;
   let wwModelName = 'hey_jarvis_v0.1.onnx'; // which classifier to run; set via start({model})
+  // ===== Smart Audio & Voice Interaction (4:4 Speaker Recognition) =====
+  // userPrint, when set, is a 96-dim Float32Array mean-pool centroid of the user's voice from
+  // onboarding. Every successful detection computes the cosine similarity of the same 96-dim
+  // window against userPrint; if `sim < userPrintThreshold` we suppress cb.detect silently -
+  // the wake word fizzles into the background instead of the mic for a partial-misfire.
+  let userPrint = null;
+  let userPrintThreshold = 0.70;
+  // enrollmentOnly: when set by onboarding, every successful detect fires cb.embedCapture so
+  // the renderer can mean-pool the live embedding into the saved print. Detects fire normally.
+  let enrollmentOnly = false;
+
+  // Mean-pool 16 frames x 96 dims -> 96 dims. Each frame is a snapshot of the speech-embedding
+  // model's output around the wake-word trigger; one wake utterance yields 16 of them.
+  function meanPool(frames) {
+    if (!Array.isArray(frames) || !frames.length) return null;
+    const n = frames.length;
+    const d = frames[0].length || EMB_DIM;
+    const out = new Float32Array(d);
+    for (let i = 0; i < n; i++) {
+      const f = frames[i];
+      if (!f || f.length !== d) continue;
+      for (let j = 0; j < d; j++) out[j] += f[j] / n;
+    }
+    return out;
+  }
+  function cosineSim(a, b) {
+    if (!a || !b || a.length !== b.length) return 0;
+    let dot = 0, na = 0, nb = 0;
+    for (let i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      na += a[i] * a[i];
+      nb += b[i] * b[i];
+    }
+    const m = Math.sqrt(na) * Math.sqrt(nb);
+    return m ? dot / m : 0;
+  }
 
   // rolling buffers
   let pcm = new Float32Array(0);       // leftover audio samples not yet stepped
   let melBuffer = [];                  // array of Float32Array(32)
   let embBuffer = [];                  // array of Float32Array(96)
 
-  const cb = { status: function () { }, detect: function () { }, error: function () { }, ready: function () { }, score: function () { }, level: function () { } };
+  const cb = { status: function () { }, detect: function () { }, error: function () { }, ready: function () { }, score: function () { }, level: function () { }, embedCapture: function () { } };
   const _dbg = { mel: false, emb: false, ww: false, peak: 0, peakAt: 0, rms: 0, melSample: '' };
 
   function log() { try { console.log.apply(console, ['[wakeword]'].concat([].slice.call(arguments))); } catch (e) { } }
@@ -145,9 +181,33 @@
     const now = Date.now();
     if (score >= threshold && (now - lastDetect) > COOLDOWN_MS) {
       lastDetect = now;
+      // Snapshot the 16 most-recent embeddings BEFORE we reset embBuffer. The window covers
+      // exactly the frames the classifier saw, so the mean-pool is the per-utterance "voice
+      // fingerprint" the speaker-recognition feature uses.
+      const frameSnapshot = embBuffer.slice(-WW_FRAMES);
       embBuffer = [];        // reset so we don't re-fire on the same utterance
       log('DETECTED ' + wwModelName + ' score=' + score.toFixed(3));
+
+      // (4) Speaker verification - silent veto when the live embedding cosine-sim against
+      // the saved print falls below the threshold. Keeps COOLDOWN quiet so we don't keep
+      // firing for the same impersonation attempt.
+      if (userPrint && userPrint.length === EMB_DIM) {
+        const live = meanPool(frameSnapshot);
+        if (live) {
+          const sim = cosineSim(live, userPrint);
+          if (sim < userPrintThreshold) {
+            log('[voice] print mismatch sim=' + sim.toFixed(2) + ' - suppressed');
+            // Don't fire detect, but DO still report embedCapture so enrollment tracking stays in sync.
+            try { cb.embedCapture({ frames: frameSnapshot, sim: sim, matched: false }); } catch (e) { }
+            return;
+          }
+          log('[voice] print match sim=' + sim.toFixed(2));
+        }
+      }
       try { cb.detect(score); } catch (e) { }
+      if (enrollmentOnly) {
+        try { cb.embedCapture({ frames: frameSnapshot, sim: -1, matched: true }); } catch (e) { }
+      }
     }
   }
 
@@ -188,6 +248,11 @@
       opts = opts || {};
       if (typeof opts.threshold === 'number') this.setThreshold(opts.threshold);
       if (opts.model && opts.model !== wwModelName) { wwModelName = String(opts.model); loaded = false; } // switch classifier -> rebuild sessions
+      // (4) Speaker print wiring - the renderer passes the user's saved centroid + threshold,
+      // plus an enrollmentOnly flag during onboarding so every detection captures embeddings.
+      try { if (opts.userPrint && opts.userPrint.length === EMB_DIM) userPrint = opts.userPrint; else userPrint = null; } catch (e) { userPrint = null; }
+      if (typeof opts.userPrintThreshold === 'number') userPrintThreshold = Math.max(0.4, Math.min(0.95, opts.userPrintThreshold));
+      enrollmentOnly = !!opts.enrollmentOnly;
       try {
         status('Preparing wake-word models\u2026');
         const ens = await window.bridge.wakewordEnsure();
@@ -256,6 +321,10 @@
 
     stop: function () {
       running = false;
+      // (4) Clear speaker state when the detector stops, so re-arming without a fresh print
+      // explicitly means the next session won't gate on the old (potentially stale) centroid.
+      userPrint = null;
+      enrollmentOnly = false;
       try { if (processor) { processor.port.onmessage = null; processor.disconnect(); } } catch (e) { }
       try { if (source) source.disconnect(); } catch (e) { }
       try { if (audioCtx) audioCtx.close(); } catch (e) { }
@@ -266,6 +335,12 @@
       status('Wake word stopped.');
     }
   };
+
+  // Expose the canonical helpers on the public object so consumers
+  // (onboarding.html, settings page) can reuse them instead of duplicating.
+  // Single source of truth: these names are the public API - rename here with care.
+  WakeWord.meanPool = meanPool;
+  WakeWord.cosineSim = cosineSim;
 
   window.WakeWord = WakeWord;
 })();

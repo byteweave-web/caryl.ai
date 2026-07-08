@@ -87,4 +87,49 @@ assert.strictEqual(g.pickBestBox(cands, [0.5, 0.5, 0.52, 0.52], 0.3), null, 'not
 assert.strictEqual(g.pickBestBox([], [0, 0, 1, 1], 0.1), null, 'no candidates -> null');
 assert.strictEqual(g.pickBestBox(null, [0, 0, 1, 1], 0.1), null, 'null candidates -> null');
 
+// --- smoothBox: EMA per corner, snap if the new center is far away ---
+// null-safe + shape-safe (returns a fresh array so caller can mutate without aliasing).
+assert.deepStrictEqual(g.smoothBox(null, [0.1, 0.2, 0.3, 0.4]), [0.1, 0.2, 0.3, 0.4], 'null curr -> next');
+assert.deepStrictEqual(g.smoothBox([0.1, 0.2, 0.3, 0.4], null), [0.1, 0.2, 0.3, 0.4], 'null next -> curr');
+assert.deepStrictEqual(g.smoothBox(undefined, [0.5, 0.5, 0.6, 0.6]), [0.5, 0.5, 0.6, 0.6], 'undefined curr -> next');
+// alpha 0.5 lands exactly midway between curr and next
+let s = g.smoothBox([0, 0, 0.4, 0.4], [0.2, 0.2, 0.6, 0.6], 0.5);
+assert.ok(approx(s[0], 0.1) && approx(s[1], 0.1) && approx(s[2], 0.5) && approx(s[3], 0.5), 'alpha 0.5 -> midpoint');
+// alpha 0 + small step -> identical to curr (fully sticky when within snap distance)
+s = g.smoothBox([0.1, 0.2, 0.3, 0.4], [0.11, 0.21, 0.31, 0.41], 0);
+assert.deepStrictEqual(s, [0.1, 0.2, 0.3, 0.4], 'alpha 0 -> identical to curr (within snap distance)');
+// alpha 0 + huge jump -> snap to next (snap wins over stickiness for far jumps)
+s = g.smoothBox([0.1, 0.2, 0.3, 0.4], [0.9, 0.9, 0.9, 0.9], 0);
+assert.deepStrictEqual(s, [0.9, 0.9, 0.9, 0.9], 'alpha 0 + far jump -> snap to next');
+// alpha 1 -> identical to next (fully responsive)
+s = g.smoothBox([0.1, 0.2, 0.3, 0.4], [0.7, 0.7, 0.8, 0.8], 1);
+assert.deepStrictEqual(s, [0.7, 0.7, 0.8, 0.8], 'alpha 1 -> identical to next');
+// huge jump (center distance > snapDist) -> snap, not swoop
+s = g.smoothBox([0.1, 0.1, 0.2, 0.2], [0.9, 0.9, 1, 1], 0.4);
+assert.deepStrictEqual(s, [0.9, 0.9, 1, 1], 'far jump -> snap to next');
+// small adjustment (center distance < snapDist) -> ease
+s = g.smoothBox([0.5, 0.5, 0.6, 0.6], [0.52, 0.5, 0.62, 0.6], 0.5);
+assert.ok(approx(s[0], 0.51) && approx(s[2], 0.61), 'small adjustment eases');
+// Returns a fresh array (mutating the result doesn't mutate curr or next)
+const currIn = [0.5, 0.5, 0.6, 0.6], nextIn = [0.55, 0.55, 0.65, 0.65];
+const out = g.smoothBox(currIn, nextIn, 0.5);
+out[0] = 999;
+assert.ok(currIn[0] !== 999 && nextIn[0] !== 999, 'result is a fresh array, inputs untouched');
+
+// alpha clamping: out-of-range alpha still produces a valid in-range value without exceptions.
+// Use a SMALL step so the snap-threshold doesn't fire and we can isolate the clamp behavior.
+assert.deepStrictEqual(g.smoothBox([0.1, 0.2, 0.3, 0.4], [0.11, 0.21, 0.31, 0.41], -1), [0.1, 0.2, 0.3, 0.4], 'alpha -1 clamps to 0 -> identical to curr');
+assert.deepStrictEqual(g.smoothBox([0.1, 0.2, 0.3, 0.4], [0.11, 0.21, 0.31, 0.41], 2),  [0.11, 0.21, 0.31, 0.41], 'alpha 2 clamps to 1 -> identical to next');
+// alpha -1 + HUGE jump -> snap wins over clamp (snap is the safer behavior for far jumps)
+assert.deepStrictEqual(g.smoothBox([0.1, 0.2, 0.3, 0.4], [0.9, 0.9, 0.9, 0.9], -1), [0.9, 0.9, 0.9, 0.9], 'alpha -1 + far jump -> snap, not clamp to curr');
+// custom snapDist: snapDist=0.05 + tiny step -> ease (under threshold)
+s = g.smoothBox([0.5, 0.5, 0.6, 0.6], [0.51, 0.51, 0.61, 0.61], 0.5, 0.05);
+assert.ok(approx(s[0], 0.505) && approx(s[2], 0.605), 'snapDist=0.05 + tiny step eases');
+// custom snapDist: snapDist=0.05 + 6% jump -> snap (over threshold)
+s = g.smoothBox([0.5, 0.5, 0.6, 0.6], [0.56, 0.5, 0.66, 0.6], 0.5, 0.05);
+assert.deepStrictEqual(s, [0.56, 0.5, 0.66, 0.6], 'snapDist=0.05 + 6% jump snaps');
+// snapDist ignored on null curr (returns next as fallback, never throws)
+s = g.smoothBox(null, [0.5, 0.5, 0.6, 0.6], 0.5, 0);
+assert.deepStrictEqual(s, [0.5, 0.5, 0.6, 0.6], 'null curr + snapDist=0 -> next');
+
 console.log('test-grounding: all assertions passed');

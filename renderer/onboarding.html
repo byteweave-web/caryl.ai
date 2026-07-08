@@ -194,6 +194,15 @@ window.bridge.getConfig().then(function (c) {
 
   // step 5: live calibration on the real detector
   let calOn = false;
+  // ===== Smart Audio & Voice Interaction (4:4) automatic voice enrollment =====
+  // Capture three successful wake-detects during the existing calibration step, mean-pool
+  // the 16-frame 96-dim embeddings from each, drop the worst (cosine to running centroid),
+  // average the rest, persist as cfg.userVoicePrint. The user did not have to change the
+  // wizard's flow; the enrollment is invisible work piggybacking on the calibration
+  // they're already doing. Default enrollment happens even if speaker recognition is OFF in
+  // Settings - the print is just not GATED until they flip it on.
+  const ENROLLMENT_TARGET = 3;
+  let _enrollBuffers = [];    // collected mean-pool results, one per successful detect
   async function startCalibration() {
     if (calOn || !window.WakeWord) return;
     const stat = document.getElementById('cal-status');
@@ -202,13 +211,63 @@ window.bridge.getConfig().then(function (c) {
     // pick FIRST or the ensure step fetches the old default and load() fails "not downloaded".
     try { await window.bridge.setConfig({ wakeWordModel: picked.wakeWordModel }); } catch (e) {}
     calOn = true;
+    _enrollBuffers = [];
     const meter = document.getElementById('cal-meter');
     document.getElementById('cal-thresh').oninput = e => { picked.wakeThreshold = parseFloat(e.target.value); WakeWord.setThreshold(picked.wakeThreshold); };
     WakeWord.on('score', s => { meter.style.width = Math.min(100, Math.round(s * 100)) + '%'; });
     WakeWord.on('detect', () => { stat.textContent = '✓ Heard you! That threshold works.'; });
-    WakeWord.on('status', s => { if (stat.textContent.indexOf('Heard') === -1) stat.textContent = s; });
-    try { await WakeWord.start({ threshold: picked.wakeThreshold, model: picked.wakeWordModel }); }
+    WakeWord.on('status', s => {
+      if (stat.textContent.indexOf('Heard') === -1 && stat.textContent.indexOf('Voice') === -1) stat.textContent = s;
+    });
+    // Hook embedCapture to silently enroll: mean-pool the 16 frames, push onto our local list,
+    // and (when we have ENROLLMENT_TARGET) compute the centroid, drop the worst, persist.
+    WakeWord.on('embedCapture', (payload) => {
+      if (!payload || !Array.isArray(payload.frames) || payload.frames.length < 1) return;
+      const pool = window.WakeWord && window.WakeWord.meanPool ? window.WakeWord.meanPool(payload.frames) : null;
+      if (!pool) return;
+      _enrollBuffers.push(pool);
+      if (_enrollBuffers.length >= ENROLLMENT_TARGET) {
+        finalizeEnrollment();
+      } else {
+        stat.textContent = '✓ Heard you! Voice print (' + _enrollBuffers.length + '/' + ENROLLMENT_TARGET + ')';
+      }
+    });
+    try {
+      // enrollmentOnly tells the detector to fire embedCapture on every successful detect so
+      // we can collect the samples. The user can opt OUT of gating (Settings -> Voice & Audio)
+      // but the enrollment itself is automatic and doesn't interrupt the calibration.
+      await WakeWord.start({ threshold: picked.wakeThreshold, model: picked.wakeWordModel, enrollmentOnly: true });
+    }
     catch (e) { stat.textContent = 'Detector unavailable: ' + ((e && e.message) || e) + ' — skip and calibrate later in Settings.'; calOn = false; }
+  }
+  function finalizeEnrollment() {
+    if (_enrollBuffers.length < ENROLLMENT_TARGET) return;
+    const centroid = new Float32Array(_enrollBuffers[0].length);
+    for (const v of _enrollBuffers) for (let j = 0; j < v.length; j++) centroid[j] += v[j] / _enrollBuffers.length;
+    // Reuse the canonical cosine-similarity helper from wakeword.js - no duplicate impl.
+    const cos = (window.WakeWord && window.WakeWord.cosineSim) || (function () {
+      function _def(a, b) {
+        const n = Math.min(a.length, b.length);
+        let dot = 0, na = 0, nb = 0;
+        for (let i = 0; i < n; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+        const m = Math.sqrt(na) * Math.sqrt(nb);
+        return m ? dot / m : 0;
+      }
+      return _def;
+    })();
+    // Drop the worst one relative to the centroid for resilience against a single bad take.
+    let worstIdx = 0, worstSim = Infinity;
+    for (let i = 0; i < _enrollBuffers.length; i++) {
+      const s = cos(centroid, _enrollBuffers[i]);
+      if (s < worstSim) { worstSim = s; worstIdx = i; }
+    }
+    const kept = _enrollBuffers.filter((_, i) => i !== worstIdx);
+    const final = new Float32Array(centroid.length);
+    for (const v of kept) for (let j = 0; j < v.length; j++) final[j] += v[j] / kept.length;
+    const arr = Array.from(final);
+    try { window.bridge.setConfig({ userVoicePrint: arr, voiceEnrollmentDone: true }); } catch (e) {}
+    const stat = document.getElementById('cal-status');
+    if (stat) stat.textContent = '✓ Heard you! Voice trained  (' + ENROLLMENT_TARGET + '/' + ENROLLMENT_TARGET + ')';
   }
   function stopCalibration() { if (calOn && window.WakeWord) { try { WakeWord.stop(); } catch (e) {} calOn = false; } }
 
