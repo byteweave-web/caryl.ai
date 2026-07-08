@@ -11,34 +11,29 @@
    artifact, not the instrument panel. Zero polling, zero
    frameworks; everything below is vanilla CSS transitions.
    ============================================================ */
+/* Alias shim (Unified OS Phase 4): material values resolve from system-shell.css; the old
+   token names stay so every rule below keeps working untouched. --mono now comes shared. */
 :root{
-  --card-accent:var(--accent,#7fd1ff);
-  --card-soft:var(--accent-soft,rgba(127,209,255,.14));
-  --txt:#f2f6fa; --mut:#9fabb8; --faint:#66727e;
-  --glass:rgba(10,14,20,.34);
-  --mono:ui-monospace,'SF Mono','Cascadia Code',Consolas,monospace;
-  --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --glass-density:0;
+  --card-accent:var(--core);
+  --card-soft:color-mix(in srgb, var(--core) 14%, transparent);
+  --txt:var(--ink); --mut:var(--dim); --faint:#66727e;
+  --sans:var(--read);
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:transparent;overflow:hidden;
   font-family:var(--sans);-webkit-font-smoothing:antialiased;color:var(--txt)}
-html[data-theme="fullLight"]{--txt:#1a1d24;--mut:#5f6672;--faint:#9098a4;--glass:rgba(255,255,255,.55)}
 
-#card{
+#card{ /* material (fill/blur/hairline/grain/shadow) comes from .glass */
   position:fixed;inset:8px;display:flex;flex-direction:column;
-  background:var(--glass);
-  -webkit-backdrop-filter:blur(28px) saturate(160%);backdrop-filter:blur(28px) saturate(160%);
+  --e:3;
   border-radius:22px;overflow:hidden;
-  border:1px solid rgba(255,255,255,.14);
-  box-shadow:0 24px 80px -20px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.04) inset;
   opacity:0;transform:scale(.94) translateY(8px);
   transition:opacity .22s ease,transform .26s cubic-bezier(.2,.9,.3,1.2);
 }
 #card.show{opacity:1;transform:scale(1) translateY(0)}
 #card.leaving{opacity:0;transform:scale(.96) translateY(6px);transition:opacity .2s ease,transform .2s ease}
 /* Win10: no DWM acrylic behind us -> fail SOLID, never see-through-tint. */
-html[data-os="win10"] #card{background:#10141c;-webkit-backdrop-filter:none;backdrop-filter:none}
-html[data-os="win10"][data-theme="fullLight"] #card{background:#f2f4f8}
 
 .head{display:flex;align-items:flex-start;gap:10px;padding:16px 16px 4px}
 .head .loc{font-size:14px;font-weight:600;letter-spacing:.02em}
@@ -47,21 +42,19 @@ html[data-os="win10"][data-theme="fullLight"] #card{background:#f2f4f8}
 .head .x{border:none;background:rgba(255,255,255,.08);color:var(--mut);width:24px;height:24px;
   border-radius:50%;display:grid;place-items:center;font-size:12px;line-height:1;cursor:pointer;flex:none}
 .head .x:hover{background:rgba(255,255,255,.16);color:var(--txt)}
-html[data-theme="fullLight"] .head .x{background:rgba(0,0,0,.07)}
 
 /* ---------- rows mode ---------- */
 .rows{padding:2px 16px 16px;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
 .row{display:flex;align-items:baseline;gap:12px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.06)}
 .row:last-child{border-bottom:none}
-html[data-theme="fullLight"] .row{border-bottom-color:rgba(0,0,0,.06)}
 .row .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);flex:none;width:88px}
 .row .v{font-size:13.5px;flex:1;text-align:right;word-break:break-word}
 .hidden{display:none !important}
 </style>
-<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="system-shell.css">
 </head>
 <body>
-<div id="card">
+<div id="card" class="glass">
   <div class="head">
     <div><div class="loc" id="loc"></div><div class="cond" id="cond"></div></div>
     <span class="grow"></span>
