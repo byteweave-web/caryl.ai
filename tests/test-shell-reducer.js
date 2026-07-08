@@ -23,6 +23,7 @@ assert.strictEqual(r.zTop, S.Z.focus, 'chat top layer is focus band');
 r = S.deriveShell({ focus: 'settings' });
 assert.strictEqual(r.glassDensityTarget, S.DENSITY.settings, 'settings denser');
 assert.strictEqual(r.engineThrottle, false, 'settings not throttled by default');
+assert.strictEqual(r.focusDepthTarget, 1, 'settings pulls the engine back');
 
 // camera-full: opaque -> crosses occlusion -> engine throttles
 r = S.deriveShell({ focus: 'camera-full' });

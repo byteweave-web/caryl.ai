@@ -129,13 +129,16 @@ canvas.orb{position:absolute;inset:0;width:100%;height:100%;z-index:3}
 .composer input:focus{border-color:var(--accent-soft)}
 .composer .send{border:1px solid var(--line);background:var(--accent);color:#0a0b0d;font-weight:700;border-radius:12px;padding:0 18px}
 .hint{text-align:center;color:var(--faint);font-size:11px;padding:0 0 10px}
-.scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:.2s;z-index:40}
-.scrim.open{opacity:1;pointer-events:auto}
+/* Settings is a focus-layer (spec Phase 3): a glass HUD over the pulled-back engine, not a
+   modal. Visibility + entrance ride the shell's data-focus and the 420ms spine; the .glass
+   material (system-shell.css) supplies fill/blur/border, fill riding --glass-density. */
 .settings{position:fixed;top:50%;left:50%;transform:translate(-50%,-48%) scale(.98);opacity:0;pointer-events:none;
-  width:880px;max-width:95vw;height:580px;max-height:90vh;background:var(--panel);border:1px solid var(--line);
-  border-radius:16px;display:flex;overflow:hidden;z-index:50;transition:opacity .18s,transform .18s}
-.settings.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
-.settings .nav{width:176px;flex:0 0 176px;border-right:1px solid var(--line);background:var(--panel2);
+  --e:3;width:880px;max-width:95vw;height:580px;max-height:90vh;
+  display:flex;overflow:hidden;z-index:50;
+  transition:opacity 420ms cubic-bezier(.2,.8,.2,1),transform 420ms cubic-bezier(.2,.8,.2,1)}
+:root[data-focus="settings"] .settings{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+@media (prefers-reduced-motion: reduce){ .settings{transition:opacity 200ms linear} }
+.settings .nav{width:176px;flex:0 0 176px;border-right:1px solid var(--hair);background:transparent;
   padding:14px 8px;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
 .settings .nav .navlabel{font-size:11px;color:var(--faint);padding:4px 10px 8px;letter-spacing:.4px;text-transform:uppercase}
 .settings .nav button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;
@@ -307,8 +310,7 @@ html[data-os="win10"] .cam-relock{background:rgba(16,20,28,.92);-webkit-backdrop
   </div>
 </div>
 
-<div class="scrim" id="scrim" onclick="closeSettings()"></div>
-<aside class="settings" id="settings">
+<aside class="settings glass" id="settings">
   <nav class="nav">
     <div class="navlabel">Settings</div>
     <button data-nav="engines" class="active" onclick="showSettingsPage('engines')">AI engines</button>
@@ -744,10 +746,18 @@ function setView(v){
   var el=document.getElementById('view-'+v); if(el) el.classList.add('active');
   _curView=v;
 }
-function openSettings(){ document.getElementById('settings').classList.add('open'); document.getElementById('scrim').classList.add('open'); populateEngine(); populateWeather(); populateAiMode(); populateVoiceInputCard();
+let _focusBeforeSettings = 'orb';
+function openSettings(){
+  // Enter the Settings focus-layer (spec Phase 3). Remember where we came from so Close/Esc
+  // restores it (Orb or Chat). Population below is unchanged. Legacy .open toggle only if the
+  // shell runtime somehow isn't loaded.
+  if(window.Shell){ if(Shell.state.focus !== 'settings') _focusBeforeSettings = Shell.state.focus || 'orb'; Shell.setFocus('settings'); }
+  else { document.getElementById('settings').classList.add('open'); }
+  populateEngine(); populateWeather(); populateAiMode(); populateVoiceInputCard();
   /* install_learn_my_voice:openSettings-hook */
   try { populateLearnMyVoiceCard(); } catch (_e) {}
- syncSettings(); loadModels(); loadMics(); populateExtras(); renderAppearance(); showSettingsPage('engines'); }
+  syncSettings(); loadModels(); loadMics(); populateExtras(); renderAppearance(); showSettingsPage('engines');
+}
 function showSettingsPage(id){
   document.querySelectorAll('#settings .page').forEach(function(p){ p.classList.toggle('active', p.dataset.page===id); });
   document.querySelectorAll('#settings .nav button[data-nav]').forEach(function(b){ b.classList.toggle('active', b.dataset.nav===id); });
@@ -755,7 +765,7 @@ function showSettingsPage(id){
 }
 // Esc closes the settings modal.
 document.addEventListener('keydown', function(e){
-  if(e.key==='Escape' && document.getElementById('settings').classList.contains('open')) closeSettings();
+  if(e.key==='Escape' && ((window.Shell && Shell.state.focus==='settings') || document.getElementById('settings').classList.contains('open'))) closeSettings();
 });
 
 // ---- Personality, chats, voice, wake word, memory management ----
@@ -915,7 +925,11 @@ async function loadMemoryList(){
 }
 async function deleteMemoryItem(index){ await window.bridge.deleteMessage(index); await pollActivity(); loadMemoryList(); }
 async function clearCurrentChat(){ await window.bridge.clearMemory(); await pollActivity(); loadMemoryList(); }
-function closeSettings(){ document.getElementById('settings').classList.remove('open'); document.getElementById('scrim').classList.remove('open'); }
+function closeSettings(){
+  // Restore the focus we came from (Orb or Chat). Legacy fallback if the shell isn't loaded.
+  if(window.Shell){ Shell.setFocus(_focusBeforeSettings || 'orb'); }
+  else { document.getElementById('settings').classList.remove('open'); }
+}
 
 async function interrupt(){ stopSpeaking(); await api('/interrupt',{}); }
 async function sendText(){
@@ -2615,7 +2629,7 @@ async function poll(){
   const bu=document.getElementById('budget-use'); if(bu) bu.textContent='Using '+usedLabel+' of '+budgetGb+' GB';
   const bmeter=document.getElementById('budget-meter'); if(bmeter) bmeter.style.width=Math.min(100,mu.percent||0)+'%';
 
-  if(document.getElementById('settings').classList.contains('open')) syncSettings();
+  if((window.Shell && Shell.state.focus==='settings') || document.getElementById('settings').classList.contains('open')) syncSettings();
 }
 
 let lastActLen=0;
