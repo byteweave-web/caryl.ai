@@ -254,6 +254,25 @@ html[data-os="win10"] #track-chip{background:rgba(16,20,28,.92);-webkit-backdrop
 .cam-relock:disabled{opacity:.45;cursor:not-allowed;transform:none}
 html[data-os="win10"] .cam-relock{background:rgba(16,20,28,.92);-webkit-backdrop-filter:none;backdrop-filter:none}
 @media (prefers-reduced-motion:reduce){#track-chip,.cam-relock{transition:none} #track-chip .tc-dot{animation:none}}
+/* ---- Camera monitor (Phase 6): the persistent viewfinder in a slot zone ---- */
+.cam-monitor{ --e:2; width:300px; overflow:hidden; border-radius:12px; }
+.cam-mon-head{ display:flex; align-items:center; gap:8px; padding:7px 10px;
+  font-family:var(--mono); font-size:9px; letter-spacing:.18em; color:var(--dim);
+  border-bottom:1px solid var(--hair); }
+.cam-mon-btn{ background:transparent; border:0; color:var(--dim); font-size:12px;
+  padding:2px 5px; cursor:pointer; line-height:1; }
+.cam-mon-btn:hover{ color:var(--ink); }
+.cam-mon-body{ height:168px; background:#000; cursor:pointer; display:flex;
+  align-items:center; justify-content:center; }
+.cam-mon-body video{ width:100%; height:100%; object-fit:cover; display:block; }
+.watch-dot{ width:7px; height:7px; border-radius:50%; background:var(--faint); flex:none; }
+.watch-dot.watching{ background:var(--core); box-shadow:0 0 8px var(--core);
+  animation:campulse 2.2s ease-in-out infinite; }
+.watch-dot.muted{ background:transparent; border:1px solid var(--dim); }
+@media (prefers-reduced-motion:reduce){ .watch-dot.watching{ animation:none; } }
+/* When the camera isn't the focus the monitor dims to 55% (situational awareness); hover
+   restores. The allocator's .ghosted (35%, non-interactive) stays the stronger state. */
+:root:not([data-focus="camera"]):not([data-focus="camera-full"]) .cam-monitor:not(.ghosted):not(:hover){ filter:opacity(.55); }
 /* ---- 7-Agent Swarm visualization overlay (orchestrator + 6 sub-agents) ---- */
 .swarm-canv-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
 .swarm-canv{position:absolute;pointer-events:auto;cursor:pointer;display:block;transition:opacity .4s ease,transform .4s cubic-bezier(.1,2,.4,1),filter .4s ease}
@@ -659,6 +678,20 @@ html[data-os="win10"] .cam-relock{background:rgba(16,20,28,.92);-webkit-backdrop
   </div>
 </aside>
 
+<!-- Camera monitor (Phase 6): the persistent viewfinder — a compact glass HUD anchored by
+     the slot allocator; #cam-live is reparented here <-> #cam-stage (fullscreen). -->
+<div id="cam-monitor" class="cam-monitor glass" style="display:none">
+  <div class="cam-mon-head">
+    <span id="watch-dot" class="watch-dot" title="Scene watching off"></span>
+    <span class="cam-mon-label">CAM</span>
+    <span style="flex:1"></span>
+    <button id="cam-mon-mute" class="cam-mon-btn" onclick="toggleSceneWatch()" title="Mute scene watching">&#128065;</button>
+    <button class="cam-mon-btn" onclick="expandCamera()" title="Fullscreen (precision)">&#x26F6;</button>
+    <button class="cam-mon-btn" onclick="toggleCamera()" title="Close camera">&#10005;</button>
+  </div>
+  <div class="cam-mon-body" id="cam-mon-body" onclick="expandCamera()" title="Click for fullscreen"></div>
+</div>
+
 <!-- Fullscreen live camera (glass viewfinder) -->
 <div id="cam-full" style="display:none;position:fixed;inset:0;z-index:9999;background:#05070c;overflow:hidden">
   <div id="cam-stage" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
@@ -682,7 +715,7 @@ html[data-os="win10"] .cam-relock{background:rgba(16,20,28,.92);-webkit-backdrop
     </div>
     <div style="display:flex;align-items:center;gap:9px">
       <select id="cam-pick" onchange="switchCamera()" title="Choose camera" class="cam-glass" style="display:none;max-width:190px;outline:none;cursor:pointer"></select>
-      <button onclick="toggleCamera()" title="Exit camera" class="cam-glass cam-btn">&#8592; Exit</button>
+      <button onclick="collapseCamera()" title="Back to monitor" class="cam-glass cam-btn">&#8592; Monitor</button>
     </div>
   </div>
   <!-- caption: mirrors the assistant's spoken line (usable muted) -->
@@ -775,9 +808,11 @@ function showSettingsPage(id){
   document.querySelectorAll('#settings .nav button[data-nav]').forEach(function(b){ b.classList.toggle('active', b.dataset.nav===id); });
   document.querySelector('#settings .main').scrollTop = 0;
 }
-// Esc closes the settings modal.
+// Esc: fullscreen camera collapses to its monitor; otherwise Settings closes.
 document.addEventListener('keydown', function(e){
-  if(e.key==='Escape' && ((window.Shell && Shell.state.focus==='settings') || document.getElementById('settings').classList.contains('open'))) closeSettings();
+  if(e.key!=='Escape') return;
+  if(window.Shell && Shell.state.focus==='camera-full'){ collapseCamera(); return; }
+  if((window.Shell && Shell.state.focus==='settings') || document.getElementById('settings').classList.contains('open')) closeSettings();
 });
 
 // ---- Personality, chats, voice, wake word, memory management ----
@@ -1574,6 +1609,55 @@ function setCamStatus(state){
   if(el) el.textContent=(window.bridge&&window.bridge.cameraStatus)?window.bridge.cameraStatus(state):'Idle';
   const root=document.getElementById('cam-full'); if(root) root.classList.toggle('listening', state==='listening');
 }
+// ---- Phase 6: monitor <-> fullscreen choreography (spec §4.2). ONE #cam-live element is
+// reparented between the monitor body and #cam-stage, so grabCameraFrame() and the tracker
+// (both find it by id) keep working untouched. The element always returns to #cam-stage on
+// exit so it stays connected (getElementById can't see detached nodes).
+let _camMon = null;
+function camMonEl(){ if(!_camMon) _camMon = document.getElementById('cam-monitor'); return _camMon; }
+function camLiveEl(){
+  return document.getElementById('cam-live') || (camMonEl() && camMonEl().querySelector('#cam-live')) || null;
+}
+// Scene-watcher stubs — the Active Observer task replaces these with the real wiring.
+function armSceneWatch(){}
+function stopSceneWatch(){}
+function toggleSceneWatch(){}
+function camEnterMonitor(stream){
+  const mon = camMonEl(); const body = mon && mon.querySelector('#cam-mon-body');
+  const v = camLiveEl();
+  if(v && stream && v.srcObject !== stream){ v.srcObject = stream; try{ v.play(); }catch(_e){} }
+  if(v && body && v.parentElement !== body) body.appendChild(v);
+  if(mon) mon.style.display = 'block';
+  if(window.Shell && Shell.slots) Shell.slots.claim('camera', { priority: 50, slots: ['BR','TR','TL','BL'], el: mon });
+  if(window.Shell) Shell.setFocus('camera');
+  armSceneWatch();
+}
+function expandCamera(){
+  if(!_liveStream) return;
+  const full = document.getElementById('cam-full'); const stage = document.getElementById('cam-stage');
+  const v = camLiveEl();
+  if(v && stage && v.parentElement !== stage) stage.insertBefore(v, stage.firstChild);
+  if(full){ full.style.display = 'block'; requestAnimationFrame(function(){ full.classList.add('show'); }); }
+  if(window.Shell) Shell.setFocus('camera-full');
+}
+function collapseCamera(){
+  const full = document.getElementById('cam-full');
+  if(full){ full.classList.remove('show'); full.style.display = 'none'; }
+  const mon = camMonEl(); const body = mon && mon.querySelector('#cam-mon-body');
+  const v = camLiveEl();
+  if(v && body && v.parentElement !== body) body.appendChild(v);
+  if(window.Shell) Shell.setFocus('camera');
+}
+function camExitMonitor(){
+  stopSceneWatch();
+  // #cam-live goes home to #cam-stage BEFORE the monitor detaches, so it stays findable.
+  const stage = document.getElementById('cam-stage'); const v = camLiveEl();
+  if(v && stage && v.parentElement !== stage) stage.insertBefore(v, stage.firstChild);
+  const mon = camMonEl();
+  if(mon) mon.style.display = 'none';
+  if(window.Shell && Shell.slots) Shell.slots.release('camera');
+  if(window.Shell && /^camera/.test(Shell.state.focus)) Shell.setFocus('orb');
+}
 async function toggleCamera(){
   const full=document.getElementById('cam-full'); const btn=document.getElementById('cam-btn');
   if(_liveStream){
@@ -1584,6 +1668,7 @@ async function toggleCamera(){
     const v=document.getElementById('cam-live'); if(v) v.srcObject=null;
     setCamStatus('idle');
     if(full){ full.classList.remove('show'); full.style.display='none'; }
+    camExitMonitor();
     const cap=document.getElementById('cam-caption'); if(cap){ cap.style.display='none'; cap.textContent=''; }
     if(btn){ btn.style.background='var(--panel2)'; btn.style.borderColor='var(--line)'; }
     if(recording) stopRecording();
@@ -1596,7 +1681,7 @@ async function toggleCamera(){
     if(btn){ btn.style.background='var(--accent)'; btn.style.borderColor='var(--accent)'; }
     populateCameras();
     setCamStatus('idle');
-    if(full){ full.style.display='block'; requestAnimationFrame(function(){ full.classList.add('show'); }); }
+    camEnterMonitor(_liveStream);   // Phase 6: entry lands in monitor mode (spec §3.2)
     if(typeof camGreetAndListen==='function') camGreetAndListen(); // greet + auto-listen (D1 Task 3)
   }catch(e){ _liveStream=null; setHint('Camera error: '+((e&&e.message)?e.message:'no camera found'),4000); }
 }
@@ -1994,6 +2079,7 @@ async function userReground(){
 
 if(window.bridge && window.bridge.onCameraFocus){ window.bridge.onCameraFocus(function(p){
   const cf = document.getElementById('cam-full');
+  if(_liveStream && cf && cf.style.display==='none') expandCamera(); // precision task -> fullscreen (spec §3.5)
   if(cf && cf.style.display!=='none') startTracking(p);
 }); }
 
