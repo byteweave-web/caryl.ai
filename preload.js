@@ -108,6 +108,8 @@ contextBridge.exposeInMainWorld('bridge', {
   overlayHide: () => ipcRenderer.invoke('overlay:hide'),
   overlayMoveBy: (dx, dy) => ipcRenderer.invoke('overlay:moveBy', dx, dy),
   onOverlayMode: (cb) => ipcRenderer.on('overlay:mode', (_e, mode) => cb(mode)),
+  // Unified OS Phase 5: satellite windows -> which shell corners they cover (slot allocator).
+  onSatellites: (cb) => ipcRenderer.on('shell:satellites', (_e, p) => cb(p)),
 
   // ----- Kernel overlay card (push-based; the card never polls) -----
   onCardRender: (cb) => ipcRenderer.on('card:render', (_e, payload) => cb(payload)),

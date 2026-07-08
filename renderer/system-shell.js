@@ -137,4 +137,15 @@
   apply();
   try { matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', function () { readEnv(); apply(); }); } catch (_e) {}
   window.Shell = Shell;
+  // Phase 5: satellite windows (weather board, overlay card) report which shell corners
+  // they physically cover; in-shell elements yield via the allocator. Guarded — the
+  // offscreen probe harness stubs the bridge with a callable proxy that never calls back.
+  try {
+    if (window.bridge && typeof window.bridge.onSatellites === 'function') {
+      window.bridge.onSatellites(function (p) {
+        state.satellites = (p && p.sats) || [];
+        Slots.external((p && p.slots) || []);
+      });
+    }
+  } catch (_e) {}
 })();
