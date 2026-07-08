@@ -9,6 +9,7 @@ const path = require('path');
 const arg = (k, d) => { const m = process.argv.find(a => a.startsWith(`--${k}=`)); return m ? m.split('=').slice(1).join('=') : d; };
 const PROBE = path.resolve(arg('probe', ''));
 const WAIT = parseInt(arg('wait', '1400'), 10);
+const FILE = arg('file', 'index.html');   // renderer-relative page to load (satellites etc.)
 
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-web-security');
@@ -26,7 +27,7 @@ app.whenReady().then(async () => {
     if (/probe|shell|error/i.test(msg)) console.log(`[page] ${msg}${src ? ` (${path.basename(src)}:${line})` : ''}`);
   });
 
-  const file = path.resolve(__dirname, '..', 'renderer', 'index.html');
+  const file = path.resolve(__dirname, '..', 'renderer', FILE);
   await win.loadURL('file://' + file.replace(/\\/g, '/'));
   await new Promise(r => setTimeout(r, WAIT));
 

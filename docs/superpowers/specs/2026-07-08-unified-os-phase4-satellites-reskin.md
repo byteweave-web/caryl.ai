@@ -134,3 +134,22 @@ data-URI). `renderer/**` is already packaged whole.
   overlap, and the overlay `--void` collision is resolved by retiring the local name (§4.1).
 - **`prefers-reduced-transparency` / `prefers-reduced-motion`:** inherited from the shared sheet's
   media queries — no per-satellite handling.
+
+## 9. Plan-time findings (amendments)
+
+- **§4.3 is verify-only:** all four satellites already stamp `data-os` (overlay.html:221,
+  mini-overlay.html:274, weather-board.html:268, overlay-card.html:79) and already carry
+  Win10 fallback rules. No stamping is added.
+- **theme.css is swapped out, in place.** It is linked AFTER each satellite's inline styles and
+  defines `--accent`/`--txt`/`--mut`/`--faint` at bare `:root`, so it would silently defeat the
+  alias shim (and already overrides satellites' local text tokens today). The multi-theme system
+  is retired for the Unified OS, so each satellite's `<link href="theme.css">` becomes
+  `<link href="system-shell.css">` at the same position. Safe: shared/local token names are
+  disjoint except `--mono`, where shared-wins is desired. The satellites' `dataset.theme`
+  stamping lines remain but become inert (after the card's fullLight rules are deleted, no
+  satellite CSS reads `data-theme`).
+- **`.glass` class scope refined:** the class goes on the three big static panes (`#panel`,
+  `#card`, `#days`). The small repeated tiles (`.h-tile`, `.tile` — ~30 nodes at 66px) adopt the
+  material **by tokens** (material fill formula, 22px blur, `--hair` border) without the class:
+  per-tile grain pseudo-elements are invisible at that size and pure overhead. Their existing
+  per-selector Win10 fallback rules are re-pointed to the material's fallback gradient.
