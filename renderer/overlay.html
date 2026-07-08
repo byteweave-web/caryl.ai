@@ -14,18 +14,19 @@
    sans/mono pairing is what makes it read as an instrument panel
    rather than a plain chat box.
    ============================================================ */
+/* Alias shim (Unified OS Phase 4): accent/status/text/hairline resolve from
+   system-shell.css. The local --void tint and --edge-hi/lo highlights are retired —
+   #panel now wears the shared .glass material (fill + hairline + grain). --bad and
+   --mono are deleted, not aliased: the shared sheet provides both names. */
 :root{
-  --accent:#7fd1ff;
+  --glass-density:.2;
+  --accent:var(--core);
   --accent-dim:color-mix(in srgb, var(--accent) 16%, transparent);
   --accent-line:color-mix(in srgb, var(--accent) 55%, transparent);
-  --confirm:#5ad19a;
-  --bad:#e9637b;
-  --txt:#f2f6fa; --mut:#9fabb8; --faint:#66727e;
-  --void:rgba(7,10,15,.16);          /* the glass tint itself - deliberately slight */
-  --edge-hi:rgba(255,255,255,.5);    /* top edge highlight */
-  --edge-lo:rgba(255,255,255,.04);   /* bottom edge, near-gone */
-  --mono:ui-monospace,'SF Mono','Cascadia Code','JetBrains Mono',Consolas,monospace;
-  --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --confirm:var(--good);
+  --txt:var(--ink); --mut:var(--dim); --faint:#66727e;
+  --line:var(--hair);
+  --sans:var(--read);
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:transparent;overflow:hidden;
@@ -40,32 +41,14 @@ button{font-family:inherit;cursor:pointer}
    structure; a large soft multi-layer shadow lifts it off the
    desktop underneath.
    ============================================================ */
-#panel{
+#panel{ /* material (fill/blur/hairline/grain/shadow) comes from .glass */
   position:fixed;inset:0;display:flex;flex-direction:column;
-  background:var(--void);
-  -webkit-backdrop-filter:blur(26px) saturate(150%);backdrop-filter:blur(26px) saturate(150%);
+  --e:3;
   border-radius:3px;overflow:hidden;
   /* Corners are sharp ON PURPOSE, not a bug we couldn't fix: a HUD reads as an instrument,
      not a soft app window, and the corner brackets below make that a deliberate signature
      rather than an accident. */
-  box-shadow:
-    0 30px 100px -24px rgba(0,0,0,.65),
-    0 10px 34px -12px rgba(0,0,0,.5),
-    0 46px 130px -30px rgba(127,209,255,.07);
   transition:box-shadow .25s ease;
-}
-/* Windows 10: DWM acrylic doesn't exist, so a transparent panel would show raw desktop
-   through a tint. Same palette, fully solid, no backdrop-filter. */
-html[data-os="win10"] #panel{
-  background:#10141c;
-  -webkit-backdrop-filter:none;backdrop-filter:none;
-}
-#panel::before{ /* the razor-thin gradient edge */
-  content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
-  background:linear-gradient(180deg, var(--edge-hi), var(--edge-lo) 55%, var(--edge-lo));
-  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite:xor; mask-composite:exclude;
 }
 #panel.dragging{ box-shadow:
     0 30px 100px -24px rgba(0,0,0,.65),
@@ -153,13 +136,13 @@ html[data-os="win10"] #panel{
 @keyframes ripple-out{0%{transform:scale(.3);opacity:1;box-shadow:0 0 0 0 rgba(90,209,154,.5)}100%{transform:scale(1.7);opacity:0;box-shadow:0 0 0 18px rgba(90,209,154,0)}}
 .calib-confirm{color:var(--confirm);font-size:14px;line-height:1.5;max-width:260px}
 </style>
-<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="system-shell.css">
 </head>
 <body>
 
   <!-- Expanded HUD (the collapsed bubble now lives entirely in mini-overlay.html - its own
        window, its own file, so it never inherits this panel's backdrop-filter blur) -->
-  <div id="panel">
+  <div id="panel" class="glass">
     <div class="hud-corner tl"></div>
     <div class="hud-corner tr"></div>
     <div class="hud-corner bl"></div>
