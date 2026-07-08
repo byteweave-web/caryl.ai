@@ -115,6 +115,20 @@ _WHISPER_LRU = OrderedDict()
 _WHISPER_LRU_MAX = 2
 _whisper_lock = threading.Lock()
 
+# ===== Smart Audio & Voice Interaction (4:3 Noise Rejection) =====
+# Dynamic ambient RMS floor: rolling baseline of non-speech frames in dBFS. Updated each /vad
+# call by EMA on the 30th percentile of frames flagged as likely silence. Acts as a one-way
+# clamp: a quiet room drops the floor, but a sudden blender can't yank it up instantly (which
+# would let real speech right behind the blender slip past the gate for a few seconds).
+_AMBIENT_RMS_DB = -55.0
+_AMBIENT_FLOOR_MIN, _AMBIENT_FLOOR_MAX = -65.0, -35.0
+# === install_dynamic_noise_floor:A:begin ===
+_ambient_lock = threading.Lock()
+# === install_dynamic_noise_floor:A:end ===
+_AMBIENT_EMA = 0.05
+_AMBIENT_LOW_PCT = 30.0      # percentile of low-energy frames that drives the baseline
+_AMBIENT_LOW_MARGIN_DB = 15.0# frames >=(peak-db - margin) are likely speech; below are likely silence
+
 # Cache of the last /elements walk, so /act can resolve an element_id to exact coordinates
 # without re-walking. Invalidated (overwritten) by the next /elements call.
 _ELEMENT_CACHE = {"items": [], "ts": 0.0}
@@ -392,6 +406,12 @@ def vad():
     min_speech_ms = int(body.get("min_speech_ms") or 450)
     energy_floor_db = float(body.get("energy_floor_db") or -45.0)
     max_silence_pad_ms = int(body.get("max_silence_pad_ms") or 300)
+    # (3) Dynamic ambient noise floor. Kept as an additive flag: when dynamic_floor is false
+    # (older main builds / explicit override) the gate works exactly as before. When true, we
+    # update the rolling baseline `_AMBIENT_RMS_DB` from the per-frame 30 ms RMS distribution,
+    # then require `peak >= baseline + margin_db` before calling it speech.
+    dynamic_floor = bool(body.get("dynamic_floor") or False)
+    margin_db = float(body.get("margin_db") or 10.0)
     try:
         raw = base64.b64decode(b64)
     except Exception:
@@ -422,6 +442,19 @@ def vad():
         # Overall RMS in dBFS (full-scale sine = 0 dB).
         rms = float((audio ** 2).mean()) ** 0.5
         rms_db = 20.0 * (math.log10(rms) if rms > 0 else -99.0)
+        # === install_dynamic_noise_floor:B:begin ===
+        # Step 1: use the cached _AMBIENT_RMS_DB (warmed up by previous calls)
+        # to seed the per-call effective_floor. We won't retrain on THIS clip's
+        # frames here - the EMA refresh below reads from the same per-frame
+        # energies array already computed downstream for the trim - so we don't
+        # double the cost.
+        effective_floor = energy_floor_db
+        ambient_report = _AMBIENT_RMS_DB
+        if dynamic_floor:
+            with _ambient_lock:
+                ambient_report = _AMBIENT_RMS_DB
+            effective_floor = max(energy_floor_db, ambient_report + margin_db)
+        # === install_dynamic_noise_floor:B:end ===
         if rms_db < energy_floor_db:
             return jsonify({"ok": True, "has_speech": False, "duration_ms": duration_ms,
                             "rms_db": round(rms_db, 1), "trimmed_duration_ms": 0,
@@ -434,8 +467,37 @@ def vad():
             frame_n = 1
         n_frames = n // frame_n
         energies = np.array([float((audio[i*frame_n:(i+1)*frame_n] ** 2).mean())
-                             for i in range(n_frames)]) if n_frames > 0 else np.array([rms])
-        threshold = max(float(energies.max()) * 0.10, 0.005)
+                             for i in range(n_frames)]) if n_frames > 0 else np.array([rms])# === install_dynamic_noise_floor:C:begin ===
+        # Retrain _AMBIENT_RMS_DB from THIS clip's frames. Frames 15dB below
+        # the peak are treated as ambient candidates; if the subset is empty
+        # (very quiet / pure silence clip), fall back to the 30th percentile
+        # of ALL frames. The clamp band [-65, -35] protects against nonsense
+        # values from saturated analog mics or digital zero-dropouts.
+        if dynamic_floor and 'energies' in dir() and len(energies) > 0:
+            try:
+                _frames_db = np.array([(20.0 * math.log10(v) if v > 0 else -99.0) for v in energies])
+                _peak_db = float(_frames_db.max())
+                _subset = _frames_db[_frames_db < (_peak_db - _AMBIENT_LOW_MARGIN_DB)]
+                if _subset.size == 0:
+                    _subset = _frames_db
+                _p30 = float(np.percentile(_subset, _AMBIENT_LOW_PCT))
+                with _ambient_lock:
+                    _new = (_AMBIENT_RMS_DB * (1.0 - _AMBIENT_EMA)) + (_p30 * _AMBIENT_EMA)
+                    _AMBIENT_RMS_DB = max(_AMBIENT_FLOOR_MIN, min(_AMBIENT_FLOOR_MAX, _new))
+                    ambient_report = _AMBIENT_RMS_DB
+                    # Re-derive effective_floor with the freshly-calibrated
+                    # ambient so the threshold calc below uses it. This call's
+                    # gate already used the cached value - that's intentional:
+                    # the gate decisions this clip used is the most-recent
+                    # previously-warmed floor, and the EMA retrain benefits the
+                    # NEXT clip.
+                    effective_floor = max(energy_floor_db, _AMBIENT_RMS_DB + margin_db)
+            except Exception as _ema_e:
+                # Silent fall-through: keep the cached ambient_report + effective_floor.
+                pass
+# === install_dynamic_noise_floor:C:end ===
+
+        threshold = max(float(energies.max()) * 0.10, 10 ** (effective_floor / 10.0))
         is_speech = energies >= threshold
         if not is_speech.any():
             return jsonify({"ok": True, "has_speech": False, "duration_ms": duration_ms,
@@ -1532,6 +1594,57 @@ def act():
 
     except Exception as e:
         log_action("act_error", str(e))
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ------------------------------------------------------------------ /uia_run
+# UIA-FIRST hardcoded workflow execution. Reads automation_workflows.json
+# (50 intents: WhatsApp, Spotify, Discord, Chrome, etc.) and replays the
+# named steps against the currently focused window using the Windows
+# Accessibility Tree - NO vision, NO screenshots. Massively faster + cheaper
+# than /act for known tasks. Caller falls back to /act only if this fails.
+try:
+    from uia_executor import run_workflow as _uia_run_workflow  # local module
+    _uia_executor_import_error = None
+except Exception as _e:  # pragma: no cover
+    _uia_run_workflow = None
+    _uia_executor_import_error = str(_e)
+
+
+@app.route("/uia_run", methods=["POST"])
+def uia_run():
+    """
+    Body: {"intent": "send_whatsapp_message",
+           "params": {"contact_name": "Mom", "message_text": "Hi!"}}
+    Runs the matching hardcoded workflow via Windows UIA. No vision used.
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    intent = body.get("intent", "")
+    params = body.get("params", {}) or {}
+    if not intent:
+        return jsonify({"ok": False, "error": "missing 'intent'"}), 400
+    if _uia_run_workflow is None:
+        return jsonify({"ok": False,
+                        "error": "uia_executor not available: " + str(_uia_executor_import_error)}), 500
+    try:
+        result = _uia_run_workflow(intent, params)
+        log_action("uia_run", "intent=%s ok=%s" % (intent, result.get("ok")))
+        return jsonify(result), (200 if result.get("ok") else 500)
+    except Exception as e:
+        log_action("uia_run_error", str(e))
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/uia_intents", methods=["GET"])
+def uia_intents():
+    """Lists all available UIA workflows (intent_name + description + params)."""
+    if _uia_run_workflow is None:
+        return jsonify({"ok": False,
+                        "error": "uia_executor not available: " + str(_uia_executor_import_error)}), 500
+    try:
+        from uia_executor import list_intents
+        return jsonify({"ok": True, "intents": list_intents()})
+    except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
 

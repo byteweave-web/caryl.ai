@@ -1,0 +1,1572 @@
+[
+  {
+    "intent_name": "send_whatsapp_message",
+    "app_target": "WhatsApp",
+    "description": "Searches for a contact and sends a text message. Uses focus_and_type (atomic click+clear+paste) to prevent double-typing when the vision system runs in parallel.",
+    "parameters": [
+      "contact_name",
+      "message_text"
+    ],
+    "steps": [
+      {
+        "action": "assert_visible",
+        "target": {
+          "name": "Search or start a new chat",
+          "controlType": "Edit"
+        },
+        "timeout_seconds": 1.5,
+        "description": "STATE CHECK: verify WhatsApp is logged in and showing the chat list (not QR login screen)"
+      },
+      {
+        "action": "press_key",
+        "value": "Escape",
+        "description": "Dismiss any open chat/menu/overlay so we start from a clean state"
+      },
+      {
+        "action": "wait",
+        "value": "300",
+        "description": "Let the sidebar settle"
+      },
+      {
+        "action": "focus_and_type",
+        "target": {
+          "name": "Search or start a new chat",
+          "controlType": "Edit"
+        },
+        "value": "{{contact_name}}",
+        "description": "ATOMically: click search bar → Ctrl+A → Delete → paste contact name. This prevents double-typing even if the vision system typed into the same field."
+      },
+      {
+        "action": "wait",
+        "value": "1000",
+        "description": "Wait for WhatsApp to filter and render search results"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Select the top search result to open that chat"
+      },
+      {
+        "action": "wait",
+        "value": "700",
+        "description": "Wait for chat view to render and message input to appear"
+      },
+      {
+        "action": "assert_visible",
+        "target": {
+          "name": "Type a message",
+          "controlType": "Edit"
+        },
+        "timeout_seconds": 1.5,
+        "description": "STATE CHECK: verify the chat actually opened (aborts if search had no matches)"
+      },
+      {
+        "action": "focus_and_type",
+        "target": {
+          "name": "Type a message",
+          "controlType": "Edit"
+        },
+        "value": "{{message_text}}",
+        "description": "ATOMically: click message input → clear → paste message text"
+      },
+      {
+        "action": "wait",
+        "value": "200",
+        "description": "Let the message register in the input"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Send the message"
+      }
+    ]
+  },
+  {
+    "intent_name": "send_whatsapp_voice_message",
+    "app_target": "WhatsApp",
+    "description": "Records and sends a voice message to the most recently opened chat.",
+    "parameters": [
+      "duration_seconds"
+    ],
+    "steps": [
+      {
+        "action": "click",
+        "target": {
+          "name": "Voice message",
+          "controlType": "Button"
+        },
+        "description": "Hover/click the microphone icon to enter recording mode (turns into a red send button after first click)"
+      },
+      {
+        "action": "wait",
+        "value": "300",
+        "description": "Brief delay so the red record button is fully active"
+      },
+      {
+        "action": "click",
+        "target": {
+          "name": "Voice message",
+          "controlType": "Button"
+        },
+        "description": "Click again to actually start recording (WhatsApp uses a two-stage click to prevent accidental sends)"
+      },
+      {
+        "action": "wait",
+        "value": "{{duration_seconds}}000",
+        "description": "Hold for the requested recording duration (converted to ms)"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Stop and send the voice clip"
+      }
+    ]
+  },
+  {
+    "intent_name": "whatsapp_call_contact",
+    "app_target": "WhatsApp",
+    "description": "Searches a contact and starts a voice call.",
+    "parameters": [
+      "contact_name"
+    ],
+    "steps": [
+      {
+        "action": "click",
+        "target": {
+          "name": "Search or start a new chat",
+          "controlType": "Edit"
+        },
+        "description": "Focus the search bar"
+      },
+      {
+        "action": "type",
+        "value": "{{contact_name}}",
+        "description": "Type the contact's name"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Open the top matching chat"
+      },
+      {
+        "action": "click",
+        "target": {
+          "name": "Voice call",
+          "controlType": "Button"
+        },
+        "description": "Click the phone icon in the chat header to place a voice call"
+      }
+    ]
+  },
+  {
+    "intent_name": "whatsapp_create_new_chat",
+    "app_target": "WhatsApp",
+    "description": "Opens a brand-new chat with a contact via the New Chat button.",
+    "parameters": [
+      "contact_name"
+    ],
+    "steps": [
+      {
+        "action": "click",
+        "target": {
+          "name": "New chat",
+          "controlType": "Button"
+        },
+        "description": "Open the New Chat panel from the side rail"
+      },
+      {
+        "action": "click",
+        "target": {
+          "name": "Search contacts or start a new chat",
+          "controlType": "Edit"
+        },
+        "description": "Focus the contact search field inside the New Chat panel"
+      },
+      {
+        "action": "type",
+        "value": "{{contact_name}}",
+        "description": "Type the contact name to filter the list"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Select the top filtered result and open a fresh chat with them"
+      }
+    ]
+  },
+  {
+    "intent_name": "whatsapp_open_status_tab",
+    "app_target": "WhatsApp",
+    "description": "Switches to the Status (Stories) tab and opens the most recent status update.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "click",
+        "target": {
+          "name": "Status",
+          "controlType": "TabItem"
+        },
+        "description": "Switch from Chats to the Status tab in the left nav rail"
+      },
+      {
+        "action": "wait",
+        "value": "400",
+        "description": "Brief delay for the status list to render"
+      },
+      {
+        "action": "click",
+        "target": {
+          "name": "My status",
+          "controlType": "ListItem"
+        },
+        "description": "Open the most recent status update; WhatsApp auto-advances through subsequent updates"
+      }
+    ]
+  },
+  {
+    "intent_name": "play_spotify_song",
+    "app_target": "Spotify",
+    "description": "Searches for a specific song and plays the top result.",
+    "parameters": [
+      "song_name"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+L",
+        "description": "Use Spotify's native shortcut to jump straight to the search bar"
+      },
+      {
+        "action": "type",
+        "value": "{{song_name}}",
+        "description": "Type the requested song name"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Submit the search query"
+      },
+      {
+        "action": "wait",
+        "value": "1000",
+        "description": "Wait 1 second for search results to populate"
+      },
+      {
+        "action": "click",
+        "target": {
+          "name": "Play",
+          "controlType": "Button"
+        },
+        "description": "Click the prominent Play button on the top search result"
+      }
+    ]
+  },
+  {
+    "intent_name": "spotify_next_track",
+    "app_target": "Spotify",
+    "description": "Skips to the next track using the native shortcut.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+Right",
+        "description": "Spotify's global next-track shortcut; works regardless of which view is focused"
+      }
+    ]
+  },
+  {
+    "intent_name": "spotify_previous_track",
+    "app_target": "Spotify",
+    "description": "Returns to the previous track using the native shortcut.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+Left",
+        "description": "Spotify's previous-track shortcut"
+      }
+    ]
+  },
+  {
+    "intent_name": "spotify_create_playlist",
+    "app_target": "Spotify",
+    "description": "Creates a new empty playlist and names it.",
+    "parameters": [
+      "playlist_name"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+N",
+        "description": "Spotify desktop shortcut to create a new playlist under the selected account"
+      },
+      {
+        "action": "wait",
+        "value": "600",
+        "description": "Wait for the playlist creation modal / inline rename field to appear"
+      },
+      {
+        "action": "type",
+        "value": "{{playlist_name}}",
+        "description": "Type the new playlist name into the auto-focused rename field"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Confirm the playlist name"
+      }
+    ]
+  },
+  {
+    "intent_name": "spotify_like_song",
+    "app_target": "Spotify",
+    "description": "Adds the currently playing track to Liked Songs using the heart toggle.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Alt+Shift+B",
+        "description": "Open the now-playing bottom bar context for keyboard focus"
+      },
+      {
+        "action": "press_key",
+        "value": "Tab",
+        "description": "Tab through to the Save to Liked Songs button"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Toggle the like (heart) on the current track"
+      }
+    ]
+  },
+  {
+    "intent_name": "discord_send_message",
+    "app_target": "Discord",
+    "description": "Sends a text message to the currently focused channel or DM.",
+    "parameters": [
+      "message_text"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Tab",
+        "description": "Ensure keyboard focus is moved away from any list onto the message input area"
+      },
+      {
+        "action": "type",
+        "value": "{{message_text}}",
+        "description": "Type the message into the channel input box"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Send the message (Discord sends on Enter by default)"
+      }
+    ]
+  },
+  {
+    "intent_name": "discord_join_voice_channel",
+    "app_target": "Discord",
+    "description": "Quick-joins the voice channel attached to the currently focused server via the server header button.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+Shift+V",
+        "description": "Discord's hidden 'join voice channel for current server' shortcut on desktop (when focus is in a server)"
+      },
+      {
+        "action": "wait",
+        "value": "800",
+        "description": "Wait for the voice connection handshake to complete"
+      }
+    ]
+  },
+  {
+    "intent_name": "discord_mute_self",
+    "app_target": "Discord",
+    "description": "Toggles self-mute on the current voice connection.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+Shift+M",
+        "description": "Discord's global self-mute toggle; works whether or not the app is focused"
+      }
+    ]
+  },
+  {
+    "intent_name": "discord_create_server",
+    "app_target": "Discord",
+    "description": "Opens the Create Server wizard and names the new server.",
+    "parameters": [
+      "server_name"
+    ],
+    "steps": [
+      {
+        "action": "click",
+        "target": {
+          "name": "Add a Server",
+          "controlType": "Button"
+        },
+        "description": "Click the green plus button at the bottom of the server list"
+      },
+      {
+        "action": "click",
+        "target": {
+          "name": "Create My Own",
+          "controlType": "Button"
+        },
+        "description": "Choose to start from scratch (no template)"
+      },
+      {
+        "action": "click",
+        "target": {
+          "name": "For me and my friends",
+          "controlType": "Button"
+        },
+        "description": "Pick the casual server template option"
+      },
+      {
+        "action": "type",
+        "value": "{{server_name}}",
+        "description": "Type the new server name into the focused text field"
+      },
+      {
+        "action": "click",
+        "target": {
+          "name": "Create",
+          "controlType": "Button"
+        },
+        "description": "Submit the wizard and create the server"
+      }
+    ]
+  },
+  {
+    "intent_name": "discord_search_message",
+    "app_target": "Discord",
+    "description": "Opens the search bar and runs a text query in the current channel.",
+    "parameters": [
+      "query"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+K",
+        "description": "Open Discord's quick-switcher (also nudges focus to the top search region)"
+      },
+      {
+        "action": "press_key",
+        "value": "Escape",
+        "description": "Dismiss the quick-switcher; focus is now near the search bar"
+      },
+      {
+        "action": "press_key",
+        "value": "Ctrl+F",
+        "description": "Focus the channel/server search bar"
+      },
+      {
+        "action": "type",
+        "value": "{{query}}",
+        "description": "Type the search query (Discord auto-suggests filters)"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Run the search and display the results panel"
+      }
+    ]
+  },
+  {
+    "intent_name": "chrome_open_url",
+    "app_target": "Chrome",
+    "description": "Opens a new tab and navigates to a specific URL.",
+    "parameters": [
+      "url"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+T",
+        "description": "Open a fresh tab so we don't overwrite the user's current work"
+      },
+      {
+        "action": "type",
+        "value": "{{url}}",
+        "description": "Type the URL directly into the automatically-focused address bar"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Navigate to the site"
+      }
+    ]
+  },
+  {
+    "intent_name": "chrome_new_tab",
+    "app_target": "Chrome",
+    "description": "Opens a new empty tab and focuses the address bar.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+T",
+        "description": "Open a new tab; address bar is auto-focused and ready for typing"
+      }
+    ]
+  },
+  {
+    "intent_name": "chrome_close_tab",
+    "app_target": "Chrome",
+    "description": "Closes the currently active tab.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+W",
+        "description": "Chrome's close-current-tab shortcut; if it was the last tab, the window will close"
+      }
+    ]
+  },
+  {
+    "intent_name": "chrome_bookmark_page",
+    "app_target": "Chrome",
+    "description": "Adds the current page to bookmarks using the star dialog.",
+    "parameters": [
+      "bookmark_name"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+D",
+        "description": "Open the Add Bookmark dialog with the page name pre-filled"
+      },
+      {
+        "action": "press_key",
+        "value": "Ctrl+A",
+        "description": "Select all in the name field so we replace the default title"
+      },
+      {
+        "action": "type",
+        "value": "{{bookmark_name}}",
+        "description": "Type the user's chosen bookmark name"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Confirm and save the bookmark to the bookmark bar"
+      }
+    ]
+  },
+  {
+    "intent_name": "chrome_open_incognito",
+    "app_target": "Chrome",
+    "description": "Opens a new Incognito window.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+Shift+N",
+        "description": "Chrome's incognito window shortcut; opens a fresh private window in the foreground"
+      }
+    ]
+  },
+  {
+    "intent_name": "explorer_create_new_folder",
+    "app_target": "File Explorer",
+    "description": "Creates a new folder in the current directory and renames it.",
+    "parameters": [
+      "folder_name"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+Shift+N",
+        "description": "Explorer's native 'New Folder' shortcut; creates an inline-renamed folder"
+      },
+      {
+        "action": "type",
+        "value": "{{folder_name}}",
+        "description": "Type the new folder name (the default 'New folder' text is already selected)"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Commit the folder name"
+      }
+    ]
+  },
+  {
+    "intent_name": "explorer_search_files",
+    "app_target": "File Explorer",
+    "description": "Types a search query into the current folder's search box.",
+    "parameters": [
+      "query"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+F",
+        "description": "Move keyboard focus to the folder's search bar in the top-right"
+      },
+      {
+        "action": "type",
+        "value": "{{query}}",
+        "description": "Type the search query; Explorer filters results live"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Commit the search (locks in the filtered view)"
+      }
+    ]
+  },
+  {
+    "intent_name": "explorer_copy_file_path",
+    "app_target": "File Explorer",
+    "description": "Copies the full path of the currently selected file to the clipboard.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Alt+Enter",
+        "description": "Open the Properties dialog for the selected file (path is in the Location field, but a faster route is below)"
+      },
+      {
+        "action": "press_key",
+        "value": "Escape",
+        "description": "Close Properties without changes"
+      },
+      {
+        "action": "press_key",
+        "value": "Shift+F10",
+        "description": "Open the right-click context menu via keyboard for the selected file"
+      },
+      {
+        "action": "press_key",
+        "value": "A",
+        "description": "Select 'Copy as path' from the context menu (Windows 11 highlights this accelerator)"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Confirm 'Copy as path' so the full path lands on the clipboard"
+      }
+    ]
+  },
+  {
+    "intent_name": "explorer_show_hidden_files",
+    "app_target": "File Explorer",
+    "description": "Toggles the 'Hidden items' option in the View ribbon/tab.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Alt+V",
+        "description": "Activate the View tab of the Explorer ribbon (Windows 10) / View menu (Windows 11)"
+      },
+      {
+        "action": "press_key",
+        "value": "H",
+        "description": "Toggle the 'Hidden items' checkbox via its accelerator key"
+      }
+    ]
+  },
+  {
+    "intent_name": "explorer_open_downloads",
+    "app_target": "File Explorer",
+    "description": "Jumps to the user's Downloads folder from anywhere in Explorer.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+L",
+        "description": "Focus the address bar so we can type a path"
+      },
+      {
+        "action": "type",
+        "value": "%USERPROFILE%\\Downloads",
+        "description": "Type the resolved path to the user's Downloads folder"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Navigate to the Downloads folder"
+      }
+    ]
+  },
+  {
+    "intent_name": "settings_toggle_bluetooth",
+    "app_target": "System Settings",
+    "description": "Opens the Bluetooth & devices page and toggles the Bluetooth master switch.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+L",
+        "description": "Focus the Settings search bar at the top-left"
+      },
+      {
+        "action": "type",
+        "value": "Bluetooth and devices",
+        "description": "Type the page name to filter the search results"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Open the Bluetooth & devices page"
+      },
+      {
+        "action": "wait",
+        "value": "500",
+        "description": "Wait for the page to render the Bluetooth toggle"
+      },
+      {
+        "action": "press_key",
+        "value": "Tab",
+        "description": "Tab through the page until the Bluetooth master toggle has focus"
+      },
+      {
+        "action": "press_key",
+        "value": "Space",
+        "description": "Toggle the Bluetooth switch (Space toggles a Toggle controlType in UIA)"
+      }
+    ]
+  },
+  {
+    "intent_name": "settings_change_volume",
+    "app_target": "System Settings",
+    "description": "Opens the System > Sound page and adjusts the master output volume.",
+    "parameters": [
+      "volume_percent"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+L",
+        "description": "Focus the Settings search bar"
+      },
+      {
+        "action": "type",
+        "value": "Sound",
+        "description": "Type 'Sound' to find the System > Sound page"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Open the Sound settings page"
+      },
+      {
+        "action": "wait",
+        "value": "500",
+        "description": "Wait for the volume slider to render"
+      },
+      {
+        "action": "press_key",
+        "value": "Tab",
+        "description": "Tab to the master Volume slider"
+      },
+      {
+        "action": "press_key",
+        "value": "Home",
+        "description": "Send the slider to 0% so we have a known starting point"
+      },
+      {
+        "action": "press_key",
+        "value": "Right",
+        "description": "Repeat Right-arrow presses to nudge the slider; engine should multiply by {{volume_percent}}"
+      },
+      {
+        "action": "type",
+        "value": "{{volume_percent}}",
+        "description": "Type the target percentage directly into the slider's edit field (Windows 11 exposes a numeric input)"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Commit the typed volume value"
+      }
+    ]
+  },
+  {
+    "intent_name": "settings_change_brightness",
+    "app_target": "System Settings",
+    "description": "Opens the Display page and changes the built-in screen brightness.",
+    "parameters": [
+      "brightness_percent"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+L",
+        "description": "Focus the Settings search bar"
+      },
+      {
+        "action": "type",
+        "value": "Display",
+        "description": "Type 'Display' to find the Display settings page"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Open the Display settings page"
+      },
+      {
+        "action": "wait",
+        "value": "500",
+        "description": "Wait for the brightness slider to render"
+      },
+      {
+        "action": "press_key",
+        "value": "Tab",
+        "description": "Tab to the Brightness slider"
+      },
+      {
+        "action": "type",
+        "value": "{{brightness_percent}}",
+        "description": "Type the target brightness percentage into the slider's numeric edit field"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Commit the new brightness value"
+      }
+    ]
+  },
+  {
+    "intent_name": "settings_open_wifi",
+    "app_target": "System Settings",
+    "description": "Opens the Wi-Fi settings page so the user can pick a network.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+L",
+        "description": "Focus the Settings search bar"
+      },
+      {
+        "action": "type",
+        "value": "Wi-Fi",
+        "description": "Type 'Wi-Fi' (with hyphen) to match the page name exactly"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Open the Wi-Fi settings page; the available networks list will be visible"
+      }
+    ]
+  },
+  {
+    "intent_name": "settings_check_updates",
+    "app_target": "System Settings",
+    "description": "Opens Windows Update and triggers a fresh check for updates.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+L",
+        "description": "Focus the Settings search bar"
+      },
+      {
+        "action": "type",
+        "value": "Windows Update",
+        "description": "Type 'Windows Update' to find the page directly"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Open the Windows Update page"
+      },
+      {
+        "action": "wait",
+        "value": "500",
+        "description": "Wait for the page to render the Check for updates button"
+      },
+      {
+        "action": "press_key",
+        "value": "Tab",
+        "description": "Tab to the 'Check for updates' button"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Trigger the update check"
+      }
+    ]
+  },
+  {
+    "intent_name": "slack_send_message",
+    "app_target": "Slack",
+    "description": "Sends a text message to the currently focused channel or DM.",
+    "parameters": [
+      "message_text"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+Shift+T",
+        "description": "Slack's 'jump to message input' shortcut; ensures focus is in the compose box regardless of current selection"
+      },
+      {
+        "action": "type",
+        "value": "{{message_text}}",
+        "description": "Type the message into the compose box"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Send the message (Slack sends on Enter by default; Shift+Enter is line break)"
+      }
+    ]
+  },
+  {
+    "intent_name": "slack_set_status",
+    "app_target": "Slack",
+    "description": "Opens the Set Status dialog and saves a custom status text.",
+    "parameters": [
+      "status_text",
+      "emoji"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+Shift+Y",
+        "description": "Slack's native 'Set Status' shortcut; opens the status picker modal directly"
+      },
+      {
+        "action": "wait",
+        "value": "300",
+        "description": "Wait for the modal's status text field to gain focus"
+      },
+      {
+        "action": "type",
+        "value": "{{status_text}}",
+        "description": "Type the status text (Slack auto-suggests matching emojis)"
+      },
+      {
+        "action": "press_key",
+        "value": "Tab",
+        "description": "Tab to the emoji picker field"
+      },
+      {
+        "action": "type",
+        "value": "{{emoji}}",
+        "description": "Type the emoji name (e.g. 'coffee') to filter the picker"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Select the top emoji result"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Save and apply the status"
+      }
+    ]
+  },
+  {
+    "intent_name": "slack_search_messages",
+    "app_target": "Slack",
+    "description": "Opens Slack's search bar and runs a query.",
+    "parameters": [
+      "query"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+K",
+        "description": "Open Slack's quick-switcher (also a quick route to search focus)"
+      },
+      {
+        "action": "press_key",
+        "value": "Escape",
+        "description": "Close the quick-switcher; focus is now in the top search region"
+      },
+      {
+        "action": "press_key",
+        "value": "Ctrl+F",
+        "description": "Focus Slack's main search bar"
+      },
+      {
+        "action": "type",
+        "value": "{{query}}",
+        "description": "Type the search query"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Run the search and open the results pane"
+      }
+    ]
+  },
+  {
+    "intent_name": "slack_start_huddle",
+    "app_target": "Slack",
+    "description": "Starts a huddle (voice call) in the current channel or DM.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+Shift+H",
+        "description": "Slack's native 'Start huddle' shortcut for the currently focused channel or DM"
+      },
+      {
+        "action": "wait",
+        "value": "800",
+        "description": "Wait for the huddle panel to appear and audio to connect"
+      }
+    ]
+  },
+  {
+    "intent_name": "vscode_open_file",
+    "app_target": "VS Code",
+    "description": "Opens a file by path using Quick Open.",
+    "parameters": [
+      "file_path"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+P",
+        "description": "Open VS Code's Quick Open dialog (file fuzzy finder)"
+      },
+      {
+        "action": "type",
+        "value": "{{file_path}}",
+        "description": "Type the file name or path fragment; Quick Open filters the workspace"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Open the top match in the editor"
+      }
+    ]
+  },
+  {
+    "intent_name": "vscode_new_file",
+    "app_target": "VS Code",
+    "description": "Creates a new untitled file and saves it with a chosen name.",
+    "parameters": [
+      "file_name"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+N",
+        "description": "Create a new untitled editor tab"
+      },
+      {
+        "action": "press_key",
+        "value": "Ctrl+S",
+        "description": "Trigger Save; VS Code opens the Save As dialog because the file has no path yet"
+      },
+      {
+        "action": "type",
+        "value": "{{file_name}}",
+        "description": "Type the desired file name into the focused Save As filename field"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Confirm and save the file to disk"
+      }
+    ]
+  },
+  {
+    "intent_name": "vscode_format_document",
+    "app_target": "VS Code",
+    "description": "Formats the current document using the configured formatter.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+K",
+        "description": "First half of the format-document chord shortcut"
+      },
+      {
+        "action": "press_key",
+        "value": "Ctrl+F",
+        "description": "Second half of the format-document chord (Ctrl+K, Ctrl+F is format selection; for whole doc use Shift+Alt+F below)"
+      },
+      {
+        "action": "press_key",
+        "value": "Shift+Alt+F",
+        "description": "Native 'Format Document' shortcut; runs the active formatter on the entire file"
+      }
+    ]
+  },
+  {
+    "intent_name": "vscode_toggle_terminal",
+    "app_target": "VS Code",
+    "description": "Toggles the integrated terminal panel visibility.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+`",
+        "description": "VS Code's native toggle-terminal shortcut (backtick, requires Ctrl)"
+      }
+    ]
+  },
+  {
+    "intent_name": "vscode_search_in_project",
+    "app_target": "VS Code",
+    "description": "Opens project-wide Find in Files and runs a search.",
+    "parameters": [
+      "query"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+Shift+F",
+        "description": "Open the Find in Files sidebar panel"
+      },
+      {
+        "action": "type",
+        "value": "{{query}}",
+        "description": "Type the search query into the focused search input"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Run the project-wide search; results populate the panel"
+      }
+    ]
+  },
+  {
+    "intent_name": "notepad_save_file",
+    "app_target": "Notepad",
+    "description": "Saves the current Notepad document with a chosen filename. Does NOT navigate to Documents (the default save location is already the user's Documents folder). Just types the filename and presses Enter.",
+    "parameters": [
+      "file_name"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+S",
+        "description": "Trigger Save; opens Save As dialog for unsaved files"
+      },
+      {
+        "action": "wait",
+        "value": "800",
+        "description": "Wait for Save As dialog to fully render"
+      },
+      {
+        "action": "assert_visible",
+        "target": {
+          "name": "File name:",
+          "controlType": "Text"
+        },
+        "timeout_seconds": 1.5,
+        "description": "STATE CHECK: verify Save As dialog is open (aborts if file was already saved and no dialog appeared)"
+      },
+      {
+        "action": "press_key",
+        "value": "Tab",
+        "description": "Move focus to the filename input field (Win11 Notepad sometimes opens with file-type dropdown focused)"
+      },
+      {
+        "action": "wait",
+        "value": "150",
+        "description": "Let focus move to filename field"
+      },
+      {
+        "action": "focus_and_type",
+        "target": {
+          "name": "File name:",
+          "controlType": "Edit"
+        },
+        "value": "{{file_name}}",
+        "description": "ATOMically: focus filename field → Ctrl+A → Delete → paste new filename. Replaces default 'Untitled.txt' entirely."
+      },
+      {
+        "action": "wait",
+        "value": "300",
+        "description": "Let the filename register in the dialog"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Press Save (Enter = default button = Save)"
+      }
+    ]
+  },
+  {
+    "intent_name": "notepad_find_text",
+    "app_target": "Notepad",
+    "description": "Opens the Find dialog and searches for a term.",
+    "parameters": [
+      "query"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+F",
+        "description": "Open the Find dialog (legacy Notepad) / Find bar (Windows 11 Notepad)"
+      },
+      {
+        "action": "type",
+        "value": "{{query}}",
+        "description": "Type the search term into the focused find field"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Jump to the first match in the document"
+      }
+    ]
+  },
+  {
+    "intent_name": "task_manager_open",
+    "app_target": "Task Manager",
+    "description": "Opens Task Manager. (Note: the app-launch layer may pre-focus Task Manager; this workflow assumes it is already open and jumps to the Performance tab.)",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+Tab",
+        "description": "Cycle forward through the Task Manager top tabs"
+      },
+      {
+        "action": "press_key",
+        "value": "Ctrl+Tab",
+        "description": "Cycle once more to reach the Performance tab (CPU/Memory/Disk/Network graphs)"
+      }
+    ]
+  },
+  {
+    "intent_name": "snipping_tool_capture",
+    "app_target": "Snipping Tool",
+    "description": "Triggers a rectangular screen snip using the Snipping Tool's native shortcut.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+N",
+        "description": "Start a new snip (Snipping Tool's native shortcut; screen dims for selection)"
+      },
+      {
+        "action": "wait",
+        "value": "300",
+        "description": "Brief delay so the dim overlay is fully active before the user (or a follow-up workflow) drags the selection rectangle"
+      }
+    ]
+  },
+  {
+    "intent_name": "mail_send_email",
+    "app_target": "Mail",
+    "description": "Composes and sends a new email in the Windows Mail app.",
+    "parameters": [
+      "to_address",
+      "subject",
+      "body"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+N",
+        "description": "Open a new email compose window"
+      },
+      {
+        "action": "wait",
+        "value": "400",
+        "description": "Wait for the compose window and its To: field to render"
+      },
+      {
+        "action": "type",
+        "value": "{{to_address}}",
+        "description": "Type the recipient email address"
+      },
+      {
+        "action": "press_key",
+        "value": "Tab",
+        "description": "Move focus to the Subject field"
+      },
+      {
+        "action": "type",
+        "value": "{{subject}}",
+        "description": "Type the email subject"
+      },
+      {
+        "action": "press_key",
+        "value": "Tab",
+        "description": "Move focus to the body editor"
+      },
+      {
+        "action": "type",
+        "value": "{{body}}",
+        "description": "Type the email body text"
+      },
+      {
+        "action": "press_key",
+        "value": "Ctrl+Enter",
+        "description": "Mail app's Send shortcut; sends the email immediately"
+      }
+    ]
+  },
+  {
+    "intent_name": "calendar_create_event",
+    "app_target": "Calendar",
+    "description": "Creates a new calendar event in the Windows Calendar app.",
+    "parameters": [
+      "title",
+      "location"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+N",
+        "description": "Open the New Event detail pane"
+      },
+      {
+        "action": "wait",
+        "value": "400",
+        "description": "Wait for the form fields to render"
+      },
+      {
+        "action": "type",
+        "value": "{{title}}",
+        "description": "Type the event title (focus defaults to the title field)"
+      },
+      {
+        "action": "press_key",
+        "value": "Tab",
+        "description": "Tab to the location field"
+      },
+      {
+        "action": "type",
+        "value": "{{location}}",
+        "description": "Type the event location"
+      },
+      {
+        "action": "press_key",
+        "value": "Ctrl+S",
+        "description": "Save the new event to the calendar"
+      }
+    ]
+  },
+  {
+    "intent_name": "photos_open_recent",
+    "app_target": "Photos",
+    "description": "Switches the Photos app to the Collection (recent) view.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "click",
+        "target": {
+          "name": "Collection",
+          "controlType": "TabItem"
+        },
+        "description": "Switch to the Collection tab where recent photos appear in reverse-chronological grid"
+      }
+    ]
+  },
+  {
+    "intent_name": "store_check_updates",
+    "app_target": "Microsoft Store",
+    "description": "Opens the Microsoft Store library and triggers an update check.",
+    "parameters": [],
+    "steps": [
+      {
+        "action": "click",
+        "target": {
+          "name": "Library",
+          "controlType": "TabItem"
+        },
+        "description": "Switch to the Library tab in the bottom-left nav"
+      },
+      {
+        "action": "wait",
+        "value": "500",
+        "description": "Wait for the Library page to render the Get Updates button"
+      },
+      {
+        "action": "click",
+        "target": {
+          "name": "Get updates",
+          "controlType": "Button"
+        },
+        "description": "Trigger the Store's update check across all installed apps"
+      }
+    ]
+  },
+  {
+    "intent_name": "terminal_run_command",
+    "app_target": "Windows Terminal",
+    "description": "Types a command into the active Terminal pane and runs it.",
+    "parameters": [
+      "command"
+    ],
+    "steps": [
+      {
+        "action": "type",
+        "value": "{{command}}",
+        "description": "Type the command directly into the focused terminal prompt (Terminal opens with the prompt focused)"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Execute the command"
+      }
+    ]
+  },
+  {
+    "intent_name": "calculator_compute",
+    "app_target": "Calculator",
+    "description": "Types an arithmetic expression into Calculator and shows the result.",
+    "parameters": [
+      "expression"
+    ],
+    "steps": [
+      {
+        "action": "type",
+        "value": "{{expression}}",
+        "description": "Type the expression (e.g. '12*8+4'); Calculator's Standard mode accepts numeric and operator keystrokes directly without focusing an Edit field"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Compute and display the result (= key behavior)"
+      }
+    ]
+  },
+  {
+    "intent_name": "teams_send_message",
+    "app_target": "Microsoft Teams",
+    "description": "Sends a chat message in the currently focused 1:1 or channel conversation.",
+    "parameters": [
+      "message_text"
+    ],
+    "steps": [
+      {
+        "action": "press_key",
+        "value": "Ctrl+Shift+T",
+        "description": "Teams' 'jump to compose' shortcut; ensures focus is in the message input box of the active conversation"
+      },
+      {
+        "action": "type",
+        "value": "{{message_text}}",
+        "description": "Type the message text"
+      },
+      {
+        "action": "press_key",
+        "value": "Ctrl+Enter",
+        "description": "Teams' native Send shortcut (also works as plain Enter in many contexts, but Ctrl+Enter is the documented accelerator)"
+      }
+    ]
+  },
+  {
+    "intent_name": "notepad_type_and_save",
+    "app_target": "Notepad",
+    "description": "Types a paragraph into Notepad and saves it as a .txt file in one workflow. Use this for the 'type me a paragraph then save it' use case.",
+    "parameters": [
+      "text",
+      "file_name"
+    ],
+    "steps": [
+      {
+        "action": "click",
+        "target": {
+          "name": "Text editor",
+          "controlType": "Document"
+        },
+        "description": "Click the document body to ensure focus is in the editing area"
+      },
+      {
+        "action": "wait",
+        "value": "250",
+        "description": "Let focus move to the document"
+      },
+      {
+        "action": "type",
+        "value": "{{text}}",
+        "description": "Type the paragraph text via clipboard paste (preserve_existing=True so we don't clear the document first)",
+        "clear_first": false
+      },
+      {
+        "action": "wait",
+        "value": "300",
+        "description": "Let the text settle"
+      },
+      {
+        "action": "press_key",
+        "value": "Ctrl+S",
+        "description": "Open the Save As dialog"
+      },
+      {
+        "action": "wait",
+        "value": "800",
+        "description": "Wait for Save As dialog to render"
+      },
+      {
+        "action": "assert_visible",
+        "target": {
+          "name": "File name:",
+          "controlType": "Text"
+        },
+        "timeout_seconds": 1.5,
+        "description": "STATE CHECK: verify Save As dialog opened"
+      },
+      {
+        "action": "press_key",
+        "value": "Tab",
+        "description": "Move focus to filename field"
+      },
+      {
+        "action": "wait",
+        "value": "150",
+        "description": "Let focus settle"
+      },
+      {
+        "action": "focus_and_type",
+        "target": {
+          "name": "File name:",
+          "controlType": "Edit"
+        },
+        "value": "{{file_name}}",
+        "description": "Clear default filename + paste new filename"
+      },
+      {
+        "action": "wait",
+        "value": "300",
+        "description": "Let filename register"
+      },
+      {
+        "action": "press_key",
+        "value": "Enter",
+        "description": "Save the file"
+      }
+    ]
+  },
+  {
+    "intent_name": "notepad_type_text",
+    "app_target": "Notepad",
+    "description": "Types a block of text into the currently open Notepad document. Uses preserve_existing=True so the document isn't cleared first. Use this BEFORE notepad_save_file.",
+    "parameters": [
+      "text"
+    ],
+    "steps": [
+      {
+        "action": "click",
+        "target": {
+          "name": "Text editor",
+          "controlType": "Document"
+        },
+        "description": "Click the document body to ensure focus is in the editing area"
+      },
+      {
+        "action": "wait",
+        "value": "250",
+        "description": "Let focus move to the document"
+      },
+      {
+        "action": "type",
+        "value": "{{text}}",
+        "description": "Type the text via clipboard paste (preserve_existing=True so we don't Ctrl+A+Delete the document)",
+        "clear_first": false
+      }
+    ]
+  }
+]
