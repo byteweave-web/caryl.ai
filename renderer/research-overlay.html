@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caryl.ai — Research</title>
+<style>
+  :root{
+    --txt:#fff;
+    --link:#b6dcff;
+    --ok:#a8e6cf;
+    --warn:#ffcd8a;
+    --mut:rgba(255,255,255,.72);
+    --faint:rgba(255,255,255,.45);
+    --line:rgba(255,255,255,.18);
+    /* Win11: translucent blue with backdrop-filter blur.
+       Win10 falls back to solid blue (no backdrop-filter support) via html[data-os="win10"] below. */
+    --bg-start:rgba(20,80,180,.55);
+    --bg-mid:rgba(10,50,140,.65);
+    --bg-end:rgba(6,24,62,.72);
+  }
+  html[data-os="win10"] { --bg-start:rgba(16,46,110,.96); --bg-mid:rgba(10,32,84,.98); --bg-end:rgba(6,18,48,.99); }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    color:var(--txt);
+    background:
+      linear-gradient(180deg,var(--bg-start) 0%, var(--bg-mid) 55%, var(--bg-end) 100%);
+    -webkit-backdrop-filter:blur(22px) saturate(165%);
+    backdrop-filter:blur(22px) saturate(165%);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+    -webkit-user-select:none; user-select:none;
+  }
+  html[data-os="win10"] body{ -webkit-backdrop-filter:none; backdrop-filter:none; }
+  /* No-drag border for clicking; drag handle goes on the title bar only. */
+  body{ border:1px solid rgba(255,255,255,.08); border-radius:14px; }
+  html[data-os="win10"] body{ border:1px solid rgba(255,255,255,.04); }
+
+  .frame{display:flex;flex-direction:column;height:100%}
+  .titlebar{
+    height:38px; flex:0 0 38px;
+    display:flex; align-items:center; gap:10px; padding:0 12px;
+    -webkit-app-region:drag;
+    background:rgba(255,255,255,.04);
+    border-bottom:1px solid rgba(255,255,255,.10);
+    border-radius:14px 14px 0 0;
+  }
+  .titlebar > *{ -webkit-app-region:no-drag; }
+  .pip{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 10px rgba(255,255,255,.45);flex:none}
+  .timetag{font:600 10.5px ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;letter-spacing:1.4px;color:rgba(255,255,255,.78);text-transform:uppercase}
+  .title{margin:0;font:600 12px ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;letter-spacing:1.7px;text-transform:uppercase;color:rgba(255,255,255,.85);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .iconbtn{width:26px;height:26px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:transparent;color:rgba(255,255,255,.85);cursor:pointer;display:grid;place-items:center;transition:background .12s;font-size:14px;line-height:1;padding:0}
+  .iconbtn:hover{background:rgba(255,255,255,.10)}
+  .iconbtn.pinned{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.12)}
+
+  .scroll{flex:1;overflow-y:auto;padding:14px 18px 22px}
+  .scroll::-webkit-scrollbar{width:8px}
+  .scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:8px}
+  .scroll::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.32)}
+
+  .meta{margin:0 0 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .meta .src{font:600 11px ui-monospace,monospace;color:rgba(255,255,255,.78);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:7px;padding:3px 9px;letter-spacing:.7px;text-transform:uppercase}
+  .meta .q{color:rgba(255,255,255,.92);font-size:13px;line-height:1.4;margin:0;flex:1;min-width:0}
+
+  .block{margin:8px 0 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);border-radius:11px;padding:11px 14px}
+  .block h4{margin:0 0 6px;font:600 12px ui-monospace,monospace;letter-spacing:1.1px;text-transform:uppercase;color:rgba(255,255,255,.78)}
+  .block p{margin:6px 0;font-size:14px;line-height:1.55;color:var(--txt);white-space:pre-wrap}
+  .block ul, .block ol{margin:6px 0 6px 18px;font-size:14px;line-height:1.55;color:var(--txt)}
+  .block li{margin:3px 0}
+  .block a{color:var(--link);text-decoration:none;border-bottom:1px dotted rgba(182,220,255,.45)}
+  .block a:hover{border-bottom-style:solid}
+  .block code{font:11.5px ui-monospace,monospace;background:rgba(0,0,0,.22);padding:1px 6px;border-radius:5px;color:#e3f0ff}
+
+  .quote{margin:8px 0;border-left:3px solid var(--link);padding:6px 12px;color:rgba(255,255,255,.88);font-style:italic;background:rgba(255,255,255,.04);border-radius:0 8px 8px 0}
+
+  .empty{display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;height:100%;text-align:center;color:rgba(255,255,255,.65);font-size:13px}
+  .empty .dot{width:11px;height:11px;border-radius:50%;background:var(--link);box-shadow:0 0 14px var(--link);animation:rpulse 1.4s ease-in-out infinite}
+  @keyframes rpulse{0%,100%{opacity:.45;transform:scale(.85)}50%{opacity:1;transform:scale(1.18)}}
+  @media (prefers-reduced-motion: reduce){ .empty .dot{ animation:none } }
+
+  .footer{flex:0 0 auto;padding:8px 14px;border-top:1px solid rgba(255,255,255,.10);font:11px ui-monospace,monospace;color:rgba(255,255,255,.55);letter-spacing:.6px;text-align:right;background:rgba(0,0,0,.10);border-radius:0 0 14px 14px;-webkit-app-region:no-drag}
+  .footer .src{color:rgba(255,255,255,.78)}
+  .footer .err{color:var(--warn)}
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="titlebar">
+    <span class="pip"></span>
+    <span class="timetag" id="t-tag">RESEARCH</span>
+    <h1 class="title" id="t-title">Camera Research</h1>
+    <button class="iconbtn" id="btn-pin" title="Pin on top" aria-label="Pin on top"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M9 6l3-4 3 4"/><path d="M5 10h14l-2 11H7L5 10z"/></svg></button>
+    <button class="iconbtn" id="btn-close" title="Close" aria-label="Close">&#x2715;</button>
+  </div>
+  <div class="scroll" id="scroll">
+    <div class="empty" id="empty">
+      <div class="dot"></div>
+      <div>Ask the assistant to research what's in front of the camera.<br><span style="color:rgba(255,255,255,.42);font-size:11px;font-family:ui-monospace,monospace;letter-spacing:.6px">e.g. “research this thing I’m holding”</span></div>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="src" id="f-src">caryl.ai</span>
+    &nbsp;&middot;&nbsp;
+    <span id="f-stamp">&mdash;</span>
+  </div>
+</div>
+<script>
+// Render payload = metadata + sections (h4 + content). Plain DOM only — no
+// script injection from the model — innerHTML on a controlled escaping helper
+// reduces a known XSS surface to: any attacker-controlled text that contains
+// HTML is rendered as text, never as markup.
+const scroll = document.getElementById('scroll');
+const tTitle = document.getElementById('t-title');
+const tTag   = document.getElementById('t-tag');
+const fStamp = document.getElementById('f-stamp');
+const fSrc   = document.getElementById('f-src');
+const empty  = document.getElementById('empty');
+const btnPin   = document.getElementById('btn-pin');
+const btnClose = document.getElementById('btn-close');
+
+function escapeHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function nl2br(s){ return escapeHtml(s).replace(/\r?\n/g, '<br>'); }
+function renderMarkdownLite(s){
+  // Conservative converter: **bold**, _italics_, `code`, [text](url), bare http urls.
+  // We never run raw HTML - everything is escaped first.
+  let html = escapeHtml(s);
+  html = html.replace(/`([^`\n]+)`/g, function(_m, c){ return '<code>' + c + '</code>'; });
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, function(_m, c){ return '<strong>' + c + '</strong>'; });
+  html = html.replace(/_([^_\n]+)_/g, function(_m, c){ return '<em>' + c + '</em>'; });
+  html = html.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, function(_m, t, u){ return '<a href="' + u + '" target="_blank" rel="noreferrer">' + t + '</a>'; });
+  html = html.replace(/(^|[^"'>])(https?:\/\/[^\s<]+)/g, function(_m, pre, u){ return pre + '<a href="' + u + '" target="_blank" rel="noreferrer">' + u + '</a>'; });
+  html = html.replace(/\r?\n/g, '<br>');
+  return html;
+}
+
+function render(payload){
+  if(!payload || typeof payload !== 'object'){ showEmpty(); return; }
+  // Defensive: drop anything that doesn't look like our schema.
+  const title = String(payload.title || 'Camera Research').slice(0, 120);
+  const tag   = String(payload.tag   || 'RESEARCH').slice(0, 24).toUpperCase();
+  const source= String(payload.source|| 'caryl.ai').slice(0, 50);
+  const ts    = String(payload.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })).slice(0, 30);
+  const sections = Array.isArray(payload.sections) ? payload.sections : [];
+  tTitle.textContent = title;
+  tTag.textContent   = tag;
+  fSrc.textContent   = source;
+  fStamp.textContent = ts;
+  if(!sections.length){ showEmpty(); return; }
+  let out = '';
+  if(payload.question){
+    out += '<div class="meta"><div class="q">' + renderMarkdownLite(payload.question) + '</div></div>';
+  }
+  sections.slice(0, 50).forEach(function(s){
+    if(!s || typeof s !== 'object') return;
+    const heading = String(s.heading || '').slice(0, 80);
+    const body    = String(s.body || '').slice(0, 8000);
+    const items   = Array.isArray(s.items) ? s.items : [];
+    if(!heading && !body && !items.length) return;
+    out += '<div class="block">';
+    if(heading) out += '<h4>' + escapeHtml(heading) + '</h4>';
+    if(body)    out += '<p>' + renderMarkdownLite(body) + '</p>';
+    if(items.length){
+      out += '<ul>';
+      items.slice(0, 30).forEach(function(it){ out += '<li>' + renderMarkdownLite(String(it).slice(0, 600)) + '</li>'; });
+      out += '</ul>';
+    }
+    out += '</div>';
+  });
+  if(!out){ showEmpty(); return; }
+  scroll.innerHTML = out;
+  scroll.scrollTop = 0;
+}
+
+function showEmpty(){
+  scroll.innerHTML = '';
+  scroll.appendChild(empty);
+}
+
+// Initial payload (set BEFORE loadURL via win's bridge, so the window never
+// shows the empty state when there's a real research result).
+function tryBridge(){
+  try{
+    if(!window.bridge || typeof window.bridge.getResearchPayload !== 'function'){
+      showEmpty();
+      return;
+    }
+    window.bridge.getResearchPayload().then(function(p){
+      if(p){ render(p); }
+      else { showEmpty(); }
+    }).catch(function(){ showEmpty(); });
+  }catch(_e){ showEmpty(); }
+}
+
+btnClose.addEventListener('click', function(){
+  try{ if(window.bridge && window.bridge.closeResearchOverlay) window.bridge.closeResearchOverlay(); }catch(_e){}
+});
+btnPin.addEventListener('click', function(){
+  const on = !btnPin.classList.contains('pinned');
+  btnPin.classList.toggle('pinned', on);
+  try{ if(window.bridge && window.bridge.setResearchPin) window.bridge.setResearchPin(on); }catch(_e){}
+});
+// Listen for live updates (same renderer can be re-targeted with new content).
+try{
+  if(window.bridge && window.bridge.onResearchUpdate){
+    window.bridge.onResearchUpdate(function(p){
+      if(p && p.kind === 'clear'){ showEmpty(); return; }
+      render(p);
+    });
+  }
+}catch(_e){}
+
+// Esc closes the overlay.
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape'){
+    try{ if(window.bridge && window.bridge.closeResearchOverlay) window.bridge.closeResearchOverlay(); }catch(_e){}
+  }
+});
+
+tryBridge();
+</script>
+</body>
+</html>
