@@ -20,13 +20,21 @@
   _lwCapturing = false;
   await sleep(200);
 
-  // 2) Speaking pulse: drive the deck directly; core energy must rise well above idle.
-  dw.postMessage({ type:'caryl-orb', state:{ mode:'speaking', level:0, levelSrc:'none' } }, '*');
+  // 2) Speaking pulse — drive it through the REAL host path. The pump is the single
+  //    authority (posts every ~45ms from the feed), so we set the real input the pump
+  //    reads for speech and let IT post 'speaking', the same way Piper playback does.
+  //    (A competing postMessage would be overwritten by design — that's correct.)
+  _lwCapturing = false;
+  var _origTtsActive = window.ttsActive;
+  window.ttsActive = function(){ return true; };   // pump's sync() reads this -> ttsPlaying:true
   await sleep(300);
-  var a1 = dw.__deckProbe().uActivity;
+  var s1 = dw.__deckProbe();
   await sleep(350);
-  var a2 = dw.__deckProbe().uActivity;
-  out.speakEnergy = Math.max(a1, a2);
+  var s2 = dw.__deckProbe();
+  out.speakMode = s2.mode;
+  out.speakEnergy = Math.max(s1.uActivity, s2.uActivity);
+  window.ttsActive = _origTtsActive;               // restore before moving on
+  await sleep(120);
 
   // 3) Task choreography: dispatch out (dir +1), then a return pulse home (dir -1).
   dw.postMessage({ type:'caryl-task', op:'dispatch', agent:'VISION', id:'probe·VISION', label:'probe' }, '*');
@@ -41,7 +49,7 @@
 
   var pass = out.liveOn === true && out.mode === 'listening'
     && out.pillText === 'listening' && out.orbText === 'listening'
-    && out.speakEnergy > 0.7
+    && out.speakMode === 'speaking' && out.speakEnergy > 0.7
     && !!out.dispatchPkt && out.dispatchPkt.dir === 1
     && !!out.returnPkt && out.returnPkt.dir === -1;
   return JSON.stringify({ pass: pass, detail: out });
