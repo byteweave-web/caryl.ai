@@ -204,3 +204,27 @@ transcript/TTS as every other camera ask. Camera, voice, and text remain one con
   it dims; ask for weather → it re-anchors/ghosts; click the feed → fullscreen HD + engine rest;
   Esc → monitor; hold a bill up (local vision on) → watching dot pulses → one chip → Scan → the
   answer lands in chat; 👁 mute → dot hollow, no more suggestions.
+
+## 8. Post-ship revision (Farouk, 2026-07-08) — the monitor behaves like the weather board
+
+Farouk's direction after using it: *"the camera is not draggable and why does it have blur behind
+it?? make it draggable and remove blur behind it and make it resizable just the same as the weather
+overlay."* The monitor stops being a slot-allocated, focus-driving HUD element and becomes a
+**free-floating, user-owned panel** — the same contract as the weather board window:
+
+1. **Draggable** by its header (pointer capture; buttons excluded); **resizable** via native CSS
+   `resize:both` (bottom-right grip). Bounds are clamped to the viewport and **persisted** to
+   `localStorage.camMonitorBounds` (drag saves on pointerup; sizes save via a ResizeObserver) —
+   the monitor reopens where you left it, like `weatherBoardBounds`.
+2. **No blur, twice over:** the `.glass` material is dropped (no `backdrop-filter` behind the
+   panel — a near-opaque `rgba(8,11,17,.92)` fill + hairline instead, solid on Win10), and opening
+   the monitor **no longer changes shell focus** — the engine stays crisp (no pull-back blur/dim).
+   The reducer's `camera` focus is now unused by the monitor; **fullscreen keeps everything**
+   (`camera-full`, density .98, engine throttle), and collapse restores the focus you expanded from.
+3. **Slot allocator claim dropped** for the monitor (manual placement supersedes allocation —
+   exactly how the user-dragged weather window is treated). Default spawn stays the BR gutter
+   corner. The dim-when-unfocused rule is retired with it. Toast/chip behavior is unchanged.
+4. Scene-watcher, mute/watch-dot, precision auto-expand, Esc-collapse, and the one-`#cam-live`
+   reparenting contract are all unchanged. The `camera-hud` probe is rewritten to this contract
+   (free-floating + fixed + resizable + default BR spawn + no backdrop blur on win11 + drag moves
+   and persists + focus stays put at monitor).
