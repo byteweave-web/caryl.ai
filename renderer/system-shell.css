@@ -3,6 +3,11 @@
    surface is literally cut from the same glass. Deep-space, hairlines, grain, subtle
    chromatic aberration. Tokens promoted from the Nexus deck to canonical (spec §3). */
 
+/* The type ramp's real faces (vendored, offline). Living here means importing the
+   material imports the typography — one import, whole system. (@import must precede
+   every other rule.) */
+@import url('vendor/fonts/fonts.css');
+
 :root{
   --void:#05060B; --ink:#E8ECF4; --dim:#5A657D; --steel:#22304A;
   --core:#58C6FF;                       /* the ONLY user-recolorable token */
