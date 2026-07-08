@@ -13,6 +13,7 @@
 <script src="wakeword.js"></script>
 <!-- Unified OS System Shell: pure reducer (state -> targets) + runtime (applies them). -->
 <script src="shell-reducer.js"></script>
+<script src="nexus-feed.js"></script>
 <script src="system-shell.js" defer></script>
 <!-- Chat tab: Import button, attachment chips, ```docgen``` block detection. Additive, no existing code replaced. -->
 <script src="chat-import.js"></script>
@@ -708,7 +709,6 @@ window.bridge.getConfig().then(function (c) {
   document.documentElement.dataset.accent = (c && c.accentColor) || 'cyan';
 }).catch(function () { document.documentElement.dataset.theme = 'cyanHud'; document.documentElement.dataset.accent = 'cyan'; });
 let lastStatus = {};
-let orb = {level:0, speaking:false, target:0};
 
 async function api(path, body){
   body = body || {};
@@ -1427,6 +1427,30 @@ function _enqueueAudio(buf, meta){
   if(meta && meta.cardId) _lastCardId = meta.cardId;
   _drainAudioQueue();
 }
+// Real speech envelope for the Orb: tap Piper playback through WebAudio.
+// createMediaElementSource REROUTES the element's output, so if any wiring step fails
+// we reconnect straight to the destination — TTS must never go silent for a visual.
+let _ttsTapCtx = null;
+function _tapTtsAudio(a){
+  if(!window.NexusOrb) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext; if(!Ctx) return;
+  if(!_ttsTapCtx) _ttsTapCtx = new Ctx();
+  if(_ttsTapCtx.state === 'suspended'){ try{ _ttsTapCtx.resume(); }catch(_e){} }
+  const src = _ttsTapCtx.createMediaElementSource(a);
+  let an = null;
+  try{
+    an = _ttsTapCtx.createAnalyser(); an.fftSize = 1024;
+    src.connect(an); an.connect(_ttsTapCtx.destination);
+  }catch(e){ try{ src.connect(_ttsTapCtx.destination); }catch(_e2){} return; }
+  const buf = new Float32Array(an.fftSize);
+  (function sample(){
+    if(_ttsAudio !== a || a.ended || a.paused) return;  // clip done; the next clip re-taps
+    an.getFloatTimeDomainData(buf);
+    let ss = 0; for(let i = 0; i < buf.length; i++) ss += buf[i]*buf[i];
+    NexusOrb.ttsLevel(Math.min(1, Math.sqrt(ss/buf.length) * 4));
+    requestAnimationFrame(sample);
+  })();
+}
 function _drainAudioQueue(){
   if(_ttsAudio && !_ttsAudio.ended && !_ttsAudio.paused) return; // still playing one
   const item = _audioQueue.shift();
@@ -1441,6 +1465,7 @@ function _drainAudioQueue(){
     a.onerror = next;
     _reportStart(item.meta);
     a.play().catch(next);
+    try{ _tapTtsAudio(a); }catch(_e){}
   }catch(e){ _ttsAudio = null; _reportEnd(item.meta); _drainAudioQueue(); }
 }
 
@@ -1503,7 +1528,6 @@ function setMicState(on, transcribing){
   btn.innerHTML = transcribing ? '&hellip;' : (on ? '&#9209;' : '&#127908;');
   btn.style.background = on ? '#7a2230' : 'var(--panel2)';
   btn.style.borderColor = on ? '#c0556a' : 'var(--line)';
-  if(orb){ orb.target = on ? 0.85 : 0; }
 }
 // ---- Webcam vision: a live preview the user can see, ask about anytime ----
 let _liveStream=null;
@@ -2092,6 +2116,7 @@ async function startRecording(){
         an.getFloatTimeDomainData(buf);
         let ss=0; for(let i=0;i<buf.length;i++) ss+=buf[i]*buf[i];
         const lvl=Math.sqrt(ss/buf.length);
+        try{ if(window.NexusOrb) NexusOrb.micLevel(lvl, floor); }catch(_e){}
         // adapt the floor only BEFORE speech is heard - once you're talking, the bar is locked
         // so a long sentence can't drag the threshold up above your own voice
         if(!heard){ if(lvl<floor) floor=floor*0.7+lvl*0.3; else floor=floor*0.995+lvl*0.005; }
@@ -2263,15 +2288,9 @@ function _sendToChat(text){
   if(inp){ inp.value = text; sendText(); }
 }
 function _setVoiceStatus(state, label){
-  try {
-    const pill = document.getElementById('pill-state');
-    if(pill){ pill.textContent = label || state; }
-    const dot = document.getElementById('led-listen');
-    if(dot){ dot.classList.toggle('on', state === 'listening'); }
-  } catch(_e) {}
-  if(label){
-    try { setHint(label); } catch(_e) {}
-  }
+  // State text + LED are owned by the NexusFeed pump (conversation flags flow in via
+  // sync()). This helper now only surfaces the human-readable hint line.
+  if(label){ try { setHint(label); } catch(_e) {} }
 }
 
 function _scheduleConversationRearm(){
@@ -2364,6 +2383,7 @@ function wireWakeWord(){
   // while idle it slowly tracks the ambient noise floor; while a command is being captured it
   // runs the trailing-silence VAD against that pre-established floor.
   WakeWord.on('level', function(lvl){
+    try{ if(window.NexusOrb) NexusOrb.micLevel(lvl, _lwAmbientFloor); }catch(_e){}
     const now=Date.now();
     if(!_lwCapturing){
       // slow-moving floor: adopt quieter readings fast, drift upward only very slowly
@@ -2550,7 +2570,7 @@ function syncSettings(){
 async function poll(){
   const s=await getJSON('/status');
   document.getElementById('led-ollama').className='led '+(s&&s.ollama_available?'on':'off');
-  if(!s){ document.getElementById('pill-state').textContent='offline'; document.getElementById('led-listen').className='led off'; return; }
+  if(!s){ if(window.NexusOrb) NexusOrb.setOffline(true); return; }
   lastStatus=s;
   ttsEnabled = s.tts_enabled!==false;
 
@@ -2570,23 +2590,10 @@ async function poll(){
 
   document.getElementById('pill-model').textContent=s.brain_model||'\u2014';
 
-  // The voice plays in THIS window (renderer), but main reports ai_speaking:false and goes
-  // idle the moment text generation ends - so treat local TTS playback as "speaking" too.
-  const speakingNow = !!s.ai_speaking || ttsActive();
-
-  let state='idle', busy=false;
-  if(speakingNow){ state='speaking'; busy=true; }
-  else if(s.ai_status==='researching'||s.ai_status==='working'){ state='working on it'; busy=true; }
-  else if(s.ai_status==='thinking'){ state='thinking'; busy=true; }
-  else if(recording){ state='listening'; }   // mic actively recording (push-to-talk / wake command)
-  else if(s.ai_status==='listening' || (s.latest_volume||0)>0.6){ state='listening'; }
-  document.getElementById('pill-state').textContent=state;
-  document.getElementById('led-listen').className='led '+(state==='idle'?'':'on');
-
-  orb.speaking=speakingNow;
-  orb.busy=busy;
-  orb.target=recording?0.85:(speakingNow?1:(busy?0.7:Math.min(1,(s.latest_volume||0)/6)));
-  const os=document.getElementById('orb-state'); if(os) os.textContent=state;
+  // Voice/orb state flows through renderer/nexus-feed.js — the pump in initOrb() reads
+  // lastStatus (set above) each frame and is the single writer for #pill-state,
+  // #orb-state and the listen LED. poll() only clears the offline latch here.
+  if(window.NexusOrb) NexusOrb.setOffline(false);
 
   // Show which global voice hotkey actually registered (so the user knows what to press).
   if(s.voice_hotkey){ voiceHotkeyLabel=prettyHotkey(s.voice_hotkey); }
@@ -2724,30 +2731,83 @@ async function pollActivity(){
 }
 function esc(t){ return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-// The Orb tab is now the Nexus deck (renderer/nexus-deck.html) embedded as an
-// <iframe>. `orb` stays the single source of truth for state; this pump advances
-// orb.level and forwards the live snapshot to the deck, which maps it onto its
-// core (idle breath / listening glow / speaking broadcast / busy spin-up).
+// The Orb tab is the Nexus deck (renderer/nexus-deck.html) in an <iframe>. This pump is
+// the single source of truth for Caryl's live state: it feeds renderer/nexus-feed.js
+// (pure brain), posts the computed state to the deck at ~22 msg/s, forwards task
+// directives (packets = real work only), and is the ONLY writer of the state text
+// (#pill-state / #orb-state) and the listen LED — poll() and the voice paths just
+// supply inputs. That single-writer rule is what fixes the wake-word "idle" bug.
 function initOrb(){
-  const deck=document.getElementById('orb-deck');
-  let lastPost=0;
+  if(!window.NexusFeed){ console.error('[orb] NexusFeed missing — live orb disabled'); return; }
+  const feed = window.NexusFeed.createFeed();
+  const deckEl = document.getElementById('orb-deck');
+  function deckWin(){ return deckEl && deckEl.contentWindow; }
+
+  // Task directives queue until the deck says caryl-ready, so early automation
+  // dispatches are never lost to an iframe that is still booting.
+  let deckReady = false; const taskQ = [];
+  function postTask(d){
+    const w = deckWin();
+    if(deckReady && w){ w.postMessage({ type:'caryl-task', op:d.op, agent:d.agent, id:d.id, ok:d.ok, label:d.label }, '*'); }
+    else taskQ.push(d);
+  }
+  window.addEventListener('message', function(ev){
+    if(ev.data && ev.data.type === 'caryl-ready'){
+      deckReady = true;
+      while(taskQ.length) postTask(taskQ.shift());
+    }
+  });
+
+  let lastText = '';
+  function applyOrbState(st){
+    if(st.text !== lastText){
+      lastText = st.text;
+      const ps = document.getElementById('pill-state'); if(ps) ps.textContent = st.text;
+      const os = document.getElementById('orb-state'); if(os) os.textContent = st.text;
+    }
+    const led = document.getElementById('led-listen');
+    if(led) led.className = 'led' + (st.text === 'offline' ? ' off' : (st.mode !== 'idle' ? ' on' : ''));
+  }
+
+  function sync(nowMs){
+    feed.setInputs({
+      recording: !!recording,
+      lwCapturing: !!_lwCapturing,
+      conversationOpen: !!_conversationMode,
+      graceArmed: Date.now() < _followupGraceUntil,
+      ttsPlaying: ttsActive() || !!(lastStatus && lastStatus.ai_speaking),
+      aiStatus: lastStatus ? (lastStatus.ai_status || 'idle') : 'idle',
+      automationRunning: !!(lastStatus && lastStatus.automation_running)
+    }, nowMs).forEach(postTask);
+    return feed.computeState(nowMs);
+  }
+
+  let lastPost = 0, lastSweep = 0;
+  let lastLevel = 0;
   (function pump(ts){
-    ts=ts||0;
-    orb.level += (orb.target-orb.level)*0.08;   // keep the eased level other UI reads
-    if(ts-lastPost > 45){                        // throttle to ~22 msg/s
-      lastPost=ts;
-      const win=deck&&deck.contentWindow;
-      if(win){
-        win.postMessage({ type:'caryl-orb', state:{
-          level: orb.level,
-          speaking: !!orb.speaking,
-          busy: !!orb.busy,
-          recording: !!(typeof recording!=='undefined' && recording)
-        }}, '*');
-      }
+    ts = ts || 0;
+    if(ts - lastPost > 45){                    // throttle to ~22 msg/s
+      lastPost = ts;
+      const nowMs = Date.now();
+      const st = sync(nowMs);
+      lastLevel = st.level;
+      applyOrbState(st);
+      const w = deckWin();
+      if(w) w.postMessage({ type:'caryl-orb', state:{ mode: st.mode, level: st.level, levelSrc: st.levelSrc } }, '*');
+      if(nowMs - lastSweep > 1000){ lastSweep = nowMs; feed.sweep(nowMs).forEach(postTask); }
     }
     requestAnimationFrame(pump);
   })(0);
+
+  window.NexusOrb = {
+    setOffline: function(off){ feed.setInputs({ offline: !!off }, Date.now()).forEach(postTask); },
+    micLevel: function(rms, floor){ feed.micLevel(rms, floor, Date.now()); },
+    ttsLevel: function(v){ feed.ttsLevel(v, Date.now()); },
+    currentLevel: function(){ return lastLevel; },
+    swarmEvent: function(ev){ feed.swarmEvent(ev, Date.now()).forEach(postTask); },
+    taskBegin: function(key, agent, label, endOn){ feed.taskBegin(key, agent, label, { endOn: endOn }, Date.now()).forEach(postTask); },
+    taskEnd: function(key, ok){ feed.taskEnd(key, ok, Date.now()).forEach(postTask); }
+  };
 }
 // Tell the deck whether the Orb tab is visible so it can pause its WebGL loop —
 // an iframe hidden via display:none does NOT receive visibilitychange itself.
@@ -2796,7 +2856,7 @@ function _bgDraw(now){
   ctx.clearRect(0,0,w,h);
   const acc=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#e7e9ee';
   const rgb=hexToRgbArr(acc);
-  const lvl=(typeof orb!=='undefined'&&orb)?orb.level:0;
+  const lvl=(window.NexusOrb?NexusOrb.currentLevel():0);
   const R=Math.min(w,h)*0.30, view=3.0;
   const spd=(0.00010 + lvl*0.00035)*dt;             // slow tumble; a touch faster when the AI is active
   _bg.ay += spd; _bg.ax += spd*0.55;
@@ -2862,23 +2922,10 @@ poll(); setInterval(poll,1000);
 let _wasEngaged=false;
 function refreshSpeakingUI(){
   const speakingNow = ttsActive();
-  if(speakingNow){
-    orb.speaking = true;
-    if(!recording) orb.target = 1;
-    const ps=document.getElementById('pill-state'); if(ps && ps.textContent!=='speaking') ps.textContent='speaking';
-    const os=document.getElementById('orb-state'); if(os && os.textContent!=='speaking') os.textContent='speaking';
-    const ll=document.getElementById('led-listen'); if(ll) ll.className='led on';
-  } else if(orb.speaking){
-    orb.speaking = false; // just stopped; relax until the next poll sets the precise state
-    if(!recording) orb.target = 0;
-    const ps=document.getElementById('pill-state'); if(ps && ps.textContent==='speaking') ps.textContent='idle';
-    const os=document.getElementById('orb-state'); if(os && os.textContent==='speaking') os.textContent='idle';
-  }
-  // Follow-up grace window: start the 25s clock the moment Caryl actually finishes being
-  // "engaged" with you - done talking (or done generating, if TTS is off) - NOT while the
-  // reply text is still streaming in. That was the bug: a long reply's TEXT finishes well
-  // before its VOICE does, so refreshing on text changes let the window run out mid-speech,
-  // leaving nothing left once Caryl actually stopped talking.
+  // Orb visuals + state text are owned by the NexusFeed pump (initOrb). This 200ms
+  // ticker only keeps the follow-up grace window honest: the 25s clock starts the
+  // moment Caryl stops being engaged (done talking AND done generating) - NOT while
+  // reply text is still streaming (see the original bug note on _followupGraceUntil).
   const busyNow = speakingNow || (lastStatus && (lastStatus.ai_status==='working' || lastStatus.ai_status==='thinking'));
   if(!busyNow && _wasEngaged && !document.hasFocus()){ _followupGraceUntil = Date.now() + FOLLOWUP_GRACE_MS; }
   _wasEngaged = busyNow;
