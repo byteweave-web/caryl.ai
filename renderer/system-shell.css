@@ -70,6 +70,17 @@
 .slotzone.has-ghost:hover .ghosted{ filter:opacity(.92); pointer-events:auto !important; }
 @media (prefers-reduced-motion: reduce){ .ghosted{ transition:none; } }
 
+/* The shell toast: the single L3 transient chip (spec §9; Phase 6's suggestion chips
+   extend it). Mono data-voice, a --core tick, cut from the shared glass. */
+.shell-toast{ --e:3; font-family:var(--mono); font-size:11px; letter-spacing:.06em;
+  color:var(--ink); padding:9px 14px 9px 12px; border-left:2px solid var(--core);
+  max-width:340px; opacity:0; transform:translateY(-6px);
+  transition:opacity .3s ease, transform .3s ease; }
+.shell-toast.show{ opacity:1; transform:none; }
+@media (prefers-reduced-motion: reduce){
+  .shell-toast{ transition:opacity .2s linear; transform:none; }
+}
+
 /* ---- fallback matrix (spec §11) — one policy, here ---- */
 html[data-os="win10"] .glass{                    /* no backdrop-filter on Win10 */
   -webkit-backdrop-filter:none; backdrop-filter:none;

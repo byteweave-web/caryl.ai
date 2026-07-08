@@ -101,9 +101,32 @@
     },
   };
 
+  // ---- Phase 5: the shell toast — the single L3 transient chip (spec §9) ----
+  // One reusable element; a toast claims a corner at high priority and auto-releases.
+  var toastEl = null, toastTimer = null;
+  function toast(text, opts) {
+    opts = opts || {};
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      toastEl.className = 'shell-toast glass';
+      toastEl.setAttribute('role', 'status');
+      toastEl.setAttribute('aria-live', 'polite');
+    }
+    toastEl.textContent = String(text || '');
+    Slots.claim('toast', { priority: 90, slots: ['TR', 'TL', 'BR'], el: toastEl });
+    requestAnimationFrame(function () { if (toastEl) toastEl.classList.add('show'); });
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      toastTimer = null;
+      if (toastEl) toastEl.classList.remove('show');
+      Slots.release('toast');
+    }, Math.max(600, +opts.ms || 3200));
+  }
+
   var Shell = {
     state: state,
     slots: Slots,
+    toast: toast,
     setFocus: function (name) {
       state.focus = (R.FOCUS.indexOf(name) >= 0) ? name : 'orb';
       apply();

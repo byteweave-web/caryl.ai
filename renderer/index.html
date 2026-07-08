@@ -1544,9 +1544,16 @@ function defaultHintText(){
     : 'Click the mic or hold your push-to-talk key to speak, or type below.';
 }
 function setHint(text, lockMs){
-  const h=document.querySelector('.hint'); if(!h) return;
-  h.textContent=text;
-  if(lockMs){ hintLocked=true; setTimeout(function(){ hintLocked=false; const h2=document.querySelector('.hint'); if(h2) h2.textContent=defaultHintText(); }, lockMs); }
+  const h=document.querySelector('.hint');
+  if(h){
+    h.textContent=text;
+    if(lockMs){ hintLocked=true; setTimeout(function(){ hintLocked=false; const h2=document.querySelector('.hint'); if(h2) h2.textContent=defaultHintText(); }, lockMs); }
+  }
+  // Transient hints also surface as a shell toast when Chat isn't the focus — otherwise
+  // "Opening camera…"/"Camera error" are written into an invisible composer (spec §9).
+  if(lockMs && window.Shell && Shell.toast && Shell.state.focus!=='chat'){
+    try{ Shell.toast(text, {ms:Math.min(lockMs,4000)}); }catch(_e){}
+  }
 }
 function setMicState(on, transcribing){
   recording=!!on;
