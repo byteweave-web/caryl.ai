@@ -86,11 +86,22 @@ check('state: conversation open / grace armed -> attentive', function () {
   g.setInputs({ graceArmed: true }, T);
   assert.strictEqual(g.computeState(T).mode, 'attentive');
 });
-check('state: offline overrides text (and parks mode at idle)', function () {
+check('state: offline overrides text, parks mode at idle, and does not glow', function () {
   const f = NF.createFeed();
+  f.micLevel(0.048, 0.006, T);          // a loud, fresh mic reading...
   f.setInputs({ offline: true, ttsPlaying: true }, T);
-  const s = f.computeState(T);
+  const s = f.computeState(T + 50);
   assert.strictEqual(s.text, 'offline'); assert.strictEqual(s.mode, 'idle');
+  assert.strictEqual(s.level, 0); assert.strictEqual(s.levelSrc, 'none');  // ...must not leak into a glow
+});
+
+check('honesty: a plain chat turn (no swarm/camera/automation) emits ZERO directives', function () {
+  const f = NF.createFeed();
+  // a full turn: idle -> thinking -> working -> idle, nothing else
+  assert.deepStrictEqual(f.setInputs({ aiStatus: 'thinking' }, T), []);
+  assert.deepStrictEqual(f.setInputs({ aiStatus: 'working' }, T + 100), []);
+  assert.deepStrictEqual(f.setInputs({ aiStatus: 'idle' }, T + 200), []);
+  assert.strictEqual(f.openCount(), 0);
 });
 
 // ---- audio levels ----------------------------------------------------

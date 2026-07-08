@@ -79,7 +79,9 @@
       else { mode = 'idle'; text = 'idle'; }
       if (i.offline) { mode = 'idle'; text = 'offline'; }
       var level = 0, levelSrc = 'none';
-      if (mode === 'speaking') {
+      if (i.offline) {
+        // offline reads as dead: never glow, even if a recent mic sample is still fresh
+      } else if (mode === 'speaking') {
         if (now - lvl.ttsAt < LEVEL_FRESH_MS) { level = lvl.tts; levelSrc = 'tts'; }
       } else if (now - lvl.micAt < LEVEL_FRESH_MS) { level = lvl.mic; levelSrc = 'mic'; }
       return { mode: mode, text: text, level: level, levelSrc: levelSrc };

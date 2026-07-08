@@ -1444,7 +1444,7 @@ function _tapTtsAudio(a){
   }catch(e){ try{ src.connect(_ttsTapCtx.destination); }catch(_e2){} return; }
   const buf = new Float32Array(an.fftSize);
   (function sample(){
-    if(_ttsAudio !== a || a.ended || a.paused) return;  // clip done; the next clip re-taps
+    if(_ttsAudio !== a || a.ended || a.paused){ try{ src.disconnect(); an.disconnect(); }catch(_e){} return; }  // clip done: free the WebAudio nodes; the next clip re-taps
     an.getFloatTimeDomainData(buf);
     let ss = 0; for(let i = 0; i < buf.length; i++) ss += buf[i]*buf[i];
     NexusOrb.ttsLevel(Math.min(1, Math.sqrt(ss/buf.length) * 4));
@@ -1653,6 +1653,7 @@ async function grabCameraFrame(){
 async function askAboutCamera(){
   if(!_liveStream){ toggleCamera(); return; }
   setCamStatus('looking');
+  try{ if(window.NexusOrb) NexusOrb.taskBegin('camera','VISION','camera ask','ai-idle'); }catch(_e){}
   try{ const dataUrl=await grabCameraFrame(); await window.bridge.lookCamera(dataUrl,''); }
   catch(e){ setCamStatus('idle'); setHint('Camera error',3000); }
 }
