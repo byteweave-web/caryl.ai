@@ -5,99 +5,102 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Caryl.ai — Research</title>
 <style>
+  /* Alias shim (Unified OS): every colour resolves from system-shell.css so this
+     research panel is cut from the same glass as the rest of the OS. The old
+     bespoke blue-gradient look is retired — the pane now wears the shared .glass
+     material (fill + blur + hairline + grain), and links carry the --core accent. */
   :root{
-    --txt:#fff;
-    --link:#b6dcff;
-    --ok:#a8e6cf;
-    --warn:#ffcd8a;
-    --mut:rgba(255,255,255,.72);
-    --faint:rgba(255,255,255,.45);
-    --line:rgba(255,255,255,.18);
-    /* Win11: translucent blue with backdrop-filter blur.
-       Win10 falls back to solid blue (no backdrop-filter support) via html[data-os="win10"] below. */
-    --bg-start:rgba(20,80,180,.55);
-    --bg-mid:rgba(10,50,140,.65);
-    --bg-end:rgba(6,24,62,.72);
+    --glass-density:.28;                 /* a parked read surface: a touch denser than chat for contrast */
+    --accent:var(--core);                /* unification: this surface's accent IS the OS core */
+    --link:var(--core);
+    --txt:var(--ink); --mut:var(--dim); --faint:#66727e;
+    --line:var(--hair);
   }
-  html[data-os="win10"] { --bg-start:rgba(16,46,110,.96); --bg-mid:rgba(10,32,84,.98); --bg-end:rgba(6,18,48,.99); }
   *{box-sizing:border-box}
-  html,body{height:100%;margin:0}
+  html,body{height:100%;margin:0;background:transparent;overflow:hidden}
   body{
-    font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    color:var(--txt);
-    background:
-      linear-gradient(180deg,var(--bg-start) 0%, var(--bg-mid) 55%, var(--bg-end) 100%);
-    -webkit-backdrop-filter:blur(22px) saturate(165%);
-    backdrop-filter:blur(22px) saturate(165%);
-    overflow:hidden;
+    font-family:var(--read); color:var(--txt);
     -webkit-font-smoothing:antialiased;
     -webkit-user-select:none; user-select:none;
   }
-  html[data-os="win10"] body{ -webkit-backdrop-filter:none; backdrop-filter:none; }
-  /* No-drag border for clicking; drag handle goes on the title bar only. */
-  body{ border:1px solid rgba(255,255,255,.08); border-radius:14px; }
-  html[data-os="win10"] body{ border:1px solid rgba(255,255,255,.04); }
 
-  .frame{display:flex;flex-direction:column;height:100%}
+  /* The pane. Material (fill/blur/hairline/grain/shadow) all comes from .glass. */
+  .frame{ position:fixed; inset:0; --e:3;
+    display:flex; flex-direction:column;
+    border-radius:14px; overflow:hidden; }
+
   .titlebar{
     height:38px; flex:0 0 38px;
     display:flex; align-items:center; gap:10px; padding:0 12px;
     -webkit-app-region:drag;
-    background:rgba(255,255,255,.04);
-    border-bottom:1px solid rgba(255,255,255,.10);
-    border-radius:14px 14px 0 0;
+    border-bottom:1px solid var(--line);
   }
   .titlebar > *{ -webkit-app-region:no-drag; }
-  .pip{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 10px rgba(255,255,255,.45);flex:none}
-  .timetag{font:600 10.5px ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;letter-spacing:1.4px;color:rgba(255,255,255,.78);text-transform:uppercase}
-  .title{margin:0;font:600 12px ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;letter-spacing:1.7px;text-transform:uppercase;color:rgba(255,255,255,.85);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .iconbtn{width:26px;height:26px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:transparent;color:rgba(255,255,255,.85);cursor:pointer;display:grid;place-items:center;transition:background .12s;font-size:14px;line-height:1;padding:0}
-  .iconbtn:hover{background:rgba(255,255,255,.10)}
-  .iconbtn.pinned{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.12)}
+  .pip{width:8px;height:8px;border-radius:50%;background:var(--core);
+    box-shadow:0 0 12px var(--core);flex:none;animation:pip-breathe 2.6s ease-in-out infinite}
+  @keyframes pip-breathe{0%,100%{opacity:1}50%{opacity:.45}}
+  @media (prefers-reduced-motion: reduce){ .pip{animation:none} }
+  .timetag{font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase}
+  .title{margin:0;flex:1;min-width:0;
+    font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .iconbtn{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);
+    background:transparent;color:var(--mut);cursor:pointer;display:grid;place-items:center;
+    transition:background .12s,color .12s;font-size:14px;line-height:1;padding:0}
+  .iconbtn:hover{background:rgba(255,255,255,.08);color:var(--txt)}
+  .iconbtn.pinned{border-color:var(--core);color:var(--core);background:color-mix(in srgb,var(--core) 14%,transparent)}
 
   .scroll{flex:1;overflow-y:auto;padding:14px 18px 22px}
   .scroll::-webkit-scrollbar{width:8px}
-  .scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:8px}
-  .scroll::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.32)}
+  .scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px}
+  .scroll::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.28)}
 
-  .meta{margin:0 0 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .meta .src{font:600 11px ui-monospace,monospace;color:rgba(255,255,255,.78);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:7px;padding:3px 9px;letter-spacing:.7px;text-transform:uppercase}
-  .meta .q{color:rgba(255,255,255,.92);font-size:13px;line-height:1.4;margin:0;flex:1;min-width:0}
+  .meta{margin:0 0 14px}
+  .meta .q{color:var(--ink);font-size:13px;line-height:1.5;margin:0}
 
-  .block{margin:8px 0 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);border-radius:11px;padding:11px 14px}
-  .block h4{margin:0 0 6px;font:600 12px ui-monospace,monospace;letter-spacing:1.1px;text-transform:uppercase;color:rgba(255,255,255,.78)}
-  .block p{margin:6px 0;font-size:14px;line-height:1.55;color:var(--txt);white-space:pre-wrap}
-  .block ul, .block ol{margin:6px 0 6px 18px;font-size:14px;line-height:1.55;color:var(--txt)}
+  .block{margin:8px 0 14px;background:rgba(255,255,255,.03);
+    border:1px solid var(--line);border-radius:11px;padding:11px 14px}
+  .block h4{margin:0 0 6px;font-family:var(--mono);font-size:10px;font-weight:600;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+  .block p{margin:6px 0;font-size:14px;line-height:1.6;color:var(--ink);white-space:pre-wrap}
+  .block ul,.block ol{margin:6px 0 6px 18px;font-size:14px;line-height:1.6;color:var(--ink)}
   .block li{margin:3px 0}
-  .block a{color:var(--link);text-decoration:none;border-bottom:1px dotted rgba(182,220,255,.45)}
+  .block a{color:var(--link);text-decoration:none;border-bottom:1px dotted color-mix(in srgb,var(--core) 45%,transparent)}
   .block a:hover{border-bottom-style:solid}
-  .block code{font:11.5px ui-monospace,monospace;background:rgba(0,0,0,.22);padding:1px 6px;border-radius:5px;color:#e3f0ff}
+  .block code{font-family:var(--mono);font-size:11.5px;background:rgba(0,0,0,.28);padding:1px 6px;border-radius:5px;color:#dff0ff}
+  .block strong{color:var(--ink)}
+  .block em{color:var(--mut)}
 
-  .quote{margin:8px 0;border-left:3px solid var(--link);padding:6px 12px;color:rgba(255,255,255,.88);font-style:italic;background:rgba(255,255,255,.04);border-radius:0 8px 8px 0}
+  .quote{margin:8px 0;border-left:2px solid var(--core);padding:6px 12px;color:var(--mut);font-style:italic}
 
-  .empty{display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;height:100%;text-align:center;color:rgba(255,255,255,.65);font-size:13px}
-  .empty .dot{width:11px;height:11px;border-radius:50%;background:var(--link);box-shadow:0 0 14px var(--link);animation:rpulse 1.4s ease-in-out infinite}
+  .empty{display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;
+    height:100%;text-align:center;color:var(--dim);font-size:13px;line-height:1.7}
+  .empty .dot{width:10px;height:10px;border-radius:50%;background:var(--core);
+    box-shadow:0 0 14px var(--core);animation:rpulse 1.4s ease-in-out infinite}
   @keyframes rpulse{0%,100%{opacity:.45;transform:scale(.85)}50%{opacity:1;transform:scale(1.18)}}
-  @media (prefers-reduced-motion: reduce){ .empty .dot{ animation:none } }
+  @media (prefers-reduced-motion: reduce){ .empty .dot{animation:none} }
 
-  .footer{flex:0 0 auto;padding:8px 14px;border-top:1px solid rgba(255,255,255,.10);font:11px ui-monospace,monospace;color:rgba(255,255,255,.55);letter-spacing:.6px;text-align:right;background:rgba(0,0,0,.10);border-radius:0 0 14px 14px;-webkit-app-region:no-drag}
-  .footer .src{color:rgba(255,255,255,.78)}
-  .footer .err{color:var(--warn)}
+  .footer{flex:0 0 auto;padding:8px 14px;border-top:1px solid var(--line);
+    font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.08em;
+    text-align:right;text-transform:uppercase;-webkit-app-region:no-drag}
+  .footer .src{color:var(--dim)}
+  .footer .err{color:var(--bad)}
 </style>
+<link rel="stylesheet" href="system-shell.css">
 </head>
 <body>
-<div class="frame">
+<div class="frame glass">
   <div class="titlebar">
     <span class="pip"></span>
     <span class="timetag" id="t-tag">RESEARCH</span>
-    <h1 class="title" id="t-title">Camera Research</h1>
+    <h1 class="title ca" id="t-title">Camera Research</h1>
     <button class="iconbtn" id="btn-pin" title="Pin on top" aria-label="Pin on top"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M9 6l3-4 3 4"/><path d="M5 10h14l-2 11H7L5 10z"/></svg></button>
     <button class="iconbtn" id="btn-close" title="Close" aria-label="Close">&#x2715;</button>
   </div>
   <div class="scroll" id="scroll">
     <div class="empty" id="empty">
       <div class="dot"></div>
-      <div>Ask the assistant to research what's in front of the camera.<br><span style="color:rgba(255,255,255,.42);font-size:11px;font-family:ui-monospace,monospace;letter-spacing:.6px">e.g. “research this thing I’m holding”</span></div>
+      <div>Ask the assistant to research what's in front of the camera.<br><span style="color:var(--dim);font-size:11px;font-family:var(--mono);letter-spacing:.6px">e.g. “research this thing I’m holding”</span></div>
     </div>
   </div>
   <div class="footer">
@@ -107,6 +110,16 @@
   </div>
 </div>
 <script>
+// OS-aware treatment: Win11 keeps the frosted glass; Win10 gets the shared opaque
+// fallback (fail solid, never transparent). Stamped from getShellStyle when present.
+try{
+  if(window.bridge && typeof window.bridge.getShellStyle === 'function'){
+    window.bridge.getShellStyle().then(function(s){
+      document.documentElement.dataset.os = (s && s.osVariant) || 'win10';
+    }).catch(function(){ document.documentElement.dataset.os = 'win10'; });
+  } else { document.documentElement.dataset.os = 'win10'; }
+}catch(_e){ document.documentElement.dataset.os = 'win10'; }
+
 // Render payload = metadata + sections (h4 + content). Plain DOM only — no
 // script injection from the model — innerHTML on a controlled escaping helper
 // reduces a known XSS surface to: any attacker-controlled text that contains
