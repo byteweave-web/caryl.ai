@@ -86,9 +86,13 @@ body{
 #view-chat{z-index:20;left:50%;top:50%;right:auto;bottom:auto;
   width:min(720px,94vw);height:min(78vh,760px);
   transform:translate(-50%, calc(-50% + 14px*(1 - var(--focus-depth))));
-  opacity:var(--focus-depth);pointer-events:none;overflow:hidden;
+  /* Visibility keys off being the ACTIVE focus (chat), not the shared --focus-depth — which is
+     also 1 for the Settings focus, and used to leak Chat in behind the Settings glass. The
+     transform still rides --focus-depth so the slide stays synced with the camera pull-back. */
+  opacity:0;pointer-events:none;overflow:hidden;
+  transition:opacity 420ms cubic-bezier(.2,.8,.2,1);
   display:flex;flex-direction:column}
-#view-chat.active{pointer-events:auto}
+#view-chat.active{opacity:1;pointer-events:auto}
 @media (prefers-reduced-motion: reduce){#view-chat{transform:translate(-50%,-50%)}}
 canvas.orb{position:absolute;inset:0;width:100%;height:100%;z-index:3}
 .orb-meta{position:absolute;left:0;right:0;bottom:42px;text-align:center;pointer-events:none}

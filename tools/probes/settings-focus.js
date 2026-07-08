@@ -17,6 +17,9 @@
   var panel = document.getElementById('settings'), pcs = getComputedStyle(panel);
   out.panelOpacity = parseFloat(pcs.opacity);
   out.panelPE      = pcs.pointerEvents;
+  // Regression (Phase 3): the Chat layer must NOT leak in behind the Settings glass — its
+  // visibility must key off being the active focus, not the shared --focus-depth (1 here too).
+  out.chatOpacityInSettings = parseFloat(getComputedStyle(document.getElementById('view-chat')).opacity);
   // Engine keeps rendering behind the glass (0.72 < 0.92 occlusion).
   out.engineThrottled = !!(window.ShellReducer && window.ShellReducer.deriveShell({focus:'settings'}).engineThrottle);
   // The topbar gear stays hittable while Settings is up.
@@ -32,6 +35,7 @@
   var pass = out.scrimGone && out.dataFocus==='settings'
     && out.focusDepth > 0.8 && Math.abs(out.glassDensity - 0.72) < 0.12
     && out.panelOpacity > 0.9 && out.panelPE === 'auto'
+    && out.chatOpacityInSettings < 0.1
     && out.engineThrottled === false && out.gearHittable === true
     && out.exitDataFocus === 'orb' && out.exitPanelOpacity < 0.1;
   return JSON.stringify({ pass: pass, detail: out });
