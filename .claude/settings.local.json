@@ -188,7 +188,10 @@
       "Bash(timeout 60 node_modules/.bin/electron tools/probe_shell.js --probe=tools/probes/chip.js --wait=1800)",
       "Bash(timeout 60 node_modules/.bin/electron tools/probe_shell.js --probe=tools/probes/camera-hud.js --wait=1800)",
       "Bash(echo \"EXIT=$?\")",
-      "Bash(timeout 60 node_modules/.bin/electron tools/probe_shell.js --probe=tools/probes/material.js)"
+      "Bash(timeout 60 node_modules/.bin/electron tools/probe_shell.js --probe=tools/probes/material.js)",
+      "Bash(mv open-design *)",
+      "Bash(ls -d open-design)",
+      "Bash(echo \"npm test EXIT=$?\")"
     ]
   }
 }
