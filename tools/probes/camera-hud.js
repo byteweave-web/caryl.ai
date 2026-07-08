@@ -24,6 +24,18 @@
   var live = document.getElementById('cam-live');
   out.liveInMonitor = !!(live && live.closest('#cam-monitor'));
 
+  // Watcher honesty: no local vision model in this harness -> the dot must NOT claim watching.
+  var dot = document.getElementById('watch-dot');
+  out.dotExists = !!dot;
+  out.dotNotWatching = !!(dot && !dot.classList.contains('watching'));
+  // Mute toggle persists + stamps the dot.
+  localStorage.removeItem('sceneWatchMuted');
+  toggleSceneWatch();
+  out.mutedPersisted = localStorage.getItem('sceneWatchMuted') === '1';
+  out.dotMuted = !!(dot && dot.classList.contains('muted'));
+  toggleSceneWatch();
+  out.unmuted = localStorage.getItem('sceneWatchMuted') === '0';
+
   expandCamera();
   await sleep(250);
   out.focusFull = root.getAttribute('data-focus');                              // camera-full
@@ -54,6 +66,7 @@
              out.liveInMonitor && out.focusFull === 'camera-full' && out.densityFull === '0.98' &&
              out.fullShown && out.liveInStage && out.focusBack === 'camera' && out.fullHidden &&
              out.liveBackInMonitor && out.focusOrb === 'orb' && out.monHidden && out.claimGone &&
+             out.dotExists && out.dotNotWatching && out.mutedPersisted && out.dotMuted && out.unmuted &&
              out.liveBackInStage;
   return JSON.stringify({ pass: pass, detail: out });
 })()

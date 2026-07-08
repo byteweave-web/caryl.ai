@@ -14,6 +14,7 @@
 <!-- Unified OS System Shell: pure reducer (state -> targets) + runtime (applies them). -->
 <script src="shell-reducer.js"></script>
 <script src="slot-allocator.js"></script>
+<script src="scene-watcher.js"></script>
 <script src="nexus-feed.js"></script>
 <script src="system-shell.js" defer></script>
 <!-- Chat tab: Import button, attachment chips, ```docgen``` block detection. Additive, no existing code replaced. -->
@@ -1618,10 +1619,67 @@ function camMonEl(){ if(!_camMon) _camMon = document.getElementById('cam-monitor
 function camLiveEl(){
   return document.getElementById('cam-live') || (camMonEl() && camMonEl().querySelector('#cam-live')) || null;
 }
-// Scene-watcher stubs — the Active Observer task replaces these with the real wiring.
-function armSceneWatch(){}
-function stopSceneWatch(){}
-function toggleSceneWatch(){}
+// ---- Phase 6: the ambient scene-watcher (spec D3) — the Active Observer ----
+// Armed ONLY when a LOCAL vision model is live (status.vision_model is non-null only when
+// vision resolves to the local engine) — the frame never leaves this machine. A pulsing
+// --core dot is the honest "watching" tell; mute persists across sessions.
+let _watcher = null;
+function sceneWatchMuted(){ return localStorage.getItem('sceneWatchMuted') === '1'; }
+function watchDotSync(){
+  const d = document.getElementById('watch-dot'); if(!d) return;
+  const st = _watcher && _watcher.state();
+  const armed = !!(st && st.running && !st.dead);
+  const muted = sceneWatchMuted();
+  d.classList.toggle('watching', armed && !muted);
+  d.classList.toggle('muted', muted);
+  d.title = muted ? 'Scene watching muted' : (armed ? 'Watching for scenes (local vision)' : 'Scene watching off');
+  const b = document.getElementById('cam-mon-mute'); if(b) b.title = muted ? 'Unmute scene watching' : 'Mute scene watching';
+}
+function toggleSceneWatch(){
+  localStorage.setItem('sceneWatchMuted', sceneWatchMuted() ? '0' : '1');
+  if(_watcher) _watcher.muted(sceneWatchMuted());
+  watchDotSync();
+}
+// One quiet classification pass against the local Ollama vision model (fixed port 11434;
+// its default origins allow file://). Any failure rejects -> the watcher disarms itself.
+function classifyFrame(dataUrl){
+  const model = lastStatus && lastStatus.vision_model;
+  if(!model) return Promise.reject(new Error('no local vision'));
+  const b64 = String(dataUrl).replace(/^data:image\/\w+;base64,/, '');
+  return fetch('http://127.0.0.1:11434/api/generate', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: model,
+      prompt: 'Look at this image. Answer with exactly one word - document, bill, product, whiteboard, or none. Which single word best describes the main subject?',
+      images: [b64], stream: false, options: { temperature: 0, num_predict: 6 } })
+  }).then(function(r){ if(!r.ok) throw new Error('ollama ' + r.status); return r.json(); })
+    .then(function(j){ return (j && j.response) || ''; });
+}
+function armSceneWatch(){
+  stopSceneWatch();
+  if(!(window.SceneWatcher && lastStatus && lastStatus.vision_model && lastStatus.ollama_up)){ watchDotSync(); return; }
+  _watcher = SceneWatcher.createWatcher({
+    video: camLiveEl(), grabFrame: grabCameraFrame, classify: classifyFrame,
+    isBusy: function(){
+      return !!(typeof _trackTarget !== 'undefined' && _trackTarget) || recording ||
+             !!(lastStatus && lastStatus.ai_status && lastStatus.ai_status !== 'idle');
+    },
+    onDisarm: watchDotSync,
+    onSuggest: function(s){
+      if(!window.Shell || !Shell.chip) return;
+      Shell.chip(s.text, { ms: 12000, actions: [
+        { label: 'Scan', fn: function(){
+            try{ if(window.NexusOrb) NexusOrb.taskBegin('camera','VISION','scene suggest','ai-idle'); }catch(_e){}
+            window.bridge.lookCamera(s.frame, s.question);
+        } },
+        { label: 'Dismiss' }
+      ]});
+    },
+  });
+  _watcher.muted(sceneWatchMuted());
+  _watcher.start();
+  watchDotSync();
+}
+function stopSceneWatch(){ if(_watcher){ _watcher.stop(); _watcher = null; } watchDotSync(); }
 function camEnterMonitor(stream){
   const mon = camMonEl(); const body = mon && mon.querySelector('#cam-mon-body');
   const v = camLiveEl();
